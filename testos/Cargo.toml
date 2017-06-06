@@ -1,0 +1,13 @@
+[package]
+name = "os-main"
+version = "0.1.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+
+[dependencies]
+rlibc = "1.0"
+
+[dependencies.multiboot]
+path = "../multiboot"

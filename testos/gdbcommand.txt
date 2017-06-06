@@ -1,0 +1,4 @@
+file /home/nik/rust-gdb/testos/build/kernel-x86_64.bin
+target remote :1234
+b start
+continue
