@@ -8,12 +8,11 @@ extern crate multiboot;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-//mod multiboot;
 pub extern "C" fn rust_main(multibootHeader: usize) {
 
     unsafe {
-        let memInfo = multiboot::multiboot::ReadTag1(multibootHeader, 4);
-        let memInfo1 = multiboot::multiboot::ReadTag1(multibootHeader, 6);
+        let memInfo = multiboot::multiboot_header::memory_map(multibootHeader);
+        let memInfo = multiboot::multiboot_header::basic_memory_info(multibootHeader);
     }
 
 

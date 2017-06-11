@@ -2,6 +2,4 @@
 #![feature(asm)]
 #![no_std]
 
-extern crate stdx;
-
-pub mod multiboot_header;
+pub mod conversion;
