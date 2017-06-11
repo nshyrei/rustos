@@ -2,6 +2,7 @@ pub enum TagType {
     End,
     BasicMemoryInfo,
     MemoryMap,
+    ElfSections,
 }
 
 impl From<TagType> for u32 {
@@ -10,6 +11,7 @@ impl From<TagType> for u32 {
             TagType::End => 0,
             TagType::BasicMemoryInfo => 4,
             TagType::MemoryMap => 6,
+            TagType::ElfSections => 9,
         }
     }
 }

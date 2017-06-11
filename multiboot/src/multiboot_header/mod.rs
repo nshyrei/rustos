@@ -12,6 +12,11 @@ pub unsafe fn memory_map(multiboot_multiboot_address: usize) -> tags_info::Memor
     tags_info::MemoryMap::from_unsafe(info_address)
 }
 
+pub unsafe fn elf_sections(multiboot_multiboot_address: usize) -> tags_info::ElfSections {
+    let info_address = read_tag(multiboot_multiboot_address, tags::TagType::ElfSections);
+    tags_info::ElfSections::from_unsafe(info_address)
+}
+
 unsafe fn read_tag(multiboot_address: usize, tag_type: tags::TagType) -> usize {
     let tag_type_as_int = u32::from(tag_type);
     let tag_type_end = u32::from(tags::TagType::End);

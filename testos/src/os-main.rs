@@ -8,11 +8,12 @@ extern crate multiboot;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub extern "C" fn rust_main(multibootHeader: usize) {
+pub extern "C" fn rust_main(multiboot_header: usize) {
 
     unsafe {
-        let memInfo = multiboot::multiboot_header::memory_map(multibootHeader);
-        let memInfo = multiboot::multiboot_header::basic_memory_info(multibootHeader);
+        let memInfo1 = multiboot::multiboot_header::memory_map(multiboot_header);
+        let memInfo = multiboot::multiboot_header::basic_memory_info(multiboot_header);
+        let elf_sections = multiboot::multiboot_header::elf_sections(multiboot_header);
     }
 
 
