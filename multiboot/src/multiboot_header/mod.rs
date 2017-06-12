@@ -1,20 +1,23 @@
-mod tags_info;
-mod tags;
+pub mod tags_info;
+pub mod tags;
 use stdx::conversion::FromUnsafe;
 
-pub unsafe fn basic_memory_info(multiboot_multiboot_address: usize) -> tags_info::BasicMemoryInfo {
+
+pub unsafe fn basic_memory_info(multiboot_multiboot_address: usize)
+                                -> tags_info::basic_memory_info::BasicMemoryInfo {
     let info_address = read_tag(multiboot_multiboot_address, tags::TagType::BasicMemoryInfo);
-    tags_info::BasicMemoryInfo::from_unsafe(info_address)
+    tags_info::basic_memory_info::BasicMemoryInfo::from_unsafe(info_address)
 }
 
-pub unsafe fn memory_map(multiboot_multiboot_address: usize) -> tags_info::MemoryMap {
+pub unsafe fn memory_map(multiboot_multiboot_address: usize) -> tags_info::memory_map::MemoryMap {
     let info_address = read_tag(multiboot_multiboot_address, tags::TagType::MemoryMap);
-    tags_info::MemoryMap::from_unsafe(info_address)
+    tags_info::memory_map::MemoryMap::from_unsafe(info_address)
 }
 
-pub unsafe fn elf_sections(multiboot_multiboot_address: usize) -> tags_info::ElfSections {
+pub unsafe fn elf_sections(multiboot_multiboot_address: usize)
+                           -> tags_info::elf_sections::ElfSections {
     let info_address = read_tag(multiboot_multiboot_address, tags::TagType::ElfSections);
-    tags_info::ElfSections::from_unsafe(info_address)
+    tags_info::elf_sections::ElfSections::from_unsafe(info_address)
 }
 
 unsafe fn read_tag(multiboot_address: usize, tag_type: tags::TagType) -> usize {
