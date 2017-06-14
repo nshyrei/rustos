@@ -5,7 +5,6 @@
 
 extern crate rlibc;
 extern crate multiboot;
-use multiboot::multiboot_header::tags_info::tag_entry_iterator::ITagEntryIterator;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -14,12 +13,13 @@ pub extern "C" fn rust_main(multiboot_header: usize) {
     unsafe {
         let mut memInfo1 = multiboot::multiboot_header::memory_map(multiboot_header);
 
-        while let Some(e) = memInfo1.entries.next() {
-            let ee = e;
-        }
-
         let memInfo = multiboot::multiboot_header::basic_memory_info(multiboot_header);
-        let elf_sections = multiboot::multiboot_header::elf_sections(multiboot_header);
+        let mut elf_sections = multiboot::multiboot_header::elf_sections(multiboot_header);
+        let elf_sections1 = multiboot::multiboot_header::elf_sections1(multiboot_header);
+        let mut sectionIt = elf_sections1.sections();
+        let mut elfSectionsIt = elf_sections
+            .entries()
+            .filter(|section| section.section_type != 0);
     }
 
 

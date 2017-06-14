@@ -1,33 +1,26 @@
 use stdx::conversion::FromUnsafe;
-use multiboot_header::tags_info::tag_entry_iterator::TagEntryIterator;
 use core::ptr::read;
 
+#[repr(packed)] // repr(C) would add unwanted padding before first_section
 pub struct ElfSections {
-    pub entries_num: u32,
-    pub entry_size: u32,
-    pub shndx: u32,
-    pub entries: TagEntryIterator<ElfSectionHeader>,
+    tag_type: u32,
+    tag_size: u32,
+    entries_num: u32,
+    entry_size: u32,
+    shndx: u32,
+    first_entry: ElfSectionHeader,
 }
 
 impl FromUnsafe<usize> for ElfSections {
     unsafe fn from_unsafe(address: usize) -> ElfSections {
-        let (_, tag_size, entry_number, entry_size, shndx) = read(address as *const (u32, u32, u32, u32, u32));
-        let entry_address = address + 20;
-        let tag_end_address = address + tag_size as usize;
-
-        ElfSections {
-            entries_num: entry_number,
-            entry_size: entry_size,
-            shndx: shndx,
-            entries: TagEntryIterator::new(entry_address, tag_end_address, entry_size as usize),
-        }
+        read(address as *const ElfSections)
     }
 }
 
-#[derive(Copy, Clone)]
+#[repr(C)]
 pub struct ElfSectionHeader {
     name: u32,
-    section_type: u32,
+    pub section_type: u32,
     flags: u64,
     address: usize,
     offset: usize,
@@ -37,18 +30,20 @@ pub struct ElfSectionHeader {
     entry_size: u64,
 }
 
-impl ElfSectionHeader {
-    pub fn default() -> ElfSectionHeader {
-        ElfSectionHeader {
-            name: 0,
-            section_type: 0,
-            flags: 0,
-            address: 0,
-            offset: 0,
-            link: 0,
-            info: 0,
-            address_align: 0,
-            entry_size: 0,
-        }
-    }
+#[repr(u32)]
+pub enum ElfSectionType {
+    Unused = 0,
+    ProgramSection = 1,
+    LinkerSymbolTable = 2,
+    StringTable = 3,
+    RelaRelocation = 4,
+    SymbolHashTable = 5,
+    DynamicLinkingTable = 6,
+    Note = 7,
+    Uninitialized = 8,
+    RelRelocation = 9,
+    Reserved = 10,
+    DynamicLoaderSymbolTable = 11,
+    // plus environment-specific use from 0x60000000 to 0x6FFFFFFF
+    // plus processor-specific use from 0x70000000 to 0x7FFFFFFF
 }
