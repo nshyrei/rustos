@@ -20,7 +20,23 @@ impl FromUnsafe<usize> for ElfSectionsTag {
 }
 
 impl ElfSectionsTag {
+    pub unsafe fn from_unsafe1(address: usize) -> &'static ElfSectionsTag {
+        &(*(address as *const ElfSectionsTag))
+    }
+
     pub fn sections(self) -> ElfSectionIter {
+
+        let rrr = (&self.first_section as *const _ as u64);
+        let slf = (&self as *const _ as u64);
+        ElfSectionIter {
+            current_section: self.first_section,
+            remaining_sections: self.number_of_sections - 1,
+            entry_size: self.entry_size,
+        }
+    }
+    pub fn sections1(&self) -> ElfSectionIter {
+
+        let slf = (self as *const _ as u64);
         ElfSectionIter {
             current_section: self.first_section,
             remaining_sections: self.number_of_sections - 1,
@@ -43,6 +59,7 @@ impl Iterator for ElfSectionIter {
             None
         } else {
             let section = self.current_section;
+            let curerntAddr = (&self.current_section as *const _ as u64);
             let next_section_addr = (&self.current_section as *const _ as u64) +
                                     self.entry_size as u64;
             self.current_section = unsafe { *(next_section_addr as *const ElfSection) };

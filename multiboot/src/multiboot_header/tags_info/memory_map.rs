@@ -1,8 +1,9 @@
-use stdx::conversion::FromUnsafe;
+use stdx::conversion::FromAddressToStaticRef;
 use multiboot_header::tags_info::tag_entry_iterator::TagEntryIterator;
 use core::ptr::read;
+use multiboot_header::multiboot_header_tag::MultibootHeaderTag;
 
-#[repr(C)] // its crucial to make read(address as *const MemoryMap) work properly
+#[repr(C)] // repr(C) is crucial to make read(address as *const MemoryMap) work properly
 // default struct pack couldn't be read like this
 pub struct MemoryMap {
     tag_type: u32,
@@ -20,9 +21,15 @@ impl MemoryMap {
     }
 }
 
-impl FromUnsafe<usize> for MemoryMap {
-    unsafe fn from_unsafe(address: usize) -> MemoryMap {
-        read(address as *const MemoryMap)
+impl FromAddressToStaticRef for MemoryMap {
+    unsafe fn from_unsafe(address: usize) -> &'static MemoryMap {
+        &(*(address as *const MemoryMap))
+    }
+}
+
+impl MultibootHeaderTag for MemoryMap {
+    fn numeric_type() -> u32 {
+        6
     }
 }
 
@@ -32,4 +39,10 @@ pub struct MemoryMapEntry {
     pub length: u64,
     pub entry_type: u32,
     reserved: u32,
+}
+
+impl FromAddressToStaticRef for MemoryMapEntry {
+    unsafe fn from_unsafe(address: usize) -> &'static MemoryMapEntry {
+        &(*(address as *const MemoryMapEntry))
+    }
 }

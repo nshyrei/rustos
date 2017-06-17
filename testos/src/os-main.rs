@@ -6,23 +6,48 @@
 extern crate rlibc;
 extern crate multiboot;
 
+use multiboot::multiboot_header;
+use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
+
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header: usize) {
 
     unsafe {
-        let mut memInfo1 = multiboot::multiboot_header::memory_map(multiboot_header);
+        let mut memInfo1 =
+            multiboot_header::read_tag::<basic_memory_info::BasicMemoryInfo>(multiboot_header);
 
-        let memInfo = multiboot::multiboot_header::basic_memory_info(multiboot_header);
-        let mut elf_sections = multiboot::multiboot_header::elf_sections(multiboot_header);
-        let elf_sections1 = multiboot::multiboot_header::elf_sections1(multiboot_header);
-        let mut sectionIt = elf_sections1.sections();
-        let mut elfSectionsIt = elf_sections
-            .entries()
-            .filter(|section| section.section_type != 0);
+        let memInfo = multiboot_header::read_tag::<memory_map::MemoryMap>(multiboot_header);
+
+        let elf_sections =
+            multiboot::multiboot_header::read_tag::<elf_sections::ElfSections>(multiboot_header);
+        let mut elf_sectionsIt = elf_sections.entries();
+
+        while let Some(e) = elf_sectionsIt.next() {
+            let a = e.address;
+            let a = 0;
+        }
+        //let proper_elf_sections = multiboot::multiboot_header::elf_sections1(multiboot_header);
+        //let mut proper_elf_It = proper_elf_sections.sections();
+
+        //while let Some(e) = proper_elf_It.next() {
+        //  let a = 0;
+        //}
+
+
+        //let mut elf_sectionsIt = elf_sections.entries();
+
+        //while let Some(e) = elf_sectionsIt.next() {
+        //  let a = 0;
+        //}
+
+        let a = 0;
     }
-
-
+    //1072424
+    //1072756
+    //1072744
+    //274877906944
+    //274877907023
     let hello = b"Hello World!";
     let color_byte = 0x1f; // white foreground, blue background
 
