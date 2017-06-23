@@ -5,9 +5,11 @@
 
 extern crate rlibc;
 extern crate multiboot;
+extern crate display;
 
 use multiboot::multiboot_header;
 use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
+use display::vga::writer::Writer;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -43,11 +45,12 @@ pub extern "C" fn rust_main(multiboot_header: usize) {
 
         let a = 0;
     }
-    //1072424
-    //1072756
-    //1072744
-    //274877906944
-    //274877907023
+
+    let mut vga_writer = Writer::new();
+    let hello_string = "Hello World!";
+    vga_writer.print_string(hello_string);
+
+
     let hello = b"Hello World!";
     let color_byte = 0x1f; // white foreground, blue background
 

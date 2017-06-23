@@ -1,7 +1,7 @@
 use stdx::conversion::FromAddressToStaticRef;
-use core::ptr::read;
 use multiboot_header::multiboot_header_tag::MultibootHeaderTag;
 
+#[repr(C)]
 pub struct BasicMemoryInfo {
     tag_type: u32,
     tag_size: u32,

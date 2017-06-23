@@ -11,3 +11,6 @@ rlibc = "1.0"
 
 [dependencies.multiboot]
 path = "../multiboot"
+
+[dependencies.display]
+path = "../display"
