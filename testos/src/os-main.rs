@@ -49,6 +49,7 @@ pub extern "C" fn rust_main(multiboot_header: usize) {
     let mut vga_writer = Writer::new();
     let hello_string = "Hello World!";
     vga_writer.print_string(hello_string);
+    vga_writer.println_string("hello_string");
 
 
     let hello = b"Hello World!";

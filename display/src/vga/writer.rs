@@ -1,22 +1,23 @@
 use vga::character::Character;
-use vga::text_buffer::TextBuffer;
-use vga::text_buffer::BUFFER_HEIGHT;
-use vga::text_buffer::BUFFER_WIDTH;
 use vga::color::Color;
 use vga::color::ColorVariant;
 
 const VGA_ADDRESS: usize = 0xb8000;
+const BUFFER_HEIGHT: usize = 25;
+const BUFFER_WIDTH: usize = 80;
+
+
 
 pub struct Writer {
     column_position: usize,
-    buffer: &'static mut TextBuffer,
+    chars: &'static mut [[Character; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
 
 impl Writer {
     pub fn new() -> Writer {
         Writer {
             column_position: 0,
-            buffer: unsafe { &mut (*(VGA_ADDRESS as *mut TextBuffer)) },
+            chars: unsafe { &mut (*(VGA_ADDRESS as *mut _)) },
         }
     }
 
@@ -28,8 +29,7 @@ impl Writer {
                 self.new_line();
             }
 
-            let mut char_array = self.buffer.chars();
-            char_array[BUFFER_HEIGHT - 1][self.column_position] = character;
+            self.chars[BUFFER_HEIGHT - 1][self.column_position] = character;
             self.column_position += 1;
         }
     }
@@ -57,9 +57,8 @@ impl Writer {
     fn new_line(&mut self) -> () {
         for row in 1..BUFFER_HEIGHT {
             for col in 0..BUFFER_WIDTH {
-                let mut char_array = self.buffer.chars();
-                let buf = char_array[row][col];
-                char_array[row - 1][col] = buf;
+                let buf = self.chars[row][col];
+                self.chars[row - 1][col] = buf;
             }
         }
 
@@ -70,8 +69,7 @@ impl Writer {
     fn clear_row(&mut self, row: usize) -> () {
         for col in 0..BUFFER_WIDTH {
             let blank_char = Character::blank();
-            let mut char_array = self.buffer.chars();
-            char_array[row][col] = blank_char;
+            self.chars[row][col] = blank_char;
         }
     }
 }
