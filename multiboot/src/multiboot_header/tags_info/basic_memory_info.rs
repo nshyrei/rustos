@@ -2,6 +2,7 @@ use stdx::conversion::FromAddressToStaticRef;
 use multiboot_header::multiboot_header_tag::MultibootHeaderTag;
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct BasicMemoryInfo {
     tag_type: u32,
     tag_size: u32,

@@ -1,6 +1,11 @@
 pub mod tags_info;
-pub mod tags;
+pub mod tag;
 pub mod multiboot_header_tag;
+pub mod mutiboot_header;
+pub mod tag_iterator;
+
+use multiboot_header::tag::Tag;
+use multiboot_header::tag_iterator::TagIterator;
 use stdx::conversion::FromAddressToStaticRef;
 
 //pub unsafe fn elf_sections1(multiboot_multiboot_address: usize)
@@ -15,18 +20,43 @@ use stdx::conversion::FromAddressToStaticRef;
 //r
 //}
 
-pub unsafe fn read_tag<T>(multiboot_address: usize) -> &'static T
-    where T: multiboot_header_tag::MultibootHeaderTag + FromAddressToStaticRef
-{
-    let tag_type_as_int = T::numeric_type();
-    let tag_type_end = 0;
-    let mut tags_multiboot_address = multiboot_address + 8;
-    let mut tag = *(tags_multiboot_address as *const (u32, u32)); // (type, size)
 
-    while tag.0 != tag_type_as_int && tag.0 != tag_type_end {
-        tags_multiboot_address = tags_multiboot_address + ((tag.1 + 7) & !7) as usize;
-        tag = *(tags_multiboot_address as *const (u32, u32));
+#[repr(C)]
+pub struct MultibootHeader {
+    length: u32,
+    resrved: u32,
+    first_tag: Tag,
+}
+
+impl FromAddressToStaticRef for MultibootHeader {
+    unsafe fn from_unsafe(address: usize) -> &'static MultibootHeader {
+        &(*(address as *const MultibootHeader))
+    }
+}
+
+impl MultibootHeader {
+    pub unsafe fn load(address: usize) -> &'static MultibootHeader {
+        &(*(address as *const MultibootHeader))
     }
 
-    T::from_unsafe(tags_multiboot_address)
+    pub fn start_address(&self) -> usize {
+        self as *const _ as usize
+    }
+
+    pub fn end_address(&self) -> usize {
+        (self as *const _ as usize) + self.length as usize
+    }
+
+    pub fn tags(&self) -> TagIterator {
+        TagIterator::new(&self.first_tag as *const _ as usize)
+    }
+
+    pub unsafe fn read_tag<T>(&self) -> &'static T
+        where T: multiboot_header_tag::MultibootHeaderTag + FromAddressToStaticRef
+    {
+        let mut tags = self.tags();
+        let tag = tags.find(|t| t.tag_type == T::numeric_type()).unwrap();
+
+        T::from_unsafe(tag as *const _ as usize)
+    }
 }

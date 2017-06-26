@@ -7,26 +7,38 @@ extern crate rlibc;
 extern crate multiboot;
 extern crate display;
 
-use multiboot::multiboot_header;
+use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
 use display::vga::writer::Writer;
 
+static mut multiboot_header: Option<&'static MultibootHeader> = None;
+
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub extern "C" fn rust_main(multiboot_header: usize) {
+pub extern "C" fn rust_main(multiboot_header_address: usize) {
+
+    let mut vga_writer = Writer::new();
 
     unsafe {
-        let mut memInfo1 =
-            multiboot_header::read_tag::<basic_memory_info::BasicMemoryInfo>(multiboot_header);
+        multiboot_header = Some(MultibootHeader::load(multiboot_header_address));
+    }
 
-        let memInfo = multiboot_header::read_tag::<memory_map::MemoryMap>(multiboot_header);
+    unsafe {
+        let mut memInfo1 = multiboot_header
+            .unwrap()
+            .read_tag::<basic_memory_info::BasicMemoryInfo>();
 
-        let elf_sections =
-            multiboot::multiboot_header::read_tag::<elf_sections::ElfSections>(multiboot_header);
+        let memInfo = multiboot_header
+            .unwrap()
+            .read_tag::<memory_map::MemoryMap>();
+
+        let elf_sections = multiboot_header
+            .unwrap()
+            .read_tag::<elf_sections::ElfSections>();
         let mut elf_sectionsIt = elf_sections.entries();
 
         while let Some(e) = elf_sectionsIt.next() {
-            let a = e.address;
+            let ee = *e;
             let a = 0;
         }
         //let proper_elf_sections = multiboot::multiboot_header::elf_sections1(multiboot_header);
@@ -46,10 +58,6 @@ pub extern "C" fn rust_main(multiboot_header: usize) {
         let a = 0;
     }
 
-    let mut vga_writer = Writer::new();
-    let hello_string = "Hello World!";
-    vga_writer.print_string(hello_string);
-    vga_writer.println_string("hello_string");
 
 
     let hello = b"Hello World!";
@@ -61,8 +69,8 @@ pub extern "C" fn rust_main(multiboot_header: usize) {
     }
 
     // write `Hello World!` to the center of the VGA text buffer
-    let buffer_ptr = (0xb8000 + 1988) as *mut _;
-    unsafe { *buffer_ptr = hello_colored };
+    ///let buffer_ptr = (0xb8000 + 1988) as *mut _;
+    //unsafe { *buffer_ptr = hello_colored };
 
     loop {}
 

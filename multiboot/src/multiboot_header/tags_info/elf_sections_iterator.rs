@@ -1,4 +1,3 @@
-use core::ptr::read;
 use core::iter;
 use stdx::conversion::FromAddressToStaticRef;
 use multiboot_header::tags_info::elf_sections::ElfSectionHeader;
