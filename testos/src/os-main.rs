@@ -10,6 +10,7 @@ extern crate display;
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
 use display::vga::writer::Writer;
+use core::fmt::Write;
 
 static mut multiboot_header: Option<&'static MultibootHeader> = None;
 
@@ -40,7 +41,9 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         while let Some(e) = elf_sectionsIt.next() {
             let ee = *e;
             let a = 0;
+            writeln!(vga_writer, "Address {} type {}", e.address, e.section_type);
         }
+
         //let proper_elf_sections = multiboot::multiboot_header::elf_sections1(multiboot_header);
         //let mut proper_elf_It = proper_elf_sections.sections();
 

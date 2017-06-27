@@ -1,12 +1,11 @@
 use vga::character::Character;
 use vga::color::Color;
 use vga::color::ColorVariant;
+use core::fmt;
 
 const VGA_ADDRESS: usize = 0xb8000;
 const BUFFER_HEIGHT: usize = 25;
 const BUFFER_WIDTH: usize = 80;
-
-
 
 pub struct Writer {
     column_position: usize,
@@ -71,5 +70,12 @@ impl Writer {
             let blank_char = Character::blank();
             self.chars[row][col] = blank_char;
         }
+    }
+}
+
+impl fmt::Write for Writer {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.print_string(s);
+        Ok(())
     }
 }
