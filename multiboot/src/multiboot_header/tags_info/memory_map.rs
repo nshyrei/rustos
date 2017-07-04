@@ -1,6 +1,4 @@
-use stdx::conversion::FromAddressToStaticRef;
 use multiboot_header::tags_info::tag_entry_iterator::TagEntryIterator;
-use core::ptr::read;
 use multiboot_header::multiboot_header_tag::MultibootHeaderTag;
 
 #[repr(C)] // repr(C) is crucial to make read(address as *const MemoryMap) work properly
@@ -21,12 +19,6 @@ impl MemoryMap {
     }
 }
 
-impl FromAddressToStaticRef for MemoryMap {
-    unsafe fn from_unsafe(address: usize) -> &'static MemoryMap {
-        &(*(address as *const MemoryMap))
-    }
-}
-
 impl MultibootHeaderTag for MemoryMap {
     fn numeric_type() -> u32 {
         6
@@ -39,10 +31,4 @@ pub struct MemoryMapEntry {
     pub length: u64,
     pub entry_type: u32,
     reserved: u32,
-}
-
-impl FromAddressToStaticRef for MemoryMapEntry {
-    unsafe fn from_unsafe(address: usize) -> &'static MemoryMapEntry {
-        &(*(address as *const MemoryMapEntry))
-    }
 }

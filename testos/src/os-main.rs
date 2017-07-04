@@ -41,7 +41,10 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         while let Some(e) = elf_sectionsIt.next() {
             let ee = *e;
             let a = 0;
-            writeln!(vga_writer, "Address {} type {}", e.address, e.section_type);
+            writeln!(vga_writer,
+                     "Address {} type {}",
+                     e.address(),
+                     e.section_type());
         }
 
         //let proper_elf_sections = multiboot::multiboot_header::elf_sections1(multiboot_header);

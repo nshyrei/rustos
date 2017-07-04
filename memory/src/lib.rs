@@ -1,6 +1,8 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-    }
-}
+#![feature(asm)]
+#![no_std]
+
+extern crate multiboot;
+extern crate stdx;
+
+pub mod kernel;
+pub mod frame;

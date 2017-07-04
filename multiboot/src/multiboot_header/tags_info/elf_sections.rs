@@ -1,4 +1,3 @@
-use stdx::conversion::FromAddressToStaticRef;
 use multiboot_header::tags_info::elf_sections_iterator::ElfSectionsIterator;
 use multiboot_header::multiboot_header_tag::MultibootHeaderTag;
 
@@ -11,12 +10,6 @@ pub struct ElfSections {
     entry_size: u32,
     shndx: u32,
     first_entry: ElfSectionHeader,
-}
-
-impl FromAddressToStaticRef for ElfSections {
-    unsafe fn from_unsafe(address: usize) -> &'static ElfSections {
-        &(*(address as *const ElfSections))
-    }
 }
 
 impl MultibootHeaderTag for ElfSections {
@@ -37,20 +30,28 @@ impl ElfSections {
 #[repr(C)]
 pub struct ElfSectionHeader {
     name: u32,
-    pub section_type: u32,
+    section_type: u32,
     flags: u64,
-    pub address: u64,
+    address: u64,
     offset: u64,
-    pub size: u64,
+    size: u64,
     link: u32,
     info: u32,
     address_align: u64,
     entry_size: u64,
 }
 
-impl FromAddressToStaticRef for ElfSectionHeader {
-    unsafe fn from_unsafe(address: usize) -> &'static ElfSectionHeader {
-        &(*(address as *const ElfSectionHeader))
+impl ElfSectionHeader {
+    pub fn section_type(&self) -> u32 {
+        self.section_type
+    }
+
+    pub fn address(&self) -> u64 {
+        self.address
+    }
+
+    pub fn size(&self) -> u64 {
+        self.size
     }
 }
 

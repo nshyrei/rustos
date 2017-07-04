@@ -1,20 +1,14 @@
 use core::marker::PhantomData;
-use core::ptr::read;
 use core::iter;
-use stdx::conversion::FromAddressToStaticRef;
 
-pub struct TagEntryIterator<T>
-    where T: FromAddressToStaticRef
-{
+pub struct TagEntryIterator<T> {
     phantom: PhantomData<T>,
     entry_address: usize,
     tag_end_address: usize,
     entry_size: usize,
 }
 
-impl<T> TagEntryIterator<T>
-    where T: FromAddressToStaticRef
-{
+impl<T> TagEntryIterator<T> {
     pub fn new(entry_address: usize,
                tag_end_address: usize,
                entry_size: usize)
@@ -29,7 +23,7 @@ impl<T> TagEntryIterator<T>
 }
 
 impl<T> iter::Iterator for TagEntryIterator<T>
-    where T: FromAddressToStaticRef + 'static
+    where T: 'static
 {
     type Item = &'static T;
 
@@ -37,7 +31,7 @@ impl<T> iter::Iterator for TagEntryIterator<T>
         if self.entry_address >= self.tag_end_address {
             None
         } else {
-            let result = unsafe { Some(T::from_unsafe(self.entry_address)) };
+            let result = unsafe { Some(&(*(self.entry_address as *const T))) };
             self.entry_address += self.entry_size;
             result
         }

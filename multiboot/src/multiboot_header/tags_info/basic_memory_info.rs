@@ -1,4 +1,3 @@
-use stdx::conversion::FromAddressToStaticRef;
 use multiboot_header::multiboot_header_tag::MultibootHeaderTag;
 
 #[repr(C)]
@@ -8,12 +7,6 @@ pub struct BasicMemoryInfo {
     tag_size: u32,
     pub memory_lower: u32,
     pub memory_upper: u32,
-}
-
-impl FromAddressToStaticRef for BasicMemoryInfo {
-    unsafe fn from_unsafe(address: usize) -> &'static BasicMemoryInfo {
-        &(*(address as *const BasicMemoryInfo))
-    }
 }
 
 impl MultibootHeaderTag for BasicMemoryInfo {
