@@ -46,6 +46,12 @@ pub struct EmptyFrameListIterator {
     current: Option<&'static EmptyFrameList>,
 }
 
+impl EmptyFrameListIterator {
+    pub fn new(head: &'static EmptyFrameList) -> EmptyFrameListIterator {
+        EmptyFrameListIterator { current: Some(head) }
+    }
+}
+
 impl iter::Iterator for EmptyFrameListIterator {
     type Item = u64;
 

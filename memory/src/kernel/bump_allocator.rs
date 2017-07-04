@@ -13,6 +13,10 @@ impl BumpAllocator {
         BumpAllocator { current_pointer: HEAP_START }
     }
 
+    pub fn from_address(address: usize) -> BumpAllocator {
+        BumpAllocator { current_pointer: address }
+    }
+
     pub fn allocate(&mut self, size: usize) -> usize {
         let result = self.current_pointer;
         self.current_pointer += size;

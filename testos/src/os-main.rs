@@ -6,11 +6,15 @@
 extern crate rlibc;
 extern crate multiboot;
 extern crate display;
+extern crate memory;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
 use display::vga::writer::Writer;
 use core::fmt::Write;
+use memory::kernel::bump_allocator::BumpAllocator;
+use memory::kernel::empty_frame_list::{EmptyFrameList, EmptyFrameListIterator};
+
 
 static mut multiboot_header: Option<&'static MultibootHeader> = None;
 
@@ -47,20 +51,8 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
                      e.section_type());
         }
 
-        //let proper_elf_sections = multiboot::multiboot_header::elf_sections1(multiboot_header);
-        //let mut proper_elf_It = proper_elf_sections.sections();
 
-        //while let Some(e) = proper_elf_It.next() {
-        //  let a = 0;
-        //}
-
-
-        //let mut elf_sectionsIt = elf_sections.entries();
-
-        //while let Some(e) = elf_sectionsIt.next() {
-        //  let a = 0;
-        //}
-
+        adding_elems_should_work_properly();
         let a = 0;
     }
 
@@ -74,12 +66,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         hello_colored[i * 2] = *char_byte;
     }
 
-    // write `Hello World!` to the center of the VGA text buffer
-    ///let buffer_ptr = (0xb8000 + 1988) as *mut _;
-    //unsafe { *buffer_ptr = hello_colored };
-
     loop {}
-
 }
 
 #[lang = "eh_personality"]
@@ -88,4 +75,29 @@ extern "C" fn eh_personality() {}
 #[no_mangle]
 pub extern "C" fn panic_fmt() -> ! {
     loop {}
+}
+
+fn adding_elems_should_work_properly() {
+    let bytes = [0; 256];
+    let addr = bytes.as_ptr() as usize;
+    let test_values = [0, 2, 3, 4, 12, 20, 44, 10];
+    let test_values_len = test_values.len();
+
+    let mut allocator = BumpAllocator::from_address(addr);
+    let mut head = EmptyFrameList::new(test_values[0], &mut allocator);
+
+    for i in 1..test_values_len {
+        head = head.add(test_values[i], &mut allocator);
+    }
+
+    let it = EmptyFrameListIterator::new(head);
+    let it_count = it.count();
+
+
+    let mut iterator = EmptyFrameListIterator::new(head);
+    let mut idx = test_values_len - 1;
+    while let Some(e) = iterator.next() {
+
+        idx -= 1;
+    }
 }
