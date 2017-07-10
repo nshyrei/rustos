@@ -1,5 +1,5 @@
 use memory::kernel::bump_allocator::BumpAllocator;
-use memory::kernel::stack_list::{EmptyFrameList, EmptyFrameListIterator};
+use memory::kernel::empty_frame_list::{EmptyFrameList, EmptyFrameListIterator};
 
 
 #[test]

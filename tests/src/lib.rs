@@ -1,4 +1,5 @@
 extern crate memory;
 
 #[cfg(test)]
-mod memory_tests;
+mod frame_bitmap_tests;
+mod empty_frame_list_tests;
