@@ -14,6 +14,7 @@ use display::vga::writer::Writer;
 use core::fmt::Write;
 use memory::kernel::bump_allocator::BumpAllocator;
 use memory::kernel::empty_frame_list::{EmptyFrameList, EmptyFrameListIterator};
+use memory::kernel::frame_bitmap::FrameBitMap;
 
 
 static mut multiboot_header: Option<&'static MultibootHeader> = None;
@@ -33,26 +34,36 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
             .unwrap()
             .read_tag::<basic_memory_info::BasicMemoryInfo>();
 
+        writeln!(vga_writer, "---Basic memory info---");
+        writeln!(vga_writer, "{}", memInfo1);
+
         let memInfo = multiboot_header
             .unwrap()
             .read_tag::<memory_map::MemoryMap>();
+
+        let mut mem_sections =
+            memInfo
+                .entries()
+                .filter(|e| e.entry_type() == memory_map::MemoryMapEntryType::Available as u32);
+
+        writeln!(vga_writer, "---Memory sections---");
+        while let Some(e) = mem_sections.next() {
+            writeln!(vga_writer, "{}", e);
+        }
+
 
         let elf_sections = multiboot_header
             .unwrap()
             .read_tag::<elf_sections::ElfSections>();
         let mut elf_sectionsIt = elf_sections.entries();
 
+        writeln!(vga_writer, "---Elf sections---");
         while let Some(e) = elf_sectionsIt.next() {
-            let ee = *e;
-            let a = 0;
-            writeln!(vga_writer,
-                     "Address {} type {}",
-                     e.address(),
-                     e.section_type());
+            writeln!(vga_writer, "{}", e);
         }
 
 
-        adding_elems_should_work_properly();
+        bitmap_new_should_create_empty_bitmap_of_size_zero_if_frame_count_is_inside_bitmap_entry_size();
         let a = 0;
     }
 
@@ -77,27 +88,25 @@ pub extern "C" fn panic_fmt() -> ! {
     loop {}
 }
 
-fn adding_elems_should_work_properly() {
-    let bytes = [0; 256];
+
+fn bitmap_new_should_create_empty_bitmap_of_size_zero_if_frame_count_is_inside_bitmap_entry_size
+    () {
+    let default_memory_value = 10;
+    let bytes: [u8; 16] = [default_memory_value; 16];
     let addr = bytes.as_ptr() as usize;
-    let test_values = [0, 2, 3, 4, 12, 20, 44, 10];
-    let test_values_len = test_values.len();
 
-    let mut allocator = BumpAllocator::from_address(addr);
-    let mut head = EmptyFrameList::new(test_values[0], &mut allocator);
+    let ref mut allocator = BumpAllocator::from_address(addr);
+    // frame size = 1 byte
+    // available memory = 16 byte
+    // bitmap entry holds 8 frame entries
+    // 2 bitmap entries should be created
+    let bitmap = FrameBitMap::new(16, 1, allocator);
 
-    for i in 1..test_values_len {
-        head = head.add(test_values[i], &mut allocator);
+    for i in 0..16 {
+        bitmap.set_in_use(i);
     }
 
-    let it = EmptyFrameListIterator::new(head);
-    let it_count = it.count();
+    let a = 0;
+    // all two entries should contain only 1s, thus resulting in u8::max_value()
 
-
-    let mut iterator = EmptyFrameListIterator::new(head);
-    let mut idx = test_values_len - 1;
-    while let Some(e) = iterator.next() {
-
-        idx -= 1;
-    }
 }

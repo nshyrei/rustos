@@ -1,7 +1,7 @@
-use multiboot_header::tags_info::elf_sections_iterator::ElfSectionsIterator;
-use multiboot_header::multiboot_header_tag::MultibootHeaderTag;
+use multiboot_header::MultibootHeaderTag;
+use core::fmt;
+use core::iter;
 
-#[derive(Debug)]
 #[repr(packed)] // repr(C) would add unwanted padding before first_section
 pub struct ElfSections {
     tag_type: u32,
@@ -26,7 +26,6 @@ impl ElfSections {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct ElfSectionHeader {
     name: u32,
@@ -55,6 +54,33 @@ impl ElfSectionHeader {
     }
 }
 
+impl fmt::Display for ElfSectionHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+               "name: {},
+        section_type: {},
+        flags: {},
+        address: {},
+        offset: {},
+        size: {},
+        link: {},
+        info: {},
+        address_align: {},
+        entry_size: {}",
+               self.name,
+               self.section_type,
+               self.flags,
+               self.address,
+               self.offset,
+               self.size,
+               self.link,
+               self.info,
+               self.address_align,
+               self.entry_size)
+    }
+}
+
+
 #[repr(u32)]
 pub enum ElfSectionType {
     Unused = 0,
@@ -71,4 +97,40 @@ pub enum ElfSectionType {
     DynamicLoaderSymbolTable = 11,
     // plus environment-specific use from 0x60000000 to 0x6FFFFFFF
     // plus processor-specific use from 0x70000000 to 0x7FFFFFFF
+}
+
+pub struct ElfSectionsIterator {
+    entry_address: usize,
+    tag_end_address: usize,
+    entry_size: usize,
+}
+
+impl ElfSectionsIterator {
+    pub fn new(entry_address: usize, tag_end_address: usize, entry_size: usize) -> ElfSectionsIterator {
+        ElfSectionsIterator {
+            entry_address: entry_address,
+            tag_end_address: tag_end_address,
+            entry_size: entry_size,
+        }
+    }
+}
+
+impl iter::Iterator for ElfSectionsIterator {
+    type Item = &'static ElfSectionHeader;
+
+    fn next(&mut self) -> Option<&'static ElfSectionHeader> {
+        if self.entry_address >= self.tag_end_address {
+            None
+        } else {
+            let result = unsafe { &(*(self.entry_address as *const ElfSectionHeader)) };
+            self.entry_address += self.entry_size;
+            // skip unused
+            // todo possibly replace with loop if this will compile to recursion
+            if result.section_type() == ElfSectionType::Unused as u32 {
+                self.next()
+            } else {
+                Some(result)
+            }
+        }
+    }
 }
