@@ -1,8 +1,8 @@
 pub mod frame_allocator;
 
-pub const Frame_Size: usize = 4096;
+pub const FRAME_SIZE: usize = 4096;
 
-#[derive(Eq, Ord, PartialEq, PartialOrd, Clone)]
+#[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Copy)]
 pub struct Frame {
     number: usize,
 }
@@ -14,7 +14,7 @@ impl Frame {
     }
 
     pub fn from_address(address: usize) -> Frame {
-        Frame { number: address / Frame_Size }
+        Frame { number: address / FRAME_SIZE }
     }
 
     pub fn number(&self) -> usize {
@@ -22,6 +22,11 @@ impl Frame {
     }
 
     pub fn address(&self) -> usize {
-        self.number * Frame_Size
+        self.number * FRAME_SIZE
+    }
+
+    // creates new frame with number = self.number + 1
+    pub fn next(&self) -> Frame {
+        Frame { number : self.number + 1}
     }
 }

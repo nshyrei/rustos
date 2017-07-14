@@ -1,4 +1,5 @@
 const HEAP_START: usize = 0x40000000;
+const HEAP_END : usize = HEAP_START + HEAP_SIZE - 1;
 const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 
 pub struct BumpAllocator {
@@ -6,7 +7,7 @@ pub struct BumpAllocator {
 }
 
 impl BumpAllocator {
-    pub fn new() -> BumpAllocator {
+    pub const fn new() -> BumpAllocator {
         BumpAllocator { current_pointer: HEAP_START }
     }
 
@@ -14,10 +15,19 @@ impl BumpAllocator {
         BumpAllocator { current_pointer: address }
     }
 
-    pub fn allocate(&mut self, size: usize) -> usize {
-        let result = self.current_pointer;
-        self.current_pointer += size;
+    pub fn allocate(&mut self, size: usize) -> Option<usize> {
+        if self.current_pointer + size > HEAP_END {
+            None
+        }
+        else {
+            let result = self.current_pointer;
+            self.current_pointer += size;
 
-        result
+            Some(result)
+        }        
+    }
+
+    pub fn free(&mut self, size: usize) {        
+        self.current_pointer -= size;
     }
 }
