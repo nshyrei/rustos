@@ -70,7 +70,7 @@ impl EmptyFrameList {
 
     pub fn take(&'static self) -> (Frame, Option<&'static EmptyFrameList>) {
         let result = (self.value, self.next);
-        KERNEL_BASIC_HEAP_ALLOCATOR.free(mem::size_of::<EmptyFrameList>());
+        unsafe { KERNEL_BASIC_HEAP_ALLOCATOR.free(mem::size_of::<EmptyFrameList>()); };
         result
     }    
 }

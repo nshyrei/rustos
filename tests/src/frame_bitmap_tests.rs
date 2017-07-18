@@ -2,10 +2,10 @@ use memory::kernel::frame_bitmap::FrameBitMap;
 use memory::kernel::bump_allocator::BumpAllocator;
 use std::mem;
 use std::u8;
+use memory::kernel::KERNEL_BASIC_HEAP_ALLOCATOR;
 
 #[test]
-fn bitmap_new_should_create_empty_bitmap_of_size_zero_if_frame_count_is_inside_bitmap_entry_size
-    () {
+fn bitmap_new_should_create_empty_bitmap_of_size_zero_if_frame_count_is_inside_bitmap_entry_size() {
     // bitmap entry size = 1 byte (holds 8 entries)
     // test frame size = 3..16 byte
     // available mem size = 16 byte
@@ -15,8 +15,8 @@ fn bitmap_new_should_create_empty_bitmap_of_size_zero_if_frame_count_is_inside_b
     let addr = bytes.as_ptr() as usize;
 
     for test_frame_size in 3..17 {
-        let ref mut allocator = BumpAllocator::from_address(addr);
-        let bitmap = FrameBitMap::new(16, test_frame_size, allocator);
+        unsafe { KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr); };
+        let bitmap = FrameBitMap::new(16, test_frame_size);
 
         assert!(bytes[0] == 0,
                 "Bitmap entry wasn't created. Memory value at index zero is {} but should be zero, frame size is {}, memory dump {:?}",
@@ -47,8 +47,8 @@ fn bitmap_new_should_create_empty_bitmap_of_size_2_if_frame_count_is_outside_bit
     let addr = bytes.as_ptr() as usize;
 
     for test_frame_size in 1..3 {
-        let ref mut allocator = BumpAllocator::from_address(addr);
-        let bitmap = FrameBitMap::new(16, test_frame_size, allocator);
+        unsafe { KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr); };
+        let bitmap = FrameBitMap::new(16, test_frame_size);
 
         assert!(bytes[0] == 0 && bytes[1] == 0,
                 "Bitmap entries weren't created. The first 2 entries should be zero, frame size is {}, first two entries {}, {}, memory dump {:?}",
@@ -75,12 +75,12 @@ fn bitmap_indexer_should_properly_set_in_use() {
     let bytes: [u8; 16] = [default_memory_value; 16];
     let addr = bytes.as_ptr() as usize;
 
-    let ref mut allocator = BumpAllocator::from_address(addr);
+    unsafe { KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr); };
     // frame size = 1 byte
     // available memory = 16 byte
     // bitmap entry holds 8 frame entries
     // 2 bitmap entries should be created
-    let bitmap = FrameBitMap::new(16, 1, allocator);
+    let bitmap = FrameBitMap::new(16, 1);
 
     for i in 0..16 {
         bitmap.set_in_use(i);
@@ -100,12 +100,12 @@ fn bitmap_indexer_should_properly_clear_in_use() {
     let mut bytes: [u8; 16] = [default_memory_value; 16];
     let addr = bytes.as_ptr() as usize;
 
-    let ref mut allocator = BumpAllocator::from_address(addr);
+    unsafe { KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr); };
     // frame size = 1 byte
     // available memory = 16 byte
     // bitmap entry holds 8 frame entries
     // 2 bitmap entries should be created
-    let bitmap = FrameBitMap::new(16, 1, allocator);
+    let bitmap = FrameBitMap::new(16, 1);
 
     //all 1s
     bytes[0] = u8::MAX;
@@ -128,12 +128,12 @@ fn bitmap_indexer_should_properly_test_in_use() {
     let mut bytes: [u8; 16] = [default_memory_value; 16];
     let addr = bytes.as_ptr() as usize;
 
-    let ref mut allocator = BumpAllocator::from_address(addr);
+    unsafe { KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr); };
     // frame size = 1 byte
     // available memory = 16 byte
     // bitmap entry holds 8 frame entries
     // 2 bitmap entries should be created
-    let bitmap = FrameBitMap::new(16, 1, allocator);
+    let bitmap = FrameBitMap::new(16, 1);
 
     for i in 0..16 {
         bitmap.set_in_use(i);

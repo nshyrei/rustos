@@ -4,19 +4,26 @@ const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 
 pub struct BumpAllocator {
     current_pointer: usize,
+    is_test : bool    
 }
 
 impl BumpAllocator {
+
     pub const fn new() -> BumpAllocator {
-        BumpAllocator { current_pointer: HEAP_START }
+        BumpAllocator { current_pointer: HEAP_START, is_test : false }
     }
 
-    pub fn from_address(address: usize) -> BumpAllocator {
-        BumpAllocator { current_pointer: address }
+    // should be used only for test
+    pub const fn from_address(address: usize) -> BumpAllocator {
+        BumpAllocator { current_pointer: address, is_test : true }
+    }    
+
+    pub fn current_pointer(&self) -> usize {
+        self.current_pointer
     }
 
-    pub fn allocate(&mut self, size: usize) -> Option<usize> {
-        if self.current_pointer + size > HEAP_END {
+    pub fn allocate(&mut self, size: usize) -> Option<usize> {        
+        if !self.is_test && self.current_pointer + size > HEAP_END {
             None
         }
         else {
@@ -27,7 +34,7 @@ impl BumpAllocator {
         }        
     }
 
-    pub fn free(&mut self, size: usize) {        
+    pub fn free(&mut self, size: usize) {
         self.current_pointer -= size;
     }
 }

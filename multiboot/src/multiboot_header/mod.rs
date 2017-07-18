@@ -17,8 +17,8 @@ pub struct MultibootHeader {
 }
 
 impl MultibootHeader {
-    pub unsafe fn load(address: usize) -> &'static MultibootHeader {
-        &(*(address as *const MultibootHeader))
+    pub fn load(address: usize) -> &'static MultibootHeader {
+        unsafe { &(*(address as *const MultibootHeader)) }
     }
 
     pub fn start_address(&self) -> usize {
@@ -33,12 +33,14 @@ impl MultibootHeader {
         TagIterator::new(&self.first_tag as *const _ as usize)
     }
 
-    pub fn read_tag<T>(&self) -> &'static T
+    pub fn read_tag<T>(&self) -> Option<&'static T>
         where T: MultibootHeaderTag
     {
         let mut tags = self.tags();
-        let tag = tags.find(|t| t.tag_type == T::numeric_type()).unwrap();
-        let tag_address = tag as *const _ as usize;
-        unsafe { &(*(tag_address as *const T)) }        
+        let tag = tags.find(|t| t.tag_type == T::numeric_type());
+        tag.map(|e| {
+            let tag_address = e as *const _ as usize;
+            unsafe { &(*(tag_address as *const T)) }
+        })        
     }
 }

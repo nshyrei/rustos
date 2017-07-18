@@ -4,4 +4,4 @@ pub mod frame_bitmap;
 
 use kernel::bump_allocator::BumpAllocator;
 
-pub const KERNEL_BASIC_HEAP_ALLOCATOR : BumpAllocator = BumpAllocator::new();
+pub static mut KERNEL_BASIC_HEAP_ALLOCATOR : BumpAllocator = BumpAllocator::new();

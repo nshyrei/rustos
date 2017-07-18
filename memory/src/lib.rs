@@ -7,4 +7,3 @@ extern crate stdx;
 
 pub mod kernel;
 pub mod frame;
-

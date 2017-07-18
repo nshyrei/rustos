@@ -5,6 +5,7 @@ use frame::*;
 use kernel::empty_frame_list::EmptyFrameList;
 use kernel::frame_bitmap::FrameBitMap;
 use kernel::bump_allocator::BumpAllocator;
+use kernel::KERNEL_BASIC_HEAP_ALLOCATOR;
 
 /*
     Bump allocator with a stack of free frames. Allocates new frames in simple incremental fashion
@@ -27,30 +28,104 @@ pub struct FrameAllocator {
 }
 
 impl FrameAllocator {
-    pub fn new(multiboot_header: &'static MultibootHeader, kernel_heap_allocator : &'static mut BumpAllocator) -> FrameAllocator {
-        let elf_sections = multiboot_header.read_tag::<ElfSections>();
-        let memory_areas = multiboot_header.read_tag::<MemoryMap>();
 
-        let available_memory_areas = memory_areas.entries();
+    pub fn multiboot_start_frame(&self) -> Frame {
+        self.multiboot_start_frame
+    }
 
-        let kernel_start_section = elf_sections
-            .entries()
-            .min_by_key(|e| e.address())
-            .unwrap();
+    pub fn multiboot_end_frame(&self) -> Frame {
+        self.multiboot_end_frame
+    }
 
-        let kernel_end_section = elf_sections
-            .entries()
-            .max_by_key(|e| e.address() + e.size())
-            .unwrap();
+    pub fn kernel_start_frame(&self) -> Frame {
+        self.kernel_start_frame
+    }
+
+    pub fn kernel_end_frame(&self) -> Frame {
+        self.kernel_end_frame
+    }
+
+    pub fn current_memory_area(&self) -> &'static MemoryMapEntry {
+        self.current_memory_area
+    }
+
+    pub fn memory_areas(&self) -> AvailableMemorySectionsIterator {
+        self.memory_areas.clone()
+    }
+
+    pub fn last_frame_number(&self) -> Frame {
+        self.last_frame_number
+    }
+
+    pub fn frame_bit_map(&self) -> &'static FrameBitMap {
+        self.frame_bit_map
+    }
+
+    pub fn empty_frame_list(&self) -> Option<&'static EmptyFrameList> {
+        self.empty_frame_list
+    }
+    
+    pub fn new(multiboot_header: &'static MultibootHeader) -> FrameAllocator {
+        let elf_sections = multiboot_header.read_tag::<ElfSections>()
+            .expect("Cannot create frame allocator without multiboot elf sections");
+        let memory_areas = multiboot_header.read_tag::<MemoryMap>()
+            .expect("Cannot create frame allocator without multiboot memory map");        
+
+        if elf_sections.entries().count() == 0 {
+            panic!("No elf sections, cannot determine kernel code address");
+        }
+
+        if memory_areas.entries().count() == 0 {
+            panic!("No available memory areas for frame allocator");
+        }
+
+        // todo determine why min/max_by_key throws seg fault        
+        let kernel_start_section = {
+            let mut entries = elf_sections.entries();
+            let mut fst = entries.next().unwrap();
+            
+            while let Some(e) = entries.next() {
+                if e.address() < fst.address() {
+                    fst = e;
+                }
+            }
+
+            fst
+        };
+
+        let kernel_end_section =  {
+            let mut entries = elf_sections.entries();
+            let mut fst = entries.next().unwrap();
+            
+            while let Some(e) = entries.next() {
+                if e.end_address() > fst.end_address() {
+                    fst = e;
+                }
+            }
+
+            fst
+        };
 
         let kernel_start_address = kernel_start_section.address() as usize;
-        let kernel_end_address = kernel_end_section.address() as usize;
+        let kernel_end_address = kernel_end_section.end_address() as usize;
 
-        let available_memory = available_memory_areas
-            .clone()
+        let available_memory = memory_areas
+            .entries()
             .fold(0, |base, e| base + e.length()) as usize;
 
-        let first_memory_area = available_memory_areas.clone().min_by_key(|e| e.base_address()).unwrap();
+        let first_memory_area = {
+            let mut entries = memory_areas.entries();
+            let mut fst = entries.next().unwrap();
+            
+            while let Some(e) = entries.next() {
+                if e.base_address() < fst.base_address() {
+                    fst = e;
+                }
+            }
+
+            fst
+        };
+
         let last_frame_number = Frame::from_address(first_memory_area.base_address() as usize);
 
         FrameAllocator {
@@ -59,9 +134,9 @@ impl FrameAllocator {
             kernel_start_frame: Frame::from_address(kernel_start_address),
             kernel_end_frame: Frame::from_address(kernel_end_address),
             current_memory_area : first_memory_area,
-            memory_areas: available_memory_areas,
+            memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            frame_bit_map: FrameBitMap::new(available_memory, FRAME_SIZE, kernel_heap_allocator),
+            frame_bit_map: FrameBitMap::new(available_memory, FRAME_SIZE),
             empty_frame_list: None,
         }
     }

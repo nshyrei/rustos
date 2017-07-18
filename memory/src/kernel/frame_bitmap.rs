@@ -1,15 +1,15 @@
-use kernel::bump_allocator::BumpAllocator;
+use kernel::KERNEL_BASIC_HEAP_ALLOCATOR;
 use core::ptr;
 use core::fmt;
 
 const FRAME_BITMAP_ENTRY_SIZE: usize = 8; //number of bits in byte
 
-pub struct FrameBitMap {}
+pub struct FrameBitMap {    
+}
 
 impl FrameBitMap {
     pub fn new(total_available_memory: usize,
-               frame_size: usize,
-               allocator: &mut BumpAllocator)
+               frame_size: usize)
                -> &'static FrameBitMap {
         let frames_count = total_available_memory / frame_size;
 
@@ -20,9 +20,9 @@ impl FrameBitMap {
             frames_count / FRAME_BITMAP_ENTRY_SIZE
         };
 
-        let address = allocator
+        let address = unsafe { KERNEL_BASIC_HEAP_ALLOCATOR
             .allocate(bitmap_size)
-            .expect("Failed to allocate memory for frame bitmap");
+            .expect("Failed to allocate memory for frame bitmap") };
             
         for i in address..(address + bitmap_size) {
             unsafe { ptr::write(i as *mut FrameBitMapEntry, FrameBitMapEntry::new()) }
@@ -48,7 +48,7 @@ impl FrameBitMap {
 
     pub fn set_free(&self, frame_number: usize) {
         self.index(frame_number).set_free(frame_number)
-    }
+    }    
 }
 
 #[repr(C)]

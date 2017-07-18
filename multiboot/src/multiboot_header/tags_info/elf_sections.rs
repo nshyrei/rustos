@@ -52,6 +52,10 @@ impl ElfSectionHeader {
     pub fn size(&self) -> u64 {
         self.size
     }
+
+    pub fn end_address(&self) -> u64 {
+        self.address + self.size
+    }
 }
 
 impl fmt::Display for ElfSectionHeader {
