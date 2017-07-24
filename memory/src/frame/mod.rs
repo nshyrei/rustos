@@ -27,6 +27,10 @@ impl Frame {
         self.number * FRAME_SIZE
     }
 
+    pub fn end_address(&self) -> usize {
+        self.address() + FRAME_SIZE - 1
+    }
+
     // creates new frame with number = self.number + 1
     pub fn next(&self) -> Frame {
         Frame { number : self.number + 1}

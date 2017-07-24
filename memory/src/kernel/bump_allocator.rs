@@ -9,12 +9,12 @@ pub struct BumpAllocator {
 
 impl BumpAllocator {
 
-    pub const fn new() -> BumpAllocator {
+    pub fn new() -> BumpAllocator {
         BumpAllocator { current_pointer: HEAP_START, is_test : false }
     }
 
     // should be used only for test
-    pub const fn from_address(address: usize) -> BumpAllocator {
+    pub fn from_address(address: usize) -> BumpAllocator {
         BumpAllocator { current_pointer: address, is_test : true }
     }    
 

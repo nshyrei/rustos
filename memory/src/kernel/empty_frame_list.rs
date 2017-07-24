@@ -1,8 +1,9 @@
 use core::iter;
 use core::mem;
 use core::ptr;
+use core::fmt;
 use frame::Frame;
-use kernel::KERNEL_BASIC_HEAP_ALLOCATOR;
+use kernel::bump_allocator::BumpAllocator;
 
 /*
     Linked list of free memory frames
@@ -14,8 +15,8 @@ pub struct EmptyFrameList {
 }
 
 impl EmptyFrameList {
-    pub fn new_tail(value: Frame) -> &'static EmptyFrameList {
-        unsafe {
+    pub fn new_tail(value: Frame, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'static EmptyFrameList {
+        unsafe {            
             let address = KERNEL_BASIC_HEAP_ALLOCATOR
                 .allocate(mem::size_of::<EmptyFrameList>())
                 .expect("Failed to allocate memory for EmptyFrameList node");
@@ -29,7 +30,7 @@ impl EmptyFrameList {
         }
     }
 
-    pub fn new(value: Frame, next: Option<&'static EmptyFrameList>) -> &'static EmptyFrameList {
+    pub fn new(value: Frame, next: Option<&'static EmptyFrameList>, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'static EmptyFrameList {
         unsafe {
             let address = KERNEL_BASIC_HEAP_ALLOCATOR
                 .allocate(mem::size_of::<EmptyFrameList>())
@@ -53,7 +54,7 @@ impl EmptyFrameList {
         self.next
     }
 
-    pub fn add(&'static self, value: Frame) -> &'static EmptyFrameList {
+    pub fn add(&'static self, value: Frame, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'static EmptyFrameList {
         unsafe {
             let address = KERNEL_BASIC_HEAP_ALLOCATOR
                 .allocate(mem::size_of::<EmptyFrameList>())
@@ -68,11 +69,18 @@ impl EmptyFrameList {
         }
     }
 
-    pub fn take(&'static self) -> (Frame, Option<&'static EmptyFrameList>) {
+    pub fn take(&self, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> (Frame, Option<&'static EmptyFrameList>) {
         let result = (self.value, self.next);
         unsafe { KERNEL_BASIC_HEAP_ALLOCATOR.free(mem::size_of::<EmptyFrameList>()); };
         result
     }    
+}
+
+impl fmt::Display for EmptyFrameList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+               "")
+    }
 }
 
 pub struct EmptyFrameListIterator {

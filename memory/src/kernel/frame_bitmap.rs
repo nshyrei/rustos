@@ -1,16 +1,20 @@
-use kernel::KERNEL_BASIC_HEAP_ALLOCATOR;
+use kernel::bump_allocator::BumpAllocator;
 use core::ptr;
 use core::fmt;
+use core::iter;
 
 const FRAME_BITMAP_ENTRY_SIZE: usize = 8; //number of bits in byte
 
 pub struct FrameBitMap {    
+    start_address : usize,
+    size : usize
 }
 
 impl FrameBitMap {
     pub fn new(total_available_memory: usize,
-               frame_size: usize)
-               -> &'static FrameBitMap {
+               frame_size: usize,
+               KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator)
+               -> FrameBitMap {
         let frames_count = total_available_memory / frame_size;
 
         let bitmap_size_help = frames_count % FRAME_BITMAP_ENTRY_SIZE;
@@ -28,14 +32,18 @@ impl FrameBitMap {
             unsafe { ptr::write(i as *mut FrameBitMapEntry, FrameBitMapEntry::new()) }
         }
 
-        unsafe { &(*(address as *const FrameBitMap)) }
+        FrameBitMap {
+            start_address : address,
+            size : bitmap_size
+        }
+        //unsafe { &(*(address as *const FrameBitMap)) }
     }
 
-    fn index(&self, frame_number: usize) -> &'static mut FrameBitMapEntry {
-        let start_address = self as *const _ as usize;
+    //todo check for out of bounds
+    fn index(&self, frame_number: usize) -> &'static mut FrameBitMapEntry {        
         let index = frame_number / FRAME_BITMAP_ENTRY_SIZE;
 
-        unsafe { &mut (*((start_address + index) as *mut FrameBitMapEntry)) }
+        unsafe { &mut (*((self.start_address + index) as *mut FrameBitMapEntry)) }
     }
 
     pub fn is_in_use(&self, frame_number: usize) -> bool {
@@ -48,6 +56,17 @@ impl FrameBitMap {
 
     pub fn set_free(&self, frame_number: usize) {
         self.index(frame_number).set_free(frame_number)
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+}
+
+impl fmt::Display for FrameBitMap {    
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+               "")
     }    
 }
 

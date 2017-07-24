@@ -1,7 +1,6 @@
 use memory::kernel::bump_allocator::BumpAllocator;
 use memory::kernel::empty_frame_list::{EmptyFrameList, EmptyFrameListIterator};
 use memory::frame::Frame;
-use memory::kernel::KERNEL_BASIC_HEAP_ALLOCATOR;
 
 #[test]
 fn adding_elems_should_work_properly() {
@@ -9,11 +8,11 @@ fn adding_elems_should_work_properly() {
     let addr = bytes.as_ptr() as usize;
     let test_values  = [Frame::new(0), Frame::new(2), Frame::new(3), Frame::new(4), Frame::new(12), Frame::new(20), Frame::new(44), Frame::new(10)];
     let test_values_len = test_values.len();
-    unsafe { KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr); };
-    let mut head = EmptyFrameList::new_tail(test_values[0]);
+    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr);
+    let mut head = EmptyFrameList::new_tail(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
     for i in 1..test_values_len {
-        head = head.add(test_values[i]);
+        head = head.add(test_values[i],&mut KERNEL_BASIC_HEAP_ALLOCATOR);
     }
 
     let it = EmptyFrameListIterator::new(head);

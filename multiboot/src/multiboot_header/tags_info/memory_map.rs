@@ -91,6 +91,14 @@ impl AvailableMemorySectionsIterator {
     }
 }
 
+impl fmt::Display for AvailableMemorySectionsIterator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,
+               "")
+    }
+}
+
+
 impl iter::Iterator for AvailableMemorySectionsIterator {
     type Item = &'static MemoryMapEntry;
 
@@ -102,6 +110,7 @@ impl iter::Iterator for AvailableMemorySectionsIterator {
             self.entry_address += self.entry_size;
             // skip unused
             // todo possibly replace with loop if this will compile to recursion
+            let r = result.entry_type();
             if result.entry_type() != MemoryMapEntryType::Available as u32 {
                 self.next()
             } else {
