@@ -25,6 +25,7 @@ pub struct FrameAllocator {
     last_frame_number: Frame,
     frame_bit_map: FrameBitMap,
     empty_frame_list: util::Option<&'static EmptyFrameList>,
+    KERNEL_BASIC_HEAP_ALLOCATOR : &'static mut BumpAllocator
 }
 
 impl FrameAllocator {
@@ -65,7 +66,7 @@ impl FrameAllocator {
         self.frame_bit_map.size()
     }
     
-    pub fn new(multiboot_header: &'static MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> FrameAllocator {
+    pub fn new(multiboot_header: &'static MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'static mut BumpAllocator) -> FrameAllocator {
         let elf_sections = multiboot_header.read_tag::<ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
@@ -78,8 +79,7 @@ impl FrameAllocator {
         if memory_areas.entries().count() == 0 {
             panic!("No available memory areas for frame allocator");
         }
-
-        // todo determine why min/max_by_key throws seg fault        
+                
         let kernel_start_section = elf_sections.entries()
             .min_by_key(|e| e.address())
             .unwrap();
@@ -112,16 +112,16 @@ impl FrameAllocator {
             last_frame_number: last_frame_number,
             frame_bit_map: FrameBitMap::new(available_memory, FRAME_SIZE, KERNEL_BASIC_HEAP_ALLOCATOR),
             empty_frame_list: util::Option(Some(start_free_list)),
+            KERNEL_BASIC_HEAP_ALLOCATOR : KERNEL_BASIC_HEAP_ALLOCATOR
         }
     }
     
-    pub fn allocate(&mut self, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> Option<Frame> {
+    pub fn allocate(&mut self) -> Option<Frame> {
         
-        // check empty frame list first, if nothing perform bump allocation,
-        // place bump allocated frame into empty frame list and try again
+        // check empty frame list first, if nothing perform bump allocation        
         if let Some(empty_frame_list) = self.empty_frame_list.0 {
             // pick first result from empty frame list
-            let (result, tail) = empty_frame_list.take(KERNEL_BASIC_HEAP_ALLOCATOR);
+            let (result, tail) = empty_frame_list.take(self.KERNEL_BASIC_HEAP_ALLOCATOR);
 
             self.empty_frame_list = util::Option(tail);
             self.frame_bit_map.set_in_use(result.number());
@@ -190,9 +190,9 @@ impl FrameAllocator {
             .min_by_key(|e| e.base_address())            
     }
 
-    pub fn deallocate(&mut self, frame : Frame, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) {
+    pub fn deallocate(&mut self, frame : Frame) {
         self.frame_bit_map.set_free(frame.number());
-        let new_empty_frame_list = self.empty_frame_list.0.map_or(EmptyFrameList::new_tail(frame, KERNEL_BASIC_HEAP_ALLOCATOR), |e| e.add(frame, KERNEL_BASIC_HEAP_ALLOCATOR));
+        let new_empty_frame_list = self.empty_frame_list.0.map_or(EmptyFrameList::new_tail(frame, self.KERNEL_BASIC_HEAP_ALLOCATOR), |e| e.add(frame, self.KERNEL_BASIC_HEAP_ALLOCATOR));
 
         self.empty_frame_list = util::Option(Some(new_empty_frame_list));
     }

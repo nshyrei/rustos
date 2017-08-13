@@ -7,3 +7,6 @@ authors = ["charlolizard <nikitas2209@gmail.com>"]
 
 [dependencies.memory]
 path = "../memory"
+
+[dependencies.multiboot]
+path = "../multiboot"
