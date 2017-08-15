@@ -15,7 +15,7 @@ use kernel::bump_allocator::BumpAllocator;
     You can think of bump allocation as a meachanism to populate free frame stack, the other option to do it without bump allocation is to 
     create a big free frame stack that describes all available memory and only use it.  
 */
-pub struct FrameAllocator {
+pub struct FrameAllocator<'a> {
     multiboot_start_frame: Frame,
     multiboot_end_frame: Frame,
     kernel_start_frame: Frame,
@@ -25,10 +25,10 @@ pub struct FrameAllocator {
     last_frame_number: Frame,
     frame_bit_map: FrameBitMap,
     empty_frame_list: util::Option<&'static EmptyFrameList>,
-    KERNEL_BASIC_HEAP_ALLOCATOR : &'static mut BumpAllocator
+    KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator
 }
 
-impl FrameAllocator {
+impl<'a> FrameAllocator<'a> {
 
     pub fn multiboot_start_frame(&self) -> Frame {
         self.multiboot_start_frame
@@ -66,7 +66,7 @@ impl FrameAllocator {
         self.frame_bit_map.size()
     }
     
-    pub fn new(multiboot_header: &'static MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'static mut BumpAllocator) -> FrameAllocator {
+    pub fn new(multiboot_header: &'static MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator) -> FrameAllocator<'a> {
         let elf_sections = multiboot_header.read_tag::<ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
@@ -94,13 +94,9 @@ impl FrameAllocator {
             .entries()
             .fold(0, |base, e| base + e.length()) as usize;
 
-        let first_memory_area = memory_areas.entries()
-            .min_by_key(|e| e.base_address())
-            .unwrap();
-
-        let last_frame_number = Frame::from_address(first_memory_area.base_address() as usize);
-
-        let start_free_list = EmptyFrameList::new_tail(last_frame_number, KERNEL_BASIC_HEAP_ALLOCATOR);
+        let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::new(0)).unwrap();            
+        let last_frame_number = FrameAllocator::frame_for_base_address(first_memory_area.base_address() as usize);
+        //let start_free_list = EmptyFrameList::new_tail(last_frame_number, KERNEL_BASIC_HEAP_ALLOCATOR);
 
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),
@@ -111,7 +107,7 @@ impl FrameAllocator {
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
             frame_bit_map: FrameBitMap::new(available_memory, FRAME_SIZE, KERNEL_BASIC_HEAP_ALLOCATOR),
-            empty_frame_list: util::Option(Some(start_free_list)),
+            empty_frame_list: util::Option(None),
             KERNEL_BASIC_HEAP_ALLOCATOR : KERNEL_BASIC_HEAP_ALLOCATOR
         }
     }
@@ -144,23 +140,38 @@ impl FrameAllocator {
     }
 
     /*
-        Returns next free frame in a form of EmptyFrameList cell that has no self.next (bottom of the stack). 
+        tries to return self.last_frame_number first, if it fails tries to return self.last_frame_number.next
         Changes self.current_memory_area when moving to new memory area.
     */
     fn bump_allocate(&mut self) -> Option<Frame> {
         let result = self.step_over_reserved_memory_if_needed();        
 
         if result.end_address() > self.current_memory_area.end_address() as usize {  
-            if let Some(memory_area) = self.next_fitting_memory_area(result) {
+            if let Some(memory_area) = FrameAllocator::next_fitting_memory_area(self.memory_areas.clone(), result) {
                 self.current_memory_area = memory_area;
 
-                let result = Frame::from_address(memory_area.base_address() as usize);
+                let result = FrameAllocator::frame_for_base_address(memory_area.base_address() as usize);
                 Some(result)
             } else {
                 None
             }            
         } else {
             Some(result)
+        }
+    }
+
+    // to remove bugs like this : for example we have memory area starting at 1000
+    // and frame size iz 4000, thus creating frame from address 1000 will result in frame
+    // with number = 0, which has base address = 0 also, which is below memory area and will
+    // result in memory read fault
+    fn frame_for_base_address(base_address : usize) -> Frame {
+        let first_attempt_frame = Frame::from_address(base_address);
+
+        if first_attempt_frame.address() < base_address {
+            first_attempt_frame.next()
+        }
+        else {
+            first_attempt_frame
         }
     }
 
@@ -183,10 +194,11 @@ impl FrameAllocator {
     /*
         Tries to find memory area with lowest base addr and which can hold provided frame
     */
-    fn next_fitting_memory_area(&self, last_frame_number : Frame) -> Option<&'static MemoryMapEntry> {        
-        self.memory_areas
+    fn next_fitting_memory_area(memory_areas : AvailableMemorySectionsIterator, last_frame_number : Frame) -> Option<&'static MemoryMapEntry> {        
+        memory_areas
             .clone()
-            .filter(|e| Frame::from_address(e.base_address() as usize) >= last_frame_number)
+            // to find area which will hold frame_for_base_address
+            .filter(|e| Frame::from_address(e.end_address() as usize) >= last_frame_number)
             .min_by_key(|e| e.base_address())            
     }
 
@@ -198,7 +210,7 @@ impl FrameAllocator {
     }
 }
 
-impl fmt::Display for FrameAllocator {    
+impl<'a> fmt::Display for FrameAllocator<'a> {    
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
                "multiboot_start_frame: {}, 

@@ -26,7 +26,7 @@ p2_table:
 ; reserve bytes for stack
 section .bss
 stack_bottom:
-    resb 4096
+    resb 10485760 ; 10 mb, was 4096 initially
 stack_top:
 
 section .rodata
