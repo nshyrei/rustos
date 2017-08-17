@@ -260,18 +260,20 @@ impl<Level> TestPageTable<Level> where  Level : NextPageLevel + LevelTestIndex {
         unsafe {
             let p3 = &(*(p4[destructured_address.0].address() as *const [PageTableEntry; 512]));
             let p2 = &(*(p3[destructured_address.1].address() as *const [PageTableEntry; 512]));
-            let p1 = &mut (*(p2[destructured_address.2].address() as *mut TestPageTable<Level::NextLevel>));
+            let p1 = &(*(p2[destructured_address.2].address() as *const [PageTableEntry; 512]));
+            let result = &mut (*(p1[destructured_address.3].address() as *mut TestPageTable<Level::NextLevel>));
         
-            p1
+            result
         }        
     }
 
-    fn destructure_address(&self, addr : usize) -> (usize, usize, usize) {
-        let p4_index = addr & 0x0000fffffffff000 >> (27 + 12) & 511;
-        let p3_index = addr & 0x0000fffffffff000 >> (18 + 12) & 511;
-        let p2_index = addr & 0x0000fffffffff000 >> (9 + 12) & 511;
-        
-        (p4_index, p3_index, p2_index)
+    fn destructure_address(&self, addr : usize) -> (usize, usize, usize, usize) {
+        let p4_index = (addr & 0x0000fffffffff000) >> (27 + 12) & 511;
+        let p3_index = (addr & 0x0000fffffffff000) >> (18 + 12) & 511;
+        let p2_index = (addr & 0x0000fffffffff000) >> (9 + 12) & 511;
+        let p1_index = (addr & 0x0000fffffffff000) >> (0 + 12) & 511;
+
+        (p4_index, p3_index, p2_index, p1_index)
     }
 
     pub fn next_table_or_create(&mut self, page : VirtualFrame, frame_allocator : &mut FrameAllocator, p4 : &mut TestPageTable<P4>, address_savings : &mut [u64; 3]) -> &'static mut TestPageTable<Level::NextLevel> {
@@ -327,7 +329,7 @@ impl PageTableEntry {
 
     pub fn address(&self) -> usize {
         // & 0x000ffffffffff000 because address is held in bits 12-52
-        self.value as usize  & 0x000ffffffffff000 >> 12
+        (self.value as usize  & 0x000ffffffffff000) >> 12
     }    
 
     pub fn flags(&self) -> EntryFlags {

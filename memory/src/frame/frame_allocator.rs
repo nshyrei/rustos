@@ -93,8 +93,8 @@ impl<'a> FrameAllocator<'a> {
         let available_memory = memory_areas
             .entries()
             .fold(0, |base, e| base + e.length()) as usize;
-
-        let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::new(0)).unwrap();            
+            
+        let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::new(0)).expect("Cannot determine first memory area");            
         let last_frame_number = FrameAllocator::frame_for_base_address(first_memory_area.base_address() as usize);
         //let start_free_list = EmptyFrameList::new_tail(last_frame_number, KERNEL_BASIC_HEAP_ALLOCATOR);
 
@@ -196,9 +196,12 @@ impl<'a> FrameAllocator<'a> {
     */
     fn next_fitting_memory_area(memory_areas : AvailableMemorySectionsIterator, last_frame_number : Frame) -> Option<&'static MemoryMapEntry> {        
         memory_areas
-            .clone()
-            // to find area which will hold frame_for_base_address
-            .filter(|e| Frame::from_address(e.end_address() as usize) >= last_frame_number)
+            .clone()            
+            .filter(|e| { 
+                let frame = FrameAllocator::frame_for_base_address(e.base_address() as usize);
+                // frame must be fully inside memory area
+                frame.end_address() <= e.end_address() as usize && frame >= last_frame_number
+                 })
             .min_by_key(|e| e.base_address())            
     }
 
