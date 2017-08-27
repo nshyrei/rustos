@@ -12,10 +12,10 @@ fn should_properly_determine_first_memory_area() {
     let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
     let elf_sections_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
     let memory_map_entry_size = mem::size_of::<memory_map::MemoryMapEntry>();
-    let memory_map_size = 4 * mem::size_of::<u32>() + memory_map_entry_size * 4;
+    let memory_map_size = 4 * mem::size_of::<u32>() + memory_map_entry_size * 3;
     let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_sections_size;
 
-    let bytes : [u32; 53] = [
+    let bytes : [u32; 47] = [
         multiboot_size as u32,          // multiboot length
         1,  // multiboot reserved
 
@@ -24,30 +24,23 @@ fn should_properly_determine_first_memory_area() {
         memory_map_entry_size as u32,  // memory map entry size
         1,   // memory map version
 
-        12,  // [ memory map entry base addr
+        FRAME_SIZE as u32,  // [ memory map entry base addr
         0, // ]
-        0,  // [ memory map entry length
+        (FRAME_SIZE * 2) as u32,  // [ memory map entry length
         0, // ]
         1,  // memory map entry type
         1, // memory map entry reserved
 
-        25,  
+        (FRAME_SIZE * 3) as u32,  
         0, 
-        0,  
+        10000,  
         0, 
         1,  
-        1, 
-        
-        10,
-        0,
-        0, 
-        0,
-        1, 
-        1,
+        1,        
 
         0,
         0,
-        0, 
+        FRAME_SIZE as u32, 
         12,
         0,  //entry type = 0 and thus should be ignored, despite having min base address
         1,
@@ -88,10 +81,10 @@ fn should_properly_determine_first_memory_area() {
 
     let frame_allocator = FrameAllocator::new(multiboot_header1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
-    assert!(frame_allocator.current_memory_area().base_address() == 10, 
+    assert!(frame_allocator.current_memory_area().base_address() == FRAME_SIZE as u64, 
         "Frame allocator failed to determine proper first memory area, determined base address was {}, but should be {}. Frame allocator {}",
         frame_allocator.current_memory_area().base_address(),
-        10,
+        FRAME_SIZE,
         frame_allocator);    
 }
 
@@ -112,9 +105,9 @@ fn should_properly_determine_kernel_start_and_end_address() {
         memory_map_entry_size as u32,  // memory map entry size
         1,   // memory map version
 
-        12,  // [ memory map entry base addr
+        0,  // [ memory map entry base addr
         0, // ]
-        0,  // [ memory map entry length
+        FRAME_SIZE as u32,  // [ memory map entry length
         0, // ]
         1,  // memory map entry type
         1, // memory map entry reserved
@@ -222,100 +215,6 @@ fn should_properly_determine_kernel_start_and_end_address() {
 }
 
 #[test]
-fn should_properly_determine_available_memory() {
-    let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
-    let elf_sections_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
-    let memory_map_entry_size = mem::size_of::<memory_map::MemoryMapEntry>();
-    let memory_map_size = 4 * mem::size_of::<u32>() + 4 * memory_map_entry_size;
-    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_sections_size;
-
-    let bytes : [u32; 53] = [
-        multiboot_size as u32,          // multiboot length
-        1,  // multiboot reserved
-
-        6,  // memory map type
-        memory_map_size as u32,         // memory map size
-        memory_map_entry_size as u32,  // memory map entry size
-        1,   // memory map version
-
-        12,  // [ memory map entry base addr
-        0, // ]
-        10,  // [ memory map entry length
-        0, // ]
-        1,  // memory map entry type
-        1, // memory map entry reserved
-
-        25,  
-        0, 
-        20,  
-        0, 
-        1,  
-        1, 
-        
-        10,
-        0,
-        30, 
-        0,
-        1, 
-        1,
-
-        0,
-        0,
-        0, 
-        12,
-        0,  //entry type = 0 and thus should be ignored, despite having min base address
-        1,
-        
-        9,  // elf
-        elf_sections_size as u32,
-        1,   // entries num
-        elf_section_entry_size as u32,
-        1,  //shndx
-
-        1,  //name
-        1,  //section type
-        0,  //[ flags ]
-        0,  //
-        0,  //[ address ]
-        0,  //
-        0,  // [ offset ]
-        0,  //
-        0,  // [ size ]
-        0,  //
-        0,  // link
-        0,  // info
-        0,  // [ address align ]
-        0,  //
-        0,  // [ entry size ]
-        0,   //
-
-        0,  // end tag
-        0,  // 
-        
-        ];
-        
-    let kernel_heap = [0;256];
-    let addr = bytes.as_ptr() as usize;
-    let kernel_heap_addr = kernel_heap.as_ptr() as usize;
-    let multiboot_header1 = MultibootHeader::load(addr);
-    unsafe { 
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr);            
-        let test_bit_map = FrameBitMap::new(10 + 20 + 30, 4096, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
-        let frame_allocator = FrameAllocator::new(multiboot_header1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);        
-
-        let test_bitmap_size = test_bit_map.size();
-        let frame_alloc_bitmap_size = frame_allocator.bit_map_size();
-
-        // bump allocation size for bitmaps should be equal
-        assert!(test_bitmap_size == frame_alloc_bitmap_size,
-            "Bitmap size in frame allocator isn't valid. Frame allocator bitmap size is {}, but should be {}. Frame allocator fields {}",
-            frame_alloc_bitmap_size,
-            test_bitmap_size,
-            frame_allocator);
-    };
-}
-
-#[test]
 fn should_make_allocation_in_current_memory_area() {
     let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
     let elf_sections_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
@@ -356,11 +255,11 @@ fn should_make_allocation_in_current_memory_area() {
         1,  //section type
         0,  //[ flags ]
         0,  //
-        0,  //[ address ]
+        2000000,  //[ address ] // somewhere outside testing area
         0,  //
         0,  // [ offset ]
         0,  //
-        0,  // [ size ]
+        1000000,  // [ size ]
         0,  //
         0,  // link
         0,  // info
@@ -381,8 +280,8 @@ fn should_make_allocation_in_current_memory_area() {
     unsafe { 
         let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr);
         let mut frame_allocator = FrameAllocator::new(multiboot_header1,&mut KERNEL_BASIC_HEAP_ALLOCATOR);
-        let allocation_result1 = frame_allocator.allocate(&mut KERNEL_BASIC_HEAP_ALLOCATOR);
-        let allocation_result2 = frame_allocator.allocate(&mut KERNEL_BASIC_HEAP_ALLOCATOR);
+        let allocation_result1 = frame_allocator.allocate();
+        let allocation_result2 = frame_allocator.allocate();
 
         
         assert!(allocation_result1.is_some(),
@@ -434,7 +333,7 @@ fn should_move_to_next_memory_area() {
         1,  // memory map entry type
         1, // memory map entry reserved
 
-        12288,  
+        10000,
         0, 
         10000,
         0, 
@@ -451,11 +350,11 @@ fn should_move_to_next_memory_area() {
         1,  //section type
         0,  //[ flags ]
         0,  //
-        0,  //[ address ]
+        2000000,  //[ address ] //somewhere outside testing zone
         0,  //
         0,  // [ offset ]
         0,  //
-        0,  // [ size ]
+        1000000,  // [ size ]
         0,  //
         0,  // link
         0,  // info
@@ -478,9 +377,9 @@ fn should_move_to_next_memory_area() {
         
         let mut frame_allocator = FrameAllocator::new(multiboot_header1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);        
 
-        frame_allocator.allocate(&mut KERNEL_BASIC_HEAP_ALLOCATOR); //frame at 00000 - 04905
-        frame_allocator.allocate(&mut KERNEL_BASIC_HEAP_ALLOCATOR); // 04906 - 08191
-        let allocation_result = frame_allocator.allocate(&mut KERNEL_BASIC_HEAP_ALLOCATOR); // 10000 - 14095, next memory area         
+        frame_allocator.allocate(); //frame at 00000 - 04905
+        frame_allocator.allocate(); // 04906 - 08191
+        let allocation_result = frame_allocator.allocate(); // 10000 - 14095, next memory area         
         
         assert!(allocation_result.is_some(),
             "Failed first allocation at address 14096. Frame allocator fields {}",
@@ -489,9 +388,9 @@ fn should_move_to_next_memory_area() {
         let result1 = Frame::from_address(14096);        
 
         assert!(allocation_result.unwrap() == result1,
-            "Invalid returned frame for allocation starting at address 22288. Returned frame {}, but should be {}. Frame allocator fields {}",
+            "Invalid returned frame for allocation starting at address 14096. Returned frame {}, but should be {}. Frame allocator fields {}",
             allocation_result.unwrap(),
             result1,
-            frame_allocator);    
+            frame_allocator);
     };
 }
