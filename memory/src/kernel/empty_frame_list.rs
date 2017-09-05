@@ -9,13 +9,13 @@ use kernel::bump_allocator::BumpAllocator;
     Linked list of free memory frames
 */
 #[repr(C)]
-pub struct EmptyFrameList {
+pub struct EmptyFrameList<'a> {
     value: Frame,
-    next: Option<&'static EmptyFrameList>,
+    next: Option<&'a EmptyFrameList<'a>>,
 }
 
-impl EmptyFrameList {
-    pub fn new_tail(value: Frame, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'static EmptyFrameList {
+impl<'a> EmptyFrameList<'a> {
+    pub fn new_tail(value: Frame, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'a EmptyFrameList<'a> {
         unsafe {            
             let address = KERNEL_BASIC_HEAP_ALLOCATOR
                 .allocate(mem::size_of::<EmptyFrameList>())
@@ -30,7 +30,7 @@ impl EmptyFrameList {
         }
     }
 
-    pub fn new(value: Frame, next: Option<&'static EmptyFrameList>, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'static EmptyFrameList {
+    pub fn new(value: Frame, next: Option<&'a EmptyFrameList>, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'a EmptyFrameList<'a> {
         unsafe {
             let address = KERNEL_BASIC_HEAP_ALLOCATOR
                 .allocate(mem::size_of::<EmptyFrameList>())
@@ -50,11 +50,11 @@ impl EmptyFrameList {
         self.value
     }
 
-    pub fn next(&self) -> Option<&'static EmptyFrameList> {
+    pub fn next(&self) -> Option<&'a EmptyFrameList> {
         self.next
     }
 
-    pub fn add(&'static self, value: Frame, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'static EmptyFrameList {
+    pub fn add(&'a self, value: Frame, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> &'a EmptyFrameList {
         unsafe {
             let address = KERNEL_BASIC_HEAP_ALLOCATOR
                 .allocate(mem::size_of::<EmptyFrameList>())
@@ -69,31 +69,31 @@ impl EmptyFrameList {
         }
     }
 
-    pub fn take(&self, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> (Frame, Option<&'static EmptyFrameList>) {
+    pub fn take(&self, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> (Frame, Option<&'a EmptyFrameList>) {
         let result = (self.value, self.next);
         unsafe { KERNEL_BASIC_HEAP_ALLOCATOR.free(mem::size_of::<EmptyFrameList>()); };
         result
     }    
 }
 
-impl fmt::Display for EmptyFrameList {
+impl<'a> fmt::Display for EmptyFrameList<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
                "")
     }
 }
 
-pub struct EmptyFrameListIterator {
-    current: Option<&'static EmptyFrameList>,
+pub struct EmptyFrameListIterator<'a> {
+    current: Option<&'a EmptyFrameList<'a>>,
 }
 
-impl EmptyFrameListIterator {
-    pub fn new(head: &'static EmptyFrameList) -> EmptyFrameListIterator {
+impl<'a> EmptyFrameListIterator<'a> {
+    pub fn new(head: &'a EmptyFrameList) -> EmptyFrameListIterator<'a> {
         EmptyFrameListIterator { current: Some(head) }
     }
 }
 
-impl iter::Iterator for EmptyFrameListIterator {
+impl<'a> iter::Iterator for EmptyFrameListIterator<'a> {
     type Item = Frame;
 
     fn next(&mut self) -> Option<Frame> {

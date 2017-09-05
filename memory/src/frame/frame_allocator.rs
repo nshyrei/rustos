@@ -20,11 +20,10 @@ pub struct FrameAllocator<'a> {
     multiboot_end_frame: Frame,
     kernel_start_frame: Frame,
     kernel_end_frame: Frame,
-    current_memory_area : &'static MemoryMapEntry,
+    current_memory_area : &'a MemoryMapEntry,
     memory_areas: AvailableMemorySectionsIterator,
-    last_frame_number: Frame,
-    frame_bit_map: FrameBitMap,
-    empty_frame_list: util::Option<&'static EmptyFrameList>,
+    last_frame_number: Frame,    
+    empty_frame_list: util::Option<&'a EmptyFrameList<'a>>,
     KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator
 }
 
@@ -46,7 +45,7 @@ impl<'a> FrameAllocator<'a> {
         self.kernel_end_frame
     }
 
-    pub fn current_memory_area(&self) -> &'static MemoryMapEntry {
+    pub fn current_memory_area(&self) -> &'a MemoryMapEntry {
         self.current_memory_area
     }
 
@@ -58,15 +57,11 @@ impl<'a> FrameAllocator<'a> {
         self.last_frame_number
     }    
 
-    pub fn empty_frame_list(&self) -> util::Option<&'static EmptyFrameList> {
+    pub fn empty_frame_list(&self) -> util::Option<&'a EmptyFrameList> {
         self.empty_frame_list
-    }
-
-    pub fn bit_map_size(&self) -> usize {
-        self.frame_bit_map.size()
-    }
+    }  
     
-    pub fn new(multiboot_header: &'static MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator) -> FrameAllocator<'a> {
+    pub fn new(multiboot_header: &'a MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator) -> FrameAllocator<'a> {
         let elf_sections = multiboot_header.read_tag::<ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
@@ -105,8 +100,7 @@ impl<'a> FrameAllocator<'a> {
             kernel_end_frame: Frame::from_address(kernel_end_address),
             current_memory_area : first_memory_area,
             memory_areas: memory_areas.entries(),
-            last_frame_number: last_frame_number,
-            frame_bit_map: FrameBitMap::new(available_memory, FRAME_SIZE, KERNEL_BASIC_HEAP_ALLOCATOR),
+            last_frame_number: last_frame_number,            
             empty_frame_list: util::Option(None),
             KERNEL_BASIC_HEAP_ALLOCATOR : KERNEL_BASIC_HEAP_ALLOCATOR
         }
@@ -120,7 +114,7 @@ impl<'a> FrameAllocator<'a> {
             let (result, tail) = empty_frame_list.take(self.KERNEL_BASIC_HEAP_ALLOCATOR);
 
             self.empty_frame_list = util::Option(tail);
-            self.frame_bit_map.set_in_use(result.number());
+            //self.frame_bit_map.set_in_use(result.number());
 
             Some(result)
         }
@@ -128,7 +122,7 @@ impl<'a> FrameAllocator<'a> {
             match self.bump_allocate() {
                 Some(allocate_result) => {                    
                     self.last_frame_number = allocate_result.next(); // next possible frame for bump allocator
-                    self.frame_bit_map.set_in_use(allocate_result.number());
+                    //self.frame_bit_map.set_in_use(allocate_result.number());
 
                     Some(allocate_result)
                 }
@@ -206,7 +200,7 @@ impl<'a> FrameAllocator<'a> {
     }
 
     pub fn deallocate(&mut self, frame : Frame) {
-        self.frame_bit_map.set_free(frame.number());
+        //self.frame_bit_map.set_free(frame.number());
         let new_empty_frame_list = self.empty_frame_list.0.map_or(EmptyFrameList::new_tail(frame, self.KERNEL_BASIC_HEAP_ALLOCATOR), |e| e.add(frame, self.KERNEL_BASIC_HEAP_ALLOCATOR));
 
         self.empty_frame_list = util::Option(Some(new_empty_frame_list));
@@ -222,8 +216,7 @@ impl<'a> fmt::Display for FrameAllocator<'a> {
                kernel_end_frame : {},
                current_memory_area : {},
                memory_areas : {},
-               last_frame_number : {},
-               frame_bit_map : {},
+               last_frame_number : {},               
                empty_frame_list : {}",
                self.multiboot_start_frame,
                self.multiboot_end_frame,
@@ -232,7 +225,7 @@ impl<'a> fmt::Display for FrameAllocator<'a> {
                self.current_memory_area,
                self.memory_areas,
                self.last_frame_number,
-               self.frame_bit_map,
+               //self.frame_bit_map,
                self.empty_frame_list)
     }
 }

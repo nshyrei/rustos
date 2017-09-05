@@ -2,6 +2,7 @@ use core::marker;
 use core::ops;
 use frame::Frame;
 use frame::frame_allocator::FrameAllocator;
+use core::fmt::Display;
 
 pub type VirtualFrame = Frame;
 
@@ -36,7 +37,7 @@ fn p4_table() -> &'static mut PageTable<P4> {
 }
 
 pub fn new_page_table<L>(frame_allocator : &mut FrameAllocator) -> &'static PageTable<L> where L : TableLevel {
-    let new_frame = frame_allocator.allocate().expect("No memory for page table");
+    let new_frame = frame_allocator.allocate().expect("No memory for page table");    
     let result = unsafe { &mut (*(new_frame.address() as *mut PageTable<L>)) };
         
     for entry in result.entries.iter_mut() {
@@ -209,11 +210,10 @@ impl PageTableEntry {
 
     pub fn set_frame(&mut self, frame : Frame, flags : EntryFlags) {
         self.set(frame.address(), flags)
-    }
+    }    
 
-    pub fn set(&mut self, address : usize, flags : EntryFlags) {
-        // todo check if address is lover then 40bits
-
+    pub fn set(&mut self, address : usize, flags : EntryFlags) {        
+        //assert!(address & 0xffffff0000000000 != 0, "Address {} cannot be packed in 40 bits. Table entry value can be maximum 40 bits long", address);
         self.value = ((address as u64) << 12) | flags.bits();
     }
 }
