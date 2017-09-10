@@ -10,3 +10,6 @@ path = "../memory"
 
 [dependencies.multiboot]
 path = "../multiboot"
+
+[dependencies.stdx]
+path = "../stdx"

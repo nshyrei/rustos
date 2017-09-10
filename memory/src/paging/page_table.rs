@@ -2,7 +2,6 @@ use core::marker;
 use core::ops;
 use frame::Frame;
 use frame::frame_allocator::FrameAllocator;
-use core::fmt::Display;
 
 pub type VirtualFrame = Frame;
 
@@ -18,16 +17,35 @@ pub fn map(page : VirtualFrame, frame : PhysicalFrame, frame_allocator : &mut Fr
     p1[p1_index].set_frame(frame, PRESENT)
 }
 
+pub fn unmap(page : VirtualFrame) {
+    let p4 = p4_table();
+
+    let p1_option = p4.next_table_opt(page)
+                      .and_then(|p3| p3.next_table_opt(page))
+                      .and_then(|p2| p2.next_table_opt(page));
+
+    if let Some(p1) = p1_option {
+        let p1_index = P1::page_index(page.number());
+        p1[p1_index].set_unused()
+    }    
+}
+
 pub fn translate(page : VirtualFrame) -> Option<Frame> {
     let p4 = p4_table();
 
     p4.next_table_opt(page)
       .and_then(|p3| p3.next_table_opt(page))
       .and_then(|p2| p2.next_table_opt(page))
-      .map(|p1| { 
+      .and_then(|p1| { 
         let p1_index = P1::page_index(page.number());
-        let frame_address = p1[p1_index].address();
-        Frame::from_address(frame_address)
+        let p1_entry = &p1[p1_index];
+
+        if p1_entry.is_present() {            
+            Some(Frame::from_address(p1_entry.address()))
+        }
+        else {
+            None
+        }        
       })
 }
 
@@ -36,12 +54,12 @@ fn p4_table() -> &'static mut PageTable<P4> {
     unsafe { &mut (*(P4_TABLE_ADDRESS as *mut PageTable<P4>)) }
 }
 
-pub fn new_page_table<L>(frame_allocator : &mut FrameAllocator) -> &'static PageTable<L> where L : TableLevel {
+fn new_page_table<L>(frame_allocator : &mut FrameAllocator) -> &'static PageTable<L> where L : TableLevel {
     let new_frame = frame_allocator.allocate().expect("No memory for page table");    
     let result = unsafe { &mut (*(new_frame.address() as *mut PageTable<L>)) };
         
     for entry in result.entries.iter_mut() {
-        entry.zero();
+        entry.set_unused();
     };
 
     result
@@ -128,7 +146,7 @@ impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
         let flags = table_entry.flags();
 
         table_entry.is_present() && flags.contains(PRESENT)
-    }    
+    }
 
     fn next_table(&self, index : usize) -> &'static mut PageTable<Level::NextTableLevel> {
         let table_address = self as *const _ as usize;
@@ -184,11 +202,7 @@ impl PageTableEntry {
 
     pub fn value(&self) -> u64 {
         self.value
-    }
-
-    pub fn zero(&mut self) {
-        self.value = 0;
-    }
+    }    
 
     pub fn address(&self) -> usize {
         // & 0x000ffffffffff000 because address is held in bits 12-52
@@ -213,7 +227,7 @@ impl PageTableEntry {
     }    
 
     pub fn set(&mut self, address : usize, flags : EntryFlags) {        
-        //assert!(address & 0xffffff0000000000 != 0, "Address {} cannot be packed in 40 bits. Table entry value can be maximum 40 bits long", address);
+        assert!(address & 0xffffff0000000000 == 0, "Address {} cannot be packed in 40 bits. Table entry value can be maximum 40 bits long", address);
         self.value = ((address as u64) << 12) | flags.bits();
     }
 }

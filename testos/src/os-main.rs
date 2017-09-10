@@ -24,7 +24,7 @@ use memory::frame::FRAME_SIZE;
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
-    unsafe {
+    
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
     
         let mut vga_writer = Writer::new();
@@ -66,18 +66,8 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         // run pre-init tests
 
         paging_map_should_properly_add_elements(&mut frame_allocator);
-        let a = 0;
-    }
-
-
-
-    let hello = b"Hello World!";
-    let color_byte = 0x1f; // white foreground, blue background
-
-    let mut hello_colored = [color_byte; 24];
-    for (i, char_byte) in hello.into_iter().enumerate() {
-        hello_colored[i * 2] = *char_byte;
-    }
+        paging_unmap_should_properly_unmap_elements(&mut frame_allocator); 
+    
 
     loop {}
 }
@@ -103,10 +93,28 @@ fn paging_map_should_properly_add_elements(frame_alloc : &mut FrameAllocator) {
     assert!(result.is_some(), 
         "Returned empty result for translation of virtual frame {}", 
         virtual_frame);
-
-    assert!(virtual_frame == result.unwrap(), 
+        
+    assert!(physical_frame == result.unwrap(), 
         "Returned invalid translation result for virtual frame {}. Should be frame {} but was {}",
         virtual_frame,
         physical_frame,
         result.unwrap());
+
+    page_table::unmap(virtual_frame);
+}
+
+fn paging_unmap_should_properly_unmap_elements(frame_alloc : &mut FrameAllocator) {
+    let virtual_frame = Frame::new(15);
+    let physical_frame = Frame::new(340);
+    
+    page_table::map(virtual_frame, physical_frame, frame_alloc);    
+
+    page_table::unmap(virtual_frame);
+
+    let result = page_table::translate(virtual_frame);
+
+    assert!(result.is_none(), 
+        "Returned {} result for translation of virtual frame {} after it was unmapped", 
+        result.unwrap(),
+        virtual_frame);        
 }
