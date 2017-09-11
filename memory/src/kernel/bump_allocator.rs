@@ -1,4 +1,4 @@
-const HEAP_START: usize = 0x40000000;
+const HEAP_START: usize = 0x20000000; //start at 512 mb, move to somewhere constant!!!
 const HEAP_END : usize = HEAP_START + HEAP_SIZE - 1;
 const HEAP_SIZE: usize = 100 * 1024; // 100 KiB
 

@@ -6,6 +6,7 @@
 extern crate bitflags;
 extern crate multiboot;
 extern crate stdx;
+extern crate hardware;
 
 pub mod kernel;
 pub mod frame;

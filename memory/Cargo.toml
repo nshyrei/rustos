@@ -11,3 +11,6 @@ path = "../multiboot"
 
 [dependencies.stdx]
 path = "../stdx"
+
+[dependencies.hardware]
+path = "../hardware"

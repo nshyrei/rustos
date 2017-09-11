@@ -12,14 +12,10 @@ use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
 use display::vga::writer::Writer;
 use core::fmt::Write;
-use core::mem;
 use memory::kernel::bump_allocator::BumpAllocator;
-use memory::kernel::empty_frame_list::{EmptyFrameList, EmptyFrameListIterator};
-use memory::kernel::frame_bitmap::FrameBitMap;
 use memory::frame::frame_allocator::*;
 use memory::frame::Frame;
 use memory::paging::page_table;
-use memory::frame::FRAME_SIZE;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -64,9 +60,9 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         let mut frame_allocator = FrameAllocator::new(multiboot_header, &mut bump_allocator);
 
         // run pre-init tests
-
+        
         paging_map_should_properly_add_elements(&mut frame_allocator);
-        paging_unmap_should_properly_unmap_elements(&mut frame_allocator); 
+        paging_unmap_should_properly_unmap_elements(&mut frame_allocator);         
     
 
     loop {}
@@ -80,16 +76,28 @@ pub extern "C" fn panic_fmt() -> ! {
     loop {}
 }
 
-
 fn paging_map_should_properly_add_elements(frame_alloc : &mut FrameAllocator) {
-    let virtual_frame = Frame::new(15);
-    let physical_frame = Frame::new(340);
-    
-    page_table::map(virtual_frame, physical_frame, frame_alloc);    
+    use core::ptr;
+
+    let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
+    let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
         
+    page_table::map(virtual_frame, physical_frame, frame_alloc);
+
+    // check that translation result and raw pointer deref point to same data (prob rethink the test)
+    let virtual_frame_as_ptr = virtual_frame.address() as *mut u32;
+    unsafe { ptr::write(virtual_frame_as_ptr, u32::max_value()); }
 
     let result = page_table::translate(virtual_frame);
 
+    assert_paging_map(virtual_frame, physical_frame, result);
+
+    frame_alloc.deallocate(physical_frame);
+    page_table::unmap(virtual_frame);
+}
+
+fn assert_paging_map(virtual_frame : Frame, physical_frame : Frame, result : Option<Frame>) {
+    
     assert!(result.is_some(), 
         "Returned empty result for translation of virtual frame {}", 
         virtual_frame);
@@ -100,21 +108,31 @@ fn paging_map_should_properly_add_elements(frame_alloc : &mut FrameAllocator) {
         physical_frame,
         result.unwrap());
 
-    page_table::unmap(virtual_frame);
+    unsafe {
+        let result_data = *(result.unwrap().address() as *const u32);
+        let raw_ptr_data = *(virtual_frame.address() as *const u32);
+
+        assert!(result_data == raw_ptr_data, 
+            "Translate and raw pointer read produce different results. Virtual frame {}. Translation points to u32 of value {}, but raw pointer points to {}",
+            virtual_frame,
+            result_data,
+            raw_ptr_data);
+    }            
 }
 
 fn paging_unmap_should_properly_unmap_elements(frame_alloc : &mut FrameAllocator) {
-    let virtual_frame = Frame::new(15);
-    let physical_frame = Frame::new(340);
-    
-    page_table::map(virtual_frame, physical_frame, frame_alloc);    
+    let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
+    let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
 
-    page_table::unmap(virtual_frame);
+    page_table::map(virtual_frame, physical_frame, frame_alloc);    
+    page_table::unmap(virtual_frame);    
 
     let result = page_table::translate(virtual_frame);
 
-    assert!(result.is_none(), 
-        "Returned {} result for translation of virtual frame {} after it was unmapped", 
-        result.unwrap(),
-        virtual_frame);        
+    assert!(result.is_none(),
+        "Translation of virtual page {} returned physical frame {} after unmap, but should return empty result",
+        virtual_frame,
+        result.unwrap());
+
+    frame_alloc.deallocate(physical_frame);
 }
