@@ -1,6 +1,7 @@
 use core::marker;
 use core::ops;
 use frame::Frame;
+use frame::FRAME_SIZE;
 use frame::frame_allocator::FrameAllocator;
 use hardware::x86_64::tlb;
 
@@ -54,7 +55,7 @@ pub fn unmap(page : VirtualFrame) {
         p1[p1_index].set_unused();
 
         /*
-            Important to flash TLB after unmapping entry to prevent reads from it!!
+            Important to flush TLB after unmapping entry to prevent reads from it!!
             Example situation of what will happend if we don't do that: 
             let page = ... 
             map(page, ..., ...)
@@ -77,7 +78,7 @@ pub fn unmap(page : VirtualFrame) {
 /// # Returns
 /// Some() with physical frame if entry is present for corresponding virtual frame,
 /// otherwise returns None.
-pub fn translate(page : VirtualFrame) -> Option<Frame> {
+pub fn translate_page(page : VirtualFrame) -> Option<Frame> {
     let p4 = p4_table();
 
     p4.next_table_opt(page)
@@ -95,6 +96,20 @@ pub fn translate(page : VirtualFrame) -> Option<Frame> {
         }        
       })
 }
+
+/// Translates virtual address to physical address.
+///
+/// # Arguments
+/// * `page` - virtual address
+/// * `frame_allocator` - frame allocator
+///
+/// # Returns
+/// Some() with physical address if entry is present for corresponding virtual address,
+/// otherwise returns None.
+pub fn translate(virtual_address : usize) -> Option<usize> {    
+    translate_page(Frame::from_address(virtual_address)).map(|frame| frame.address() + virtual_address % FRAME_SIZE)
+}
+
 
 fn p4_table() -> &'static mut PageTable<P4> {
     const P4_TABLE_ADDRESS : usize = 0xfffffffffffff000; //recursive mapping to P4s 0 entry

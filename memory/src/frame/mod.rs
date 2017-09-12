@@ -11,10 +11,6 @@ pub struct Frame {
 
 impl Frame {
 
-    pub fn new(number : usize) -> Frame {
-        Frame { number : number }
-    }
-
     pub fn from_address(address: usize) -> Frame {
         Frame { number: address / FRAME_SIZE }
     }
@@ -32,7 +28,7 @@ impl Frame {
     }
 
     // creates new frame with number = self.number + 1
-    pub fn next(&self) -> Frame {
+    fn next(&self) -> Frame {
         Frame { number : self.number + 1}
     }
 }

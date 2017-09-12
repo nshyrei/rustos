@@ -83,15 +83,10 @@ impl<'a> FrameAllocator<'a> {
             .unwrap();
 
         let kernel_start_address = kernel_start_section.address() as usize;
-        let kernel_end_address = kernel_end_section.end_address() as usize;
-
-        let available_memory = memory_areas
-            .entries()
-            .fold(0, |base, e| base + e.length()) as usize;
+        let kernel_end_address = kernel_end_section.end_address() as usize;        
             
-        let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::new(0)).expect("Cannot determine first memory area");            
-        let last_frame_number = FrameAllocator::frame_for_base_address(first_memory_area.base_address() as usize);
-        //let start_free_list = EmptyFrameList::new_tail(last_frame_number, KERNEL_BASIC_HEAP_ALLOCATOR);
+        let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::from_address(0)).expect("Cannot determine first memory area");            
+        let last_frame_number = FrameAllocator::frame_for_base_address(first_memory_area.base_address() as usize);        
 
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),
