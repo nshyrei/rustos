@@ -2,18 +2,52 @@
 name = "os-main"
 version = "0.1.0"
 dependencies = [
+ "display 0.1.0",
+ "memory 0.1.0",
  "multiboot 0.1.0",
  "rlibc 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
+name = "bitflags"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "display"
+version = "0.1.0"
+
+[[package]]
+name = "hardware"
+version = "0.1.0"
+
+[[package]]
+name = "memory"
+version = "0.1.0"
+dependencies = [
+ "bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hardware 0.1.0",
+ "multiboot 0.1.0",
+ "stdx 0.1.0",
+]
+
+[[package]]
 name = "multiboot"
 version = "0.1.0"
+dependencies = [
+ "bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "stdx 0.1.0",
+]
 
 [[package]]
 name = "rlibc"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
+[[package]]
+name = "stdx"
+version = "0.1.0"
+
 [metadata]
+"checksum bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4efd02e230a02e18f92fc2735f44597385ed02ad8f831e7c1c1156ee5e1ab3a5"
 "checksum rlibc 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc874b127765f014d792f16763a81245ab80500e2ad921ed4ee9e82481ee08fe"

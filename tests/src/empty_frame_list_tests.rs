@@ -1,12 +1,22 @@
 use memory::kernel::bump_allocator::BumpAllocator;
 use memory::kernel::empty_frame_list::{EmptyFrameList, EmptyFrameListIterator};
 use memory::frame::Frame;
+use memory::frame::FRAME_SIZE;
 
 #[test]
 fn adding_elems_should_work_properly() {
     let bytes = [0; 256];
     let addr = bytes.as_ptr() as usize;
-    let test_values  = [Frame::new(0), Frame::new(2), Frame::new(3), Frame::new(4), Frame::new(12), Frame::new(20), Frame::new(44), Frame::new(10)];
+    let test_values  = [
+        Frame::from_address(0), 
+        Frame::from_address(FRAME_SIZE * 2), 
+        Frame::from_address(FRAME_SIZE * 3),
+        Frame::from_address(FRAME_SIZE * 4), 
+        Frame::from_address(FRAME_SIZE * 12), 
+        Frame::from_address(FRAME_SIZE * 20), 
+        Frame::from_address(FRAME_SIZE * 44), 
+        Frame::from_address(FRAME_SIZE * 10)
+    ];
     let test_values_len = test_values.len();
     let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr);
     let mut head = EmptyFrameList::new_tail(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);

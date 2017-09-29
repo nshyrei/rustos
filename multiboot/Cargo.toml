@@ -3,5 +3,10 @@ name = "multiboot"
 version = "0.1.0"
 authors = ["charlolizard <nikitas2209@gmail.com>"]
 
+
+[dependencies]
+bitflags = "1.0"
+
 [dependencies.stdx]
 path = "../stdx"
+

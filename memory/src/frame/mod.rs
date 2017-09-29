@@ -27,10 +27,14 @@ impl Frame {
         self.address() + FRAME_SIZE - 1
     }
 
+    fn is_frame_aligned(address : usize) -> bool {
+        address % FRAME_SIZE == 0
+    }
+
     // creates new frame with number = self.number + 1
     fn next(&self) -> Frame {
         Frame { number : self.number + 1}
-    }
+    }    
 }
 
 impl fmt::Display for Frame {

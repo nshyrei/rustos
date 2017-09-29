@@ -23,7 +23,7 @@ use memory::paging::page_table;
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
     
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
-    
+        
         let mut vga_writer = Writer::new();
         let mut memInfo1 = multiboot_header            
             .read_tag::<basic_memory_info::BasicMemoryInfo>()
@@ -45,9 +45,8 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         while let Some(e) = mem_sections.next() {
             writeln!(vga_writer, "{}", e);
         }
-
-
-        let elf_sections = multiboot_header            
+    
+        let elf_sections = multiboot_header
             .read_tag::<elf_sections::ElfSections>()
             .unwrap();
         let mut elf_sectionsIt = elf_sections.entries();
@@ -66,8 +65,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_translate_page_should_properly_translate_pages(&mut frame_allocator);
         paging_unmap_should_properly_unmap_elements(&mut frame_allocator);
         paging_translate_address_should_properly_translate_virtual_address(&mut frame_allocator);
-    
-
+        
     loop {}
 }
 
@@ -92,7 +90,7 @@ fn paging_map_should_properly_map_pages(frame_alloc : &mut FrameAllocator) {
     for i in 0..FRAME_SIZE {        
         unsafe { 
             // reading into var is important to prevent compiler optimizing the read away
-            let result = *((virtual_frame_address + i as usize) as *const u8);
+            let _result = *((virtual_frame_address + i as usize) as *const u8);
         }
     } 
 

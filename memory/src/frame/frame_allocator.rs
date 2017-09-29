@@ -149,18 +149,19 @@ impl<'a> FrameAllocator<'a> {
         }
     }
 
-    // to remove bugs like this : for example we have memory area starting at 1000
+    // base address of memory area must be frame aligned or it will result in bugs like this:
+    // For example we have memory area starting at 1000
     // and frame size iz 4000, thus creating frame from address 1000 will result in frame
     // with number = 0, which has base address = 0 also, which is below memory area and will
     // result in memory read fault
     fn frame_for_base_address(base_address : usize) -> Frame {
         let first_attempt_frame = Frame::from_address(base_address);
 
-        if first_attempt_frame.address() < base_address {
-            first_attempt_frame.next()
+        if Frame::is_frame_aligned(base_address) {
+            first_attempt_frame
         }
         else {
-            first_attempt_frame
+            first_attempt_frame.next()
         }
     }
 

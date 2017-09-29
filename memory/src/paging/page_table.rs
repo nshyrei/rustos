@@ -116,17 +116,12 @@ fn p4_table() -> &'static mut PageTable<P4> {
     unsafe { &mut (*(P4_TABLE_ADDRESS as *mut PageTable<P4>)) }
 }
 
-/// Allocates new frame and returns it in the form of PageTable struct. 
-/// Zeroes the frame in process!
-fn new_page_table<L>(frame_allocator : &mut FrameAllocator) -> &'static PageTable<L> where L : TableLevel {
-    let new_frame = frame_allocator.allocate().expect("No memory for page table");    
-    let result = unsafe { &mut (*(new_frame.address() as *mut PageTable<L>)) };
-        
-    for entry in result.entries.iter_mut() {
-        entry.set_unused();
-    };
 
-    result
+
+/// Allocates new frame and returns it in the form of PageTable struct.
+fn new_page_table<L>(frame_allocator : &mut FrameAllocator) -> &'static mut PageTable<L> where L : TableLevel {
+    let new_frame = frame_allocator.allocate().expect("No memory for page table");    
+    unsafe { &mut (*(new_frame.address() as *mut PageTable<L>)) }
 }
 
 pub trait TableLevel {
@@ -208,13 +203,21 @@ impl<L> ops::IndexMut<usize> for PageTable<L> where L : TableLevel {
     }
 }
 
+impl <Level> PageTable<Level> where Level : TableLevel {
+    fn clear_all_entries(&mut self) {
+        for entry in self.entries.iter_mut() {
+            entry.set_unused();
+        };
+    }
+}
+
 impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
 
     pub fn has_next_table(&self, index : usize) -> bool {        
         let table_entry = &self[index];
         let flags = table_entry.flags();
 
-        table_entry.is_present() && flags.contains(PRESENT)
+        table_entry.is_present() && flags.contains(EntryFlags::PRESENT)
     }
 
     fn next_table(&self, index : usize) -> &'static mut PageTable<Level::NextTableLevel> {
@@ -249,11 +252,112 @@ impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
             let page_address = new_page as *const _ as usize; // basically frame.address()
 
             // set next level table entry in current table
-            self[index].set(page_address, PRESENT);
+            self[index].set(page_address, EntryFlags::PRESENT | EntryFlags::WRITABLE);
             
+            new_page.clear_all_entries();
+
             self.next_table(index)
         }
     }
+}
+
+impl PageTable<P4> {
+
+    /// maps virtual page to physical frame
+    ///
+    /// # Arguments
+    /// * `page` - virtual frame
+    /// * `frame` - physical frame
+    /// * `frame_allocator` - frame allocator
+    pub fn map(&mut self, page : VirtualFrame, frame : PhysicalFrame, frame_allocator : &mut FrameAllocator) {        
+        let p1 = self.next_table_or_create(page, frame_allocator)
+                         .next_table_or_create(page, frame_allocator)
+                         .next_table_or_create(page, frame_allocator);
+
+        let p1_index = P1::page_index(page);
+        p1[p1_index].set_frame(frame, EntryFlags::PRESENT)
+    }
+
+
+    /// Maps virtual page to physical frame in 1 to 1 fashion, e.g.
+    /// virtual page will correspond to physical frame with the same address
+    ///
+    /// # Arguments
+    /// * `page` - virtual frame
+    /// * `frame_allocator` - frame allocator
+    pub fn map_1_to_1(page : VirtualFrame, frame_allocator : &mut FrameAllocator) {
+        let frame = page.clone();
+        map(page, frame, frame_allocator);
+    }
+
+    /// Unmaps virtual page
+    ///
+    /// # Arguments
+    /// * `page` - virtual frame
+    /// * `frame_allocator` - frame allocator
+    pub fn unmap(&self, page : VirtualFrame) {
+        let p1_option = self.next_table_opt(page)
+                            .and_then(|p3| p3.next_table_opt(page))
+                            .and_then(|p2| p2.next_table_opt(page));
+
+        if let Some(p1) = p1_option {
+            let p1_index = P1::page_index(page);
+            p1[p1_index].set_unused();
+
+            /*
+                Important to flush TLB after unmapping entry to prevent reads from it!!
+                Example situation of what will happend if we don't do that: 
+                let page = ... 
+                map(page, ..., ...)
+                let result = translate(page)
+                unmap(page) // after this line any direct pointer reads using page.address()
+                            //  should produce segfault because we unmapped the page, but they won't
+                        //   if we don't flush TLB 
+                let should_be_page_fault = *(page.address() as *const u64) // won't produce segfault
+            */
+            tlb::flush(page.address());
+        }    
+    }
+
+    /// Translates virtual page to physical frame.
+    ///
+    /// # Arguments
+    /// * `page` - virtual frame
+    /// * `frame_allocator` - frame allocator
+    ///
+    /// # Returns
+    /// Some() with physical frame if entry is present for corresponding virtual frame,
+    /// otherwise returns None.
+    pub fn translate_page(&self, page : VirtualFrame) -> Option<Frame> {
+        
+        self.next_table_opt(page)
+        .and_then(|p3| p3.next_table_opt(page))
+        .and_then(|p2| p2.next_table_opt(page))
+        .and_then(|p1| { 
+            let p1_index = P1::page_index(page);
+            let p1_entry = &p1[p1_index];
+
+            if p1_entry.is_present() {            
+                Some(Frame::from_address(p1_entry.address()))
+            }
+            else {
+                None
+            }        
+        })
+    }
+
+    /// Translates virtual address to physical address.
+    ///
+    /// # Arguments
+    /// * `page` - virtual address
+    /// * `frame_allocator` - frame allocator
+    ///
+    /// # Returns
+    /// Some() with physical address if entry is present for corresponding virtual address,
+    /// otherwise returns None.
+    pub fn translate(virtual_address : usize) -> Option<usize> {    
+        translate_page(Frame::from_address(virtual_address)).map(|frame| frame.address() + virtual_address % FRAME_SIZE)
+    }    
 }
 
 #[repr(C)]
