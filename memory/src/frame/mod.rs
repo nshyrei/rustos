@@ -1,6 +1,7 @@
 pub mod frame_allocator;
 
 use core::fmt;
+use core::iter;
 
 pub const FRAME_SIZE: usize = 4096;
 
@@ -27,6 +28,11 @@ impl Frame {
         self.address() + FRAME_SIZE - 1
     }
 
+    // creates inclusive range iterator
+    pub fn range_inclusive(start_address : usize, end_address : usize) -> ExclusiveFrameRange {
+        ExclusiveFrameRange::new(Frame::from_address(start_address), Frame::from_address(end_address))
+    }
+
     fn is_frame_aligned(address : usize) -> bool {
         address % FRAME_SIZE == 0
     }
@@ -42,5 +48,46 @@ impl fmt::Display for Frame {
         write!(f,
                "number: {}",
                self.number)
+    }
+}
+
+pub struct ExclusiveFrameRange {
+    current_frame : Frame,
+    end_frame : Frame    
+}
+
+impl ExclusiveFrameRange {
+    fn new(current_frame : Frame, end_frame : Frame) -> ExclusiveFrameRange {
+        ExclusiveFrameRange {
+            current_frame : current_frame,
+            end_frame : end_frame
+        }
+    }
+
+    fn current_frame(&self) -> Frame {
+        self.current_frame
+    }
+
+    fn end_frame(&self) -> Frame {
+        self.end_frame
+    }
+
+    fn next_frame(&mut self) {
+        self.current_frame = self.current_frame.next()
+    }
+}
+
+impl iter::Iterator for ExclusiveFrameRange {
+    type Item = Frame;
+
+    fn next(&mut self) -> Option<Frame> {
+        let current_frame = self.current_frame();
+        if current_frame <= self.end_frame() {            
+            self.next_frame();
+            Some(current_frame)
+        }
+        else {
+            None
+        }
     }
 }

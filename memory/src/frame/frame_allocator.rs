@@ -76,13 +76,13 @@ impl<'a> FrameAllocator<'a> {
         }
                 
         let kernel_start_section = elf_sections.entries()
-            .min_by_key(|e| e.address())
+            .min_by_key(|e| e.start_address())
             .unwrap();
         let kernel_end_section = elf_sections.entries()
             .max_by_key(|e| e.end_address())
             .unwrap();
 
-        let kernel_start_address = kernel_start_section.address() as usize;
+        let kernel_start_address = kernel_start_section.start_address() as usize;
         let kernel_end_address = kernel_end_section.end_address() as usize;        
             
         let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::from_address(0)).expect("Cannot determine first memory area");            

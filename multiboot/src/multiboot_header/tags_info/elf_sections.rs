@@ -45,7 +45,7 @@ impl ElfSectionHeader {
         self.section_type
     }
 
-    pub fn address(&self) -> u64 {
+    pub fn start_address(&self) -> u64 {
         self.address
     }
 
@@ -59,6 +59,10 @@ impl ElfSectionHeader {
 
     pub fn flags(&self) -> ElfSectionFlags {
         ElfSectionFlags::from_bits_truncate(self.flags)
+    }
+
+    pub fn is_allocated(&self) -> bool {
+        self.flags().contains(ELF_SECTION_ALLOCATED)
     }
 }
 
