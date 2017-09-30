@@ -3,10 +3,13 @@ pub mod page_table;
 use paging::page_table::*;
 use frame::frame_allocator::*;
 use frame::Frame;
-use hardware::x86_64::tlb;
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags_info::elf_sections;
+use hardware::x86_64::tlb;
 use hardware::x86_64::registers;
+use kernel::bump_allocator;
+
+pub type P4Table = PageTable<P4>;
 
 pub fn modify_other<Action>(other_p4_table_address : usize, action : Action)
 where Action : FnOnce(&mut PageTable<P4>) {
@@ -18,8 +21,7 @@ where Action : FnOnce(&mut PageTable<P4>) {
 
     // save physical address of current p4 in current p4's 510 entry
 
-    let p4_physical_address = Frame::from_address(p4[511].address());   // p4's 511 entry points to self
-    let temp_virtual_address = Frame::from_address(0xFF8000000000);     // should be p4's 510 entry    
+    let p4_physical_address = Frame::from_address(p4[511].address());   // p4's 511 entry points to self    
 
     p4[510].set_frame(p4_physical_address, PRESENT | WRITABLE);
     //p4.map(temp_virtual_address, p4_physical_address, PRESENT | WRITABLE, frame_allocator);
@@ -32,7 +34,7 @@ where Action : FnOnce(&mut PageTable<P4>) {
     action(p4_table()); // reading recursive entry again will move us to the temp table
     
     // place old recursive entry back into current p4
-    let mut saved_p4 = unsafe { &mut (*(temp_virtual_address.address() as *mut PageTable<P4>)) };
+    let mut saved_p4 = unsafe { &mut (*(0xFF8000000000 as *mut PageTable<P4>)) }; // 0xFF8000000000 should be p4's 510 entry
     saved_p4[511].set_frame(p4_physical_address, PRESENT | WRITABLE);
 
     tlb::flush_all();
@@ -51,7 +53,7 @@ pub fn remap_kernel(new_p4_table_address : usize, frame_allocator : &mut FrameAl
     switch_tables(new_p4_table_address);
 }
 
-fn p4_table() -> &'static mut PageTable<P4> {
+pub fn p4_table() -> &'static mut PageTable<P4> {
     const P4_TABLE_ADDRESS : usize = 0xfffffffffffff000; //recursive mapping to P4s 0 entry
     unsafe { &mut (*(P4_TABLE_ADDRESS as *mut PageTable<P4>)) }
 }
@@ -61,7 +63,7 @@ fn remap_kernel0(p4_table : &mut PageTable<P4>, frame_allocator : &mut FrameAllo
             .read_tag::<elf_sections::ElfSections>()
             .unwrap();
 
-    let mut loaded_elf_sections = elf_sections.entries().filter(|e| e.is_allocated());
+    let mut loaded_elf_sections = elf_sections.entries().filter(|e| e.flags().contains(elf_sections::ELF_SECTION_ALLOCATED));
         
     while let Some(elf_section) = loaded_elf_sections.next() {
         for elf_frame in Frame::range_inclusive(elf_section.start_address() as usize, elf_section.end_address() as usize) {
@@ -70,5 +72,9 @@ fn remap_kernel0(p4_table : &mut PageTable<P4>, frame_allocator : &mut FrameAllo
     }
 
     let vga_frame = Frame::from_address(0xb8000);
-    p4_table.map_1_to_1(vga_frame, PRESENT, frame_allocator)
+    p4_table.map_1_to_1(vga_frame, PRESENT | WRITABLE, frame_allocator);
+
+    for bump_heap_frame in Frame::range_inclusive(bump_allocator::HEAP_START, bump_allocator::HEAP_END){
+        p4_table.map_1_to_1(bump_heap_frame, PRESENT | WRITABLE, frame_allocator);
+    }
 }
