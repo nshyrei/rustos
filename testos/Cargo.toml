@@ -17,3 +17,6 @@ path = "../display"
 
 [dependencies.memory]
 path = "../memory"
+
+[dependencies.hardware]
+path = "../hardware"

@@ -1,5 +1,6 @@
 use core::marker;
 use core::ops;
+use core::fmt;
 use frame::Frame;
 use frame::FRAME_SIZE;
 use frame::frame_allocator::FrameAllocator;
@@ -14,8 +15,7 @@ pub trait TableLevel {
     fn index_shift() -> usize;
 
     /// Determines index inside page table based on virtual page.
-    /// Uses 'index_shift' to properly extract index based on table level.
-    /// # Example :
+    /// Uses 'index_shift' to properly extract index based on table level.    
     /// 
     fn page_index(page : VirtualFrame) -> usize {
         (page.number() >> Self::index_shift()) & 511
@@ -67,6 +67,7 @@ impl HasNextTableLevel for P2 {
     type NextTableLevel = P1;
 }
 
+#[repr(C)]
 pub struct PageTable<Level> where Level : TableLevel
 {    
     entries : [PageTableEntry; 512], // 512 * 8 (sizeof(PageTableEntry)) = 4096 b = 4kb = 1 Frame size
@@ -132,10 +133,10 @@ impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
             self[index].set_frame(new_table_frame, PRESENT | WRITABLE);
             
             // clear next level table
-            let new_table = unsafe { &mut (*(new_table_frame.address() as *mut PageTable<P1>)) };
-            new_table.clear_all_entries();
-            
-            self.next_table(index)
+            let result = self.next_table(index);
+            result.clear_all_entries();
+
+            result            
         }
     }
 
@@ -265,7 +266,7 @@ impl PageTableEntry {
 
     pub fn address(&self) -> usize {
         // & 0x000ffffffffff000 because address is held in bits 12-52
-        (self.value as usize  & 0x000ffffffffff000) >> 12
+        self.value as usize  & 0x000ffffffffff000
     }    
 
     pub fn flags(&self) -> EntryFlags {
@@ -286,8 +287,20 @@ impl PageTableEntry {
     }    
 
     pub fn set(&mut self, address : usize, flags : EntryFlags) {        
-        assert!(address & 0xffffff0000000000 == 0, "Address {} cannot be packed in 40 bits. Table entry value can be maximum 40 bits long", address);
-        self.value = ((address as u64) << 12) | flags.bits();
+        assert!(address & !0x000fffff_fffff000 == 0, "Address {} cannot be packed in 52 bits. Table entry value can be maximum 40 bits long", address);
+        self.value = (address as u64) | flags.bits();
+    }
+}
+
+impl fmt::Display for PageTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, 
+            "value: {} , 
+            address {}, 
+            flags {}", 
+            self.value(), 
+            self.address(), 
+            self.flags().bits())
     }
 }
 

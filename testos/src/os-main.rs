@@ -7,6 +7,7 @@ extern crate rlibc;
 extern crate multiboot;
 extern crate display;
 extern crate memory;
+extern crate hardware;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
@@ -17,6 +18,7 @@ use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 use memory::paging;
 use memory::paging::page_table;
+use hardware::x86_64::registers;
 
 use core::fmt::Write;
 
@@ -35,6 +37,12 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         // run pre-init tests
         
         let predefined_p4_table = paging::p4_table();
+        let p4_physical_address = predefined_p4_table[511].address(); 
+        let cr3_value = registers::cr3();
+
+        for i in 0..512 {
+            writeln!(&mut vga_writer, "entry: {}, {} ", i, predefined_p4_table[i]);
+        }
 
         paging_map_should_properly_map_pages(predefined_p4_table, &mut frame_allocator);
         paging_translate_page_should_properly_translate_pages(predefined_p4_table, &mut frame_allocator);
@@ -87,14 +95,17 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
 
 fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator) {    
 
-    let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
+    let virtual_frame = Frame::from_address(0xFF0000000000);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
         
-    page_table.map(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);
+    page_table.map(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);
 
     // try read whole frame from virtual address, if it succeeds without a segfault then
     // map function worked correctly    
     let virtual_frame_address = virtual_frame.address();
+
+    
+
     for i in 0..FRAME_SIZE {        
         unsafe { 
             // reading into var is important to prevent compiler optimizing the read away

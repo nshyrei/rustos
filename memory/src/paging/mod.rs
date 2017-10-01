@@ -11,46 +11,55 @@ use kernel::bump_allocator;
 
 pub type P4Table = PageTable<P4>;
 
-pub fn modify_other<Action>(other_p4_table_address : usize, action : Action)
-where Action : FnOnce(&mut PageTable<P4>) {
+pub fn modify_other(other_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, multiboot_header : &'static MultibootHeader)
+{
     // save current p4 table address in current p4s 510 entry,
     // it could be any free entry but 510 is chosen just because its
     // below the recursive 511s entry
 
     let p4 = p4_table();
 
-    // save physical address of current p4 in current p4's 510 entry
+    // save physical address of current p4 in current p4's 510 entry    
+    let p4_physical_address = p4[511].address();   // p4's 511 entry points to self
+    // todo prob make predefined p4 address frame aligned    
 
-    let p4_physical_address = Frame::from_address(p4[511].address());   // p4's 511 entry points to self    
-
-    p4[510].set_frame(p4_physical_address, PRESENT | WRITABLE);
+    //p4[510].set(p4_physical_address, PRESENT | WRITABLE);
     //p4.map(temp_virtual_address, p4_physical_address, PRESENT | WRITABLE, frame_allocator);
     
-    // set recursive entry for temp p4
-    p4[511].set(other_p4_table_address, PRESENT | WRITABLE);
-    
-    tlb::flush_all();
+    // set recursive entry in temp table
+    p4.map(Frame::from_address(0x123456789), other_p4_table_address, PRESENT, frame_allocator);
+    unsafe {
+        let temp_p4 = (&mut (*(0x123456789 as *mut [u64; 512])));
+        temp_p4[510] = 2030;
+    };
+    p4.unmap(other_p4_table_address);
 
-    action(p4_table()); // reading recursive entry again will move us to the temp table
+    // set recursive of the current p4 to point to temp table
+    p4[511].set_frame(other_p4_table_address, PRESENT | WRITABLE);
+    
+    tlb::flush_all();    
+        
+    remap_kernel0(p4_table(), frame_allocator, multiboot_header);
+    //action(p4_table()); // reading recursive entry again will move us to the temp table
     
     // place old recursive entry back into current p4
-    let mut saved_p4 = unsafe { &mut (*(0xFF8000000000 as *mut PageTable<P4>)) }; // 0xFF8000000000 should be p4's 510 entry
-    saved_p4[511].set_frame(p4_physical_address, PRESENT | WRITABLE);
-
-    tlb::flush_all();
-
+    let mut saved_p4 = unsafe { &mut (*(0xFF0000000000 as *mut PageTable<P4>)) }; // 0xFF0000000000 should be p4's 510 entry
+    saved_p4[511].set(p4_physical_address, PRESENT | WRITABLE);
+    
     // unmap recursive address saving
     //p4.unmap(temp_virtual_address);
-    p4[510].set_unused()
+    p4[510].set_unused();
+
+    tlb::flush_all();
 }
 
 pub fn switch_tables(other_p4_table_address : usize) {
     unsafe { registers::cr3_write(other_p4_table_address as u64); }
 }
 
-pub fn remap_kernel(new_p4_table_address : usize, frame_allocator : &mut FrameAllocator, multiboot_header : &'static MultibootHeader){
-    modify_other(new_p4_table_address, |table| remap_kernel0(table, frame_allocator, multiboot_header));
-    switch_tables(new_p4_table_address);
+pub fn remap_kernel(new_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, multiboot_header : &'static MultibootHeader){
+    modify_other(new_p4_table_address, frame_allocator, multiboot_header);
+    switch_tables(new_p4_table_address.address());
 }
 
 pub fn p4_table() -> &'static mut PageTable<P4> {
