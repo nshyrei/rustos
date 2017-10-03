@@ -97,6 +97,14 @@ impl <Level> PageTable<Level> where Level : TableLevel {
     }
 }
 
+impl <Level> fmt::Display for PageTable<Level> where Level : TableLevel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // writeln! has result so its not possible to write 
+        // writeln! in for loop        
+        (0..512).fold(write!(f, "---Page table---"), |_base, i| write!(f, "entry: {}, {} ", i, self[i]))        
+    }    
+}
+
 impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
 
     pub fn has_next_table(&self, index : usize) -> bool {        
@@ -266,8 +274,8 @@ impl PageTableEntry {
 
     pub fn address(&self) -> usize {
         // & 0x000ffffffffff000 because address is held in bits 12-52
-        self.value as usize  & 0x000ffffffffff000
-    }    
+        self.value as usize  & 0x000fffff_fffff000
+    }                          
 
     pub fn flags(&self) -> EntryFlags {
         EntryFlags::from_bits_truncate(self.value)
@@ -287,7 +295,7 @@ impl PageTableEntry {
     }    
 
     pub fn set(&mut self, address : usize, flags : EntryFlags) {        
-        assert!(address & !0x000fffff_fffff000 == 0, "Address {} cannot be packed in 52 bits. Table entry value can be maximum 40 bits long", address);
+        assert!(address & !0x000fffff_fffff000 == 0, "Address {} cannot be packed in 52 bits. Table entry value can be maximum 52 bits long", address);
         self.value = (address as u64) | flags.bits();
     }
 }

@@ -37,14 +37,13 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         // run pre-init tests
         
         let predefined_p4_table = paging::p4_table();
-        let p4_physical_address = predefined_p4_table[511].address(); 
-        let cr3_value = registers::cr3();
+        let new_p4_table = frame_allocator.allocate().expect("No frames for kernel remap");
+        let physical_p4 = hardware::x86_64::registers::cr3();
+        paging::remap_kernel(new_p4_table, &mut frame_allocator, multiboot_header);
 
-        for i in 0..512 {
-            writeln!(&mut vga_writer, "entry: {}, {} ", i, predefined_p4_table[i]);
-        }
+        //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
-        paging_map_should_properly_map_pages(predefined_p4_table, &mut frame_allocator);
+        paging_map_should_properly_map_pages(predefined_p4_table, &mut frame_allocator, &mut vga_writer);
         paging_translate_page_should_properly_translate_pages(predefined_p4_table, &mut frame_allocator);
         paging_unmap_should_properly_unmap_elements(predefined_p4_table, &mut frame_allocator);
         paging_translate_address_should_properly_translate_virtual_address(predefined_p4_table, &mut frame_allocator);
@@ -93,13 +92,14 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
     }
 }
 
-fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator) {    
+fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator, vga_writer : &mut Writer) {    
 
-    let virtual_frame = Frame::from_address(0xFF0000000000);
+    let virtual_frame = Frame::from_address(0x800000000000);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
         
     page_table.map(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);
 
+    writeln!(vga_writer, "{}", page_table);
     // try read whole frame from virtual address, if it succeeds without a segfault then
     // map function worked correctly    
     let virtual_frame_address = virtual_frame.address();
@@ -108,8 +108,12 @@ fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame
 
     for i in 0..FRAME_SIZE {        
         unsafe { 
+            let cr3_value = registers::cr3();
+
             // reading into var is important to prevent compiler optimizing the read away
+            let _abc = 20;
             let _result = *((virtual_frame_address + i as usize) as *const u8);
+            let a = _result;
         }
     } 
 

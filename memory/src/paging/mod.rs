@@ -21,16 +21,17 @@ pub fn modify_other(other_p4_table_address : Frame, frame_allocator : &mut Frame
 
     // save physical address of current p4 in current p4's 510 entry    
     let p4_physical_address = p4[511].address();   // p4's 511 entry points to self
+    p4[128].set(p4_physical_address, PRESENT | WRITABLE);
     // todo prob make predefined p4 address frame aligned    
 
     //p4[510].set(p4_physical_address, PRESENT | WRITABLE);
     //p4.map(temp_virtual_address, p4_physical_address, PRESENT | WRITABLE, frame_allocator);
     
     // set recursive entry in temp table
-    p4.map(Frame::from_address(0x123456789), other_p4_table_address, PRESENT, frame_allocator);
+    p4.map(Frame::from_address(0x200000000000), other_p4_table_address, PRESENT, frame_allocator); // 2 ^ 46, for some reason it breaks when using 2 ^ 47
     unsafe {
-        let temp_p4 = (&mut (*(0x123456789 as *mut [u64; 512])));
-        temp_p4[510] = 2030;
+        let temp_p4 = &mut (*(0x200000000000 as *mut PageTable<P4>));
+        temp_p4[511].set_frame(other_p4_table_address, PRESENT | WRITABLE);
     };
     p4.unmap(other_p4_table_address);
 
@@ -43,12 +44,12 @@ pub fn modify_other(other_p4_table_address : Frame, frame_allocator : &mut Frame
     //action(p4_table()); // reading recursive entry again will move us to the temp table
     
     // place old recursive entry back into current p4
-    let mut saved_p4 = unsafe { &mut (*(0xFF0000000000 as *mut PageTable<P4>)) }; // 0xFF0000000000 should be p4's 510 entry
+    let mut saved_p4 = unsafe { &mut (*(0x400000000000 as *mut PageTable<P4>)) }; // 0xFF0000000000 should be p4's 510 entry
     saved_p4[511].set(p4_physical_address, PRESENT | WRITABLE);
     
     // unmap recursive address saving
     //p4.unmap(temp_virtual_address);
-    p4[510].set_unused();
+    p4[128].set_unused();
 
     tlb::flush_all();
 }
@@ -59,7 +60,7 @@ pub fn switch_tables(other_p4_table_address : usize) {
 
 pub fn remap_kernel(new_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, multiboot_header : &'static MultibootHeader){
     modify_other(new_p4_table_address, frame_allocator, multiboot_header);
-    switch_tables(new_p4_table_address.address());
+    //switch_tables(new_p4_table_address.address());
 }
 
 pub fn p4_table() -> &'static mut PageTable<P4> {
