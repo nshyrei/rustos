@@ -31,15 +31,17 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
-        let mut bump_allocator = BumpAllocator::new();
+        let mut bump_allocator = BumpAllocator::new(memory::HEAP_START, memory::HEAP_SIZE);
         let mut frame_allocator = FrameAllocator::new(multiboot_header, &mut bump_allocator);
 
         // run pre-init tests
         
         let predefined_p4_table = paging::p4_table();
-        let new_p4_table = frame_allocator.allocate().expect("No frames for kernel remap");
+        let new_p4_table = frame_allocator.allocate().expect("No frames for kernel remap");        
         let physical_p4 = hardware::x86_64::registers::cr3();
-        paging::remap_kernel(new_p4_table, &mut frame_allocator, multiboot_header);
+        //paging::remap_kernel(new_p4_table, &mut frame_allocator, multiboot_header);
+
+        print_multiboot_data(multiboot_header, &mut vga_writer);
 
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
@@ -94,28 +96,23 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
 
 fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator, vga_writer : &mut Writer) {    
 
-    let virtual_frame = Frame::from_address(0x800000000000);
+    let virtual_frame = Frame::from_address(0x400000000000);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
         
-    page_table.map(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);
-
-    writeln!(vga_writer, "{}", page_table);
+    page_table.map(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);    
     // try read whole frame from virtual address, if it succeeds without a segfault then
     // map function worked correctly    
     let virtual_frame_address = virtual_frame.address();
-
     
-
     for i in 0..FRAME_SIZE {        
-        unsafe { 
-            let cr3_value = registers::cr3();
-
-            // reading into var is important to prevent compiler optimizing the read away
-            let _abc = 20;
-            let _result = *((virtual_frame_address + i as usize) as *const u8);
-            let a = _result;
+        unsafe {
+            core::ptr::write_unaligned(((virtual_frame_address + i as usize) as *mut u8), 0);
+            // reading into var is important to prevent compiler optimizing the read away            
+            let _result = *((virtual_frame_address + i as usize) as *const u8);            
         }
     } 
+
+    
 
     frame_alloc.deallocate(physical_frame);
     page_table.unmap(virtual_frame);

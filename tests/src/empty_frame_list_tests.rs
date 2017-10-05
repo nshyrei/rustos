@@ -18,7 +18,7 @@ fn adding_elems_should_work_properly() {
         Frame::from_address(FRAME_SIZE * 10)
     ];
     let test_values_len = test_values.len();
-    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr);
+    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 256);
     let mut head = EmptyFrameList::new_tail(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
     for i in 1..test_values_len {

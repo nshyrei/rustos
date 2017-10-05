@@ -26,7 +26,7 @@ impl MultibootHeader {
     }
 
     pub fn end_address(&self) -> usize {
-        (self as *const _ as usize) + self.length as usize
+        (self.start_address() + self.length as usize) - 1
     }
 
     pub fn tags(&self) -> TagIterator {

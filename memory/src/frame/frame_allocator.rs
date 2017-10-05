@@ -3,7 +3,6 @@ use multiboot::multiboot_header::tags_info::memory_map::*;
 use multiboot::multiboot_header::tags_info::elf_sections::ElfSections;
 use frame::*;
 use kernel::empty_frame_list::EmptyFrameList;
-use kernel::frame_bitmap::FrameBitMap;
 use core::fmt;
 use stdx::util;
 use kernel::bump_allocator::BumpAllocator;
@@ -59,6 +58,10 @@ impl<'a> FrameAllocator<'a> {
 
     pub fn empty_frame_list(&self) -> util::Option<&'a EmptyFrameList> {
         self.empty_frame_list
+    }
+
+    pub fn bump_allocator(&'a self) -> &'a BumpAllocator {
+        self.KERNEL_BASIC_HEAP_ALLOCATOR
     }  
     
     pub fn new(multiboot_header: &'a MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator) -> FrameAllocator<'a> {

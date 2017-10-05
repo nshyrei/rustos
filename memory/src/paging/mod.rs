@@ -32,6 +32,7 @@ pub fn modify_other(other_p4_table_address : Frame, frame_allocator : &mut Frame
     p4.map(Frame::from_address(0x200000000000), other_p4_table_address, PRESENT, frame_allocator); // 2 ^ 46, for some reason it breaks when using 2 ^ 47
     unsafe {
         let temp_p4 = &mut (*(0x200000000000 as *mut PageTable<P4>));
+        temp_p4.clear_all_entries();
         temp_p4[511].set_frame(other_p4_table_address, PRESENT | WRITABLE);
     };
     p4.unmap(Frame::from_address(0x200000000000));
@@ -62,7 +63,7 @@ pub fn switch_tables(other_p4_table_address : usize) {
 pub fn 
 remap_kernel(new_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, multiboot_header : &'static MultibootHeader){
     modify_other(new_p4_table_address, frame_allocator, multiboot_header);
-    //switch_tables(new_p4_table_address.address());
+    switch_tables(new_p4_table_address.address());
 }
 
 pub fn p4_table() -> &'static mut PageTable<P4> {
@@ -75,6 +76,10 @@ fn remap_kernel0(p4_table : &mut PageTable<P4>, frame_allocator : &mut FrameAllo
             .read_tag::<elf_sections::ElfSections>()
             .unwrap();
 
+    for multiboot_header_frame in Frame::range_inclusive(multiboot_header.start_address(), multiboot_header.end_address()){
+        p4_table.map_1_to_1(multiboot_header_frame, PRESENT, frame_allocator);
+    }
+
     let mut loaded_elf_sections = elf_sections.entries().filter(|e| e.flags().contains(elf_sections::ELF_SECTION_ALLOCATED));
         
     while let Some(elf_section) = loaded_elf_sections.next() {
@@ -86,7 +91,7 @@ fn remap_kernel0(p4_table : &mut PageTable<P4>, frame_allocator : &mut FrameAllo
     let vga_frame = Frame::from_address(0xb8000);
     p4_table.map_1_to_1(vga_frame, PRESENT | WRITABLE, frame_allocator);
 
-    for bump_heap_frame in Frame::range_inclusive(bump_allocator::HEAP_START, bump_allocator::HEAP_END){
-        p4_table.map_1_to_1(bump_heap_frame, PRESENT , frame_allocator);
+    for bump_heap_frame in Frame::range_inclusive(frame_allocator.bump_allocator().start_address(), frame_allocator.bump_allocator().end_address()){
+        p4_table.map_1_to_1(bump_heap_frame, PRESENT | WRITABLE, frame_allocator);
     }
 }

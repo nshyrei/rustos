@@ -90,7 +90,7 @@ impl<L> ops::IndexMut<usize> for PageTable<L> where L : TableLevel {
 }
 
 impl <Level> PageTable<Level> where Level : TableLevel {
-    fn clear_all_entries(&mut self) {
+    pub fn clear_all_entries(&mut self) {
         for entry in self.entries.iter_mut() {
             entry.set_unused();
         };

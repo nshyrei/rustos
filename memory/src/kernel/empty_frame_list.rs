@@ -25,7 +25,7 @@ impl<'a> EmptyFrameList<'a> {
                 next: None,
             };
 
-            ptr::write(address as *mut EmptyFrameList, result);
+            ptr::write_unaligned(address as *mut EmptyFrameList, result);
             &(*(address as *const EmptyFrameList))
         }
     }
