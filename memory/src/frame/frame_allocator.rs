@@ -1,6 +1,6 @@
 use multiboot::multiboot_header::MultibootHeader;
-use multiboot::multiboot_header::tags_info::memory_map::*;
-use multiboot::multiboot_header::tags_info::elf_sections::ElfSections;
+use multiboot::multiboot_header::tags::memory_map::*;
+use multiboot::multiboot_header::tags::elf_sections::ElfSections;
 use frame::*;
 use kernel::empty_frame_list::EmptyFrameList;
 use core::fmt;

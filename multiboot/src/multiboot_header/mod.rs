@@ -1,9 +1,6 @@
-pub mod tags_info;
+pub mod tags;
 pub mod tag;
-pub mod tag_iterator;
-
-use multiboot_header::tag::Tag;
-use multiboot_header::tag_iterator::TagIterator;
+use core::iter;
 
 pub trait MultibootHeaderTag {
     fn numeric_type() -> u32;
@@ -14,6 +11,12 @@ pub struct MultibootHeader {
     length: u32,
     resrved: u32,
     first_tag: Tag,
+}
+
+#[repr(C)]
+pub struct Tag {
+    pub tag_type: u32,
+    pub size: u32,
 }
 
 impl MultibootHeader {
@@ -42,5 +45,29 @@ impl MultibootHeader {
             let tag_address = e as *const _ as usize;
             unsafe { &(*(tag_address as *const T)) }
         })        
+    }
+}
+
+pub struct TagIterator {
+    entry_address: usize,
+}
+
+impl TagIterator {
+    pub fn new(first_entry_address: usize) -> TagIterator {
+        TagIterator { entry_address: first_entry_address }
+    }
+}
+
+impl iter::Iterator for TagIterator {
+    type Item = &'static Tag;
+
+    fn next(&mut self) -> Option<&'static Tag> {
+        let tag = unsafe { &(*(self.entry_address as *const Tag)) };
+        if tag.tag_type == 0 {
+            None
+        } else {
+            self.entry_address += ((tag.size + 7) & !7) as usize;
+            Some(tag)
+        }
     }
 }

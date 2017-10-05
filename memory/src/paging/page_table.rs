@@ -97,13 +97,14 @@ impl <Level> PageTable<Level> where Level : TableLevel {
     }
 }
 
-impl <Level> fmt::Display for PageTable<Level> where Level : TableLevel {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+// comment out reason: too slow for some reason
+//impl <Level> fmt::Display for PageTable<Level> where Level : TableLevel {
+    //fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // writeln! has result so its not possible to write 
         // writeln! in for loop        
-        (0..512).fold(write!(f, "---Page table---"), |_base, i| write!(f, "entry: {}, {} ", i, self[i]))        
-    }    
-}
+      //  (0..512).fold(write!(f, "---Page table---"), |_base, i| write!(f, "entry: {}, {} ", i, self[i]))        
+    //}    
+//}
 
 impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
 
@@ -111,7 +112,7 @@ impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
         let table_entry = &self[index];
         let flags = table_entry.flags();
 
-        table_entry.is_present() && flags.contains(PRESENT)
+        table_entry.flags().contains(PRESENT) && flags.contains(PRESENT)
     }    
 
     pub fn next_table_opt(&self, page : VirtualFrame) -> Option<&'static mut PageTable<Level::NextTableLevel>> {
@@ -164,7 +165,7 @@ impl PageTable<P4> {
     /// * `page` - virtual frame
     /// * `frame` - physical frame
     /// * `frame_allocator` - frame allocator
-    pub fn map(&mut self, page : VirtualFrame, frame : PhysicalFrame, flags : EntryFlags, frame_allocator : &mut FrameAllocator) {        
+    pub fn map_page(&mut self, page : VirtualFrame, frame : PhysicalFrame, flags : EntryFlags, frame_allocator : &mut FrameAllocator) {        
         let p1 = self.next_table_or_create(page, frame_allocator)
                          .next_table_or_create(page, frame_allocator)
                          .next_table_or_create(page, frame_allocator);
@@ -173,6 +174,9 @@ impl PageTable<P4> {
         p1[p1_index].set_frame(frame, flags)
     }
 
+    pub fn map(&mut self, virtual_address : usize, physical_address : usize, flags : EntryFlags, frame_allocator : &mut FrameAllocator) {
+        self.map_page(Frame::from_address(virtual_address), Frame::from_address(physical_address), flags, frame_allocator)
+    }
 
     /// Maps virtual page to physical frame in 1 to 1 fashion, e.g.
     /// virtual page will correspond to physical frame with the same address
@@ -180,9 +184,13 @@ impl PageTable<P4> {
     /// # Arguments
     /// * `page` - virtual frame
     /// * `frame_allocator` - frame allocator
-    pub fn map_1_to_1(&mut self, page : VirtualFrame, flags : EntryFlags, frame_allocator : &mut FrameAllocator) {
+    pub fn map_page_1_to_1(&mut self, page : VirtualFrame, flags : EntryFlags, frame_allocator : &mut FrameAllocator) {
         let frame = page.clone();
-        self.map(page, frame, flags, frame_allocator);
+        self.map_page(page, frame, flags, frame_allocator);
+    }
+
+    pub fn map_1_to_1(&mut self, virtual_address : usize, flags : EntryFlags, frame_allocator : &mut FrameAllocator) {
+        self.map_page_1_to_1(Frame::from_address(virtual_address), flags, frame_allocator)
     }
 
     /// Unmaps virtual page
@@ -190,7 +198,7 @@ impl PageTable<P4> {
     /// # Arguments
     /// * `page` - virtual frame
     /// * `frame_allocator` - frame allocator
-    pub fn unmap(&self, page : VirtualFrame) {
+    pub unsafe fn unmap_page(&self, page : VirtualFrame) {
         let p1_option = self.next_table_opt(page)
                             .and_then(|p3| p3.next_table_opt(page))
                             .and_then(|p2| p2.next_table_opt(page));
@@ -214,6 +222,10 @@ impl PageTable<P4> {
         }    
     }
 
+    pub unsafe fn unmap(&self, virtual_address : usize) {
+        self.unmap_page(Frame::from_address(virtual_address))
+    }
+
     /// Translates virtual page to physical frame.
     ///
     /// # Arguments
@@ -232,7 +244,7 @@ impl PageTable<P4> {
             let p1_index = P1::page_index(page);
             let p1_entry = &p1[p1_index];
 
-            if p1_entry.is_present() {            
+            if p1_entry.flags().contains(PRESENT) {            
                 Some(Frame::from_address(p1_entry.address()))
             }
             else {
@@ -252,7 +264,11 @@ impl PageTable<P4> {
     /// otherwise returns None.
     pub fn translate(&self, virtual_address : usize) -> Option<usize> {    
         self.translate_page(Frame::from_address(virtual_address)).map(|frame| frame.address() + virtual_address % FRAME_SIZE)
-    }    
+    }
+
+    pub fn set_recursive_entry(&mut self, frame : Frame, flags : EntryFlags) {
+        self[511].set_frame(frame, flags);
+    }
 }
 
 #[repr(C)]
@@ -274,17 +290,12 @@ impl PageTableEntry {
 
     pub fn address(&self) -> usize {
         // & 0x000ffffffffff000 because address is held in bits 12-52
-        self.value as usize  & 0x000fffff_fffff000
+        self.value as usize & 0x000fffff_fffff000
     }                          
 
     pub fn flags(&self) -> EntryFlags {
         EntryFlags::from_bits_truncate(self.value)
-    }
-
-    pub fn is_present(&self) -> bool {
-        // todo probably add check for PRESENT flag
-        self.value != 0
-    }
+    }    
 
     pub fn set_unused(&mut self) {
         self.value = 0;
