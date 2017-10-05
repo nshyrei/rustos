@@ -31,7 +31,8 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
-        let mut bump_allocator = BumpAllocator::new(memory::HEAP_START, memory::HEAP_SIZE);
+        let memory_for_bump_allocator : [u8; 512] = [0; 512];
+        let mut bump_allocator = BumpAllocator::from_address(memory_for_bump_allocator.as_ptr() as usize, 512);
         let mut frame_allocator = FrameAllocator::new(multiboot_header, &mut bump_allocator);
 
         // run pre-init tests
@@ -39,7 +40,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         let predefined_p4_table = paging::p4_table();
         let new_p4_table = frame_allocator.allocate().expect("No frames for kernel remap");        
         let physical_p4 = hardware::x86_64::registers::cr3();
-        //paging::remap_kernel(new_p4_table, &mut frame_allocator, multiboot_header);
+        paging::remap_kernel(new_p4_table, &mut frame_allocator, multiboot_header);
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
@@ -99,20 +100,18 @@ fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame
     let virtual_frame = Frame::from_address(0x400000000000);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
         
-    page_table.map(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);    
+    page_table.map(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);
+
     // try read whole frame from virtual address, if it succeeds without a segfault then
     // map function worked correctly    
     let virtual_frame_address = virtual_frame.address();
     
     for i in 0..FRAME_SIZE {        
-        unsafe {
-            core::ptr::write_unaligned(((virtual_frame_address + i as usize) as *mut u8), 0);
+        unsafe {            
             // reading into var is important to prevent compiler optimizing the read away            
             let _result = *((virtual_frame_address + i as usize) as *const u8);            
         }
     } 
-
-    
 
     frame_alloc.deallocate(physical_frame);
     page_table.unmap(virtual_frame);
@@ -127,15 +126,6 @@ fn paging_translate_page_should_properly_translate_pages(page_table : &mut pagin
     let result = page_table.translate_page(virtual_frame);
 
     sanity_assert_translate_page_result(virtual_frame, physical_frame, result);
-
-    let virtual_frame_address  = virtual_frame.address();
-    let physical_frame_address = result.unwrap().address();
-    for frame_offset in 0..FRAME_SIZE {        
-        let virtual_address = virtual_frame_address + frame_offset as usize;
-        let physical_address = physical_frame_address + frame_offset as usize;
-        //ptr::write(virtual_address as *mut u8, u8::max_value());                              
-        assert_that_virtual_and_physical_address_point_to_same_data(virtual_address, physical_address);        
-    }
 
     frame_alloc.deallocate(physical_frame);
     page_table.unmap(virtual_frame);
@@ -153,11 +143,9 @@ fn paging_translate_address_should_properly_translate_virtual_address(page_table
     for frame_offset in 0..FRAME_SIZE {
         let virtual_address  = virtual_frame_address + frame_offset as usize;
         let physical_address = physical_frame_address + frame_offset as usize;
-        let result = page_table.translate(virtual_address);
-        //unsafe { ptr::write(virtual_address as *mut u8, u8::max_value()); }
+        let result = page_table.translate(virtual_address);        
                         
-        sanity_assert_translate_address_result(virtual_address, physical_address, result);
-        assert_that_virtual_and_physical_address_point_to_same_data(virtual_address, result.unwrap());    
+        sanity_assert_translate_address_result(virtual_address, physical_address, result);        
     }
     
     frame_alloc.deallocate(physical_frame);
