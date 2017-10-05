@@ -39,7 +39,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         
         let predefined_p4_table = paging::p4_table();
         let new_p4_table = frame_allocator.allocate().expect("No frames for kernel remap");        
-        let physical_p4 = hardware::x86_64::registers::cr3();
+        
         paging::remap_kernel(new_p4_table, &mut frame_allocator, multiboot_header);
 
         print_multiboot_data(multiboot_header, &mut vga_writer);

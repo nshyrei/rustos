@@ -89,9 +89,5 @@ fn remap_kernel0(p4_table : &mut PageTable<P4>, frame_allocator : &mut FrameAllo
     }
 
     let vga_frame = Frame::from_address(0xb8000);
-    p4_table.map_1_to_1(vga_frame, PRESENT | WRITABLE, frame_allocator);
-
-    for bump_heap_frame in Frame::range_inclusive(frame_allocator.bump_allocator().start_address(), frame_allocator.bump_allocator().end_address()){
-        p4_table.map_1_to_1(bump_heap_frame, PRESENT | WRITABLE, frame_allocator);
-    }
+    p4_table.map_1_to_1(vga_frame, PRESENT | WRITABLE, frame_allocator);    
 }
