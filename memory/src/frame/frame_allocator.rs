@@ -1,9 +1,8 @@
 use multiboot::multiboot_header::MultibootHeader;
-use multiboot::multiboot_header::tags_info::memory_map::*;
-use multiboot::multiboot_header::tags_info::elf_sections::ElfSections;
+use multiboot::multiboot_header::tags::memory_map::*;
+use multiboot::multiboot_header::tags::elf;
 use frame::*;
 use kernel::empty_frame_list::EmptyFrameList;
-use kernel::frame_bitmap::FrameBitMap;
 use core::fmt;
 use stdx::util;
 use kernel::bump_allocator::BumpAllocator;
@@ -59,10 +58,14 @@ impl<'a> FrameAllocator<'a> {
 
     pub fn empty_frame_list(&self) -> util::Option<&'a EmptyFrameList> {
         self.empty_frame_list
+    }
+
+    pub fn bump_allocator(&'a self) -> BumpAllocator {
+        self.KERNEL_BASIC_HEAP_ALLOCATOR.clone()
     }  
     
     pub fn new(multiboot_header: &'a MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator) -> FrameAllocator<'a> {
-        let elf_sections = multiboot_header.read_tag::<ElfSections>()
+        let elf_sections = multiboot_header.read_tag::<elf::ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
             .expect("Cannot create frame allocator without multiboot memory map");        
@@ -76,13 +79,13 @@ impl<'a> FrameAllocator<'a> {
         }
                 
         let kernel_start_section = elf_sections.entries()
-            .min_by_key(|e| e.address())
+            .min_by_key(|e| e.start_address())
             .unwrap();
         let kernel_end_section = elf_sections.entries()
             .max_by_key(|e| e.end_address())
             .unwrap();
 
-        let kernel_start_address = kernel_start_section.address() as usize;
+        let kernel_start_address = kernel_start_section.start_address() as usize;
         let kernel_end_address = kernel_end_section.end_address() as usize;        
             
         let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::from_address(0)).expect("Cannot determine first memory area");            
@@ -149,18 +152,19 @@ impl<'a> FrameAllocator<'a> {
         }
     }
 
-    // to remove bugs like this : for example we have memory area starting at 1000
+    // base address of memory area must be frame aligned or it will result in bugs like this:
+    // For example we have memory area starting at 1000
     // and frame size iz 4000, thus creating frame from address 1000 will result in frame
     // with number = 0, which has base address = 0 also, which is below memory area and will
     // result in memory read fault
     fn frame_for_base_address(base_address : usize) -> Frame {
         let first_attempt_frame = Frame::from_address(base_address);
 
-        if first_attempt_frame.address() < base_address {
-            first_attempt_frame.next()
+        if Frame::is_frame_aligned(base_address) {
+            first_attempt_frame
         }
         else {
-            first_attempt_frame
+            first_attempt_frame.next()
         }
     }
 
@@ -190,7 +194,7 @@ impl<'a> FrameAllocator<'a> {
                 let frame = FrameAllocator::frame_for_base_address(e.base_address() as usize);
                 // frame must be fully inside memory area
                 frame.end_address() <= e.end_address() as usize && frame >= last_frame_number
-                 })
+             })
             .min_by_key(|e| e.base_address())            
     }
 

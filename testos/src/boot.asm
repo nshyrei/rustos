@@ -14,7 +14,8 @@ header_start:
     dd 8    ; size
 header_end:
 
-; paging tables, todo: prob remove them later
+
+section .bss
 align 4096
 p4_table:
     resb 4096
@@ -24,9 +25,8 @@ p2_table:
     resb 4096
 
 ; reserve bytes for stack
-section .bss
 stack_bottom:
-    resb 10485760 ; 10 mb, was 4096 initially
+    resb 4096 * 10 ; 40 kb
 stack_top:
 
 section .rodata

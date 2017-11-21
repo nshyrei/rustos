@@ -45,7 +45,7 @@ impl ElfSectionHeader {
         self.section_type
     }
 
-    pub fn address(&self) -> u64 {
+    pub fn start_address(&self) -> u64 {
         self.address
     }
 
@@ -54,7 +54,11 @@ impl ElfSectionHeader {
     }
 
     pub fn end_address(&self) -> u64 {
-        self.address + self.size
+        self.address + self.size - 1
+    }
+
+    pub fn flags(&self) -> ElfSectionFlags {
+        ElfSectionFlags::from_bits_truncate(self.flags)
     }
 }
 
@@ -101,6 +105,18 @@ pub enum ElfSectionType {
     DynamicLoaderSymbolTable = 11,
     // plus environment-specific use from 0x60000000 to 0x6FFFFFFF
     // plus processor-specific use from 0x70000000 to 0x7FFFFFFF
+}
+
+
+
+bitflags! {
+    pub struct ElfSectionFlags : u64 {
+        const WRITABLE = 0x1;
+        const ALLOCATED = 0x2;
+        const EXECUTABLE = 0x4;
+        // plus environment-specific use at 0x0F000000
+        // plus processor-specific use at 0xF0000000
+    }
 }
 
 pub struct ElfSectionsIterator {
