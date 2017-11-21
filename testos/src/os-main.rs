@@ -33,21 +33,21 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let memory_for_bump_allocator : [u8; 512] = [0; 512];
         let mut bump_allocator = BumpAllocator::from_address(memory_for_bump_allocator.as_ptr() as usize, 512);
-        let mut frame_allocator = FrameAllocator::new(multiboot_header, &mut bump_allocator);
-                
-        let predefined_p4_table = paging::p4_table();
+        let mut frame_allocator = FrameAllocator::new(multiboot_header, &mut bump_allocator);                        
         
-        paging::remap_kernel(predefined_p4_table, &mut frame_allocator, multiboot_header);
+        paging::remap_kernel(&mut frame_allocator, multiboot_header);
+
+        let p4_table = paging::p4_table();
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
-        paging_map_should_properly_map_pages(predefined_p4_table, &mut frame_allocator, &mut vga_writer);
-        paging_translate_page_should_properly_translate_pages(predefined_p4_table, &mut frame_allocator);
-        paging_unmap_should_properly_unmap_elements(predefined_p4_table, &mut frame_allocator);
-        paging_translate_address_should_properly_translate_virtual_address(predefined_p4_table, &mut frame_allocator);
+        paging_map_should_properly_map_pages(p4_table, &mut frame_allocator, &mut vga_writer);
+        paging_translate_page_should_properly_translate_pages(p4_table, &mut frame_allocator);
+        paging_unmap_should_properly_unmap_elements(p4_table, &mut frame_allocator);
+        paging_translate_address_should_properly_translate_virtual_address(p4_table, &mut frame_allocator);
     }
     loop {}
 }

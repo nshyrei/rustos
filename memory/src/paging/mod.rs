@@ -24,9 +24,10 @@ pub fn p4_table() -> &'static mut P4Table {
 /// * `action` - function to be executed on another p4 table
 /// # Why unsafe
 ///  Uses tlb::flush() which is unsafe
-pub unsafe fn modify_other_table<F>(current_p4_table : &mut P4Table, other_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, action : F)
+pub unsafe fn modify_other_table<F>(other_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, action : F)
 where F : FnOnce(&mut P4Table, &mut FrameAllocator)
 {
+    let current_p4_table = p4_table();
     // 1# map some unused virtual address to point to current p4
     // 2# map some unused virtual address to point to temp p4
     // 3# set recursive entry in temp p4
@@ -91,11 +92,10 @@ pub unsafe fn switch_tables(new_p4_table_address : usize) {
 /// * `multiboot_header` - multiboot header
 /// # Why unsafe
 ///  Uses modify_other_table(), page_table.unmap() which is unsafe
-pub unsafe fn remap_kernel(current_p4_table : &mut P4Table, frame_allocator : &mut FrameAllocator, multiboot_header : &MultibootHeader){
+pub unsafe fn remap_kernel(frame_allocator : &mut FrameAllocator, multiboot_header : &MultibootHeader){     
     let new_p4_table_address = frame_allocator.allocate().expect("No frames for kernel remap");
 
-    modify_other_table(current_p4_table, 
-        new_p4_table_address, 
+    modify_other_table(new_p4_table_address, 
         frame_allocator, 
         |p4, frame_alloc| remap_kernel0(p4, frame_alloc, multiboot_header));
 
@@ -121,8 +121,10 @@ fn remap_kernel0(p4_table : &mut P4Table, frame_allocator : &mut FrameAllocator,
         p4_table.map_page_1_to_1(multiboot_header_frame, page_table::PRESENT, frame_allocator);
     }    
         
-    let mut elf_entries = elf_sections.entries();
-    while let Some(elf_section) = elf_entries.next() {
+    // todo figure out map or not non allocated section.
+    // Reason: mapping non allocated section results in seg fault after remap operation.
+    let mut loaded_elf_sections = elf_sections.entries().filter(|e| e.flags().contains(elf::ALLOCATED));
+    while let Some(elf_section) = loaded_elf_sections.next() {
         for elf_frame in Frame::range_inclusive(elf_section.start_address() as usize, elf_section.end_address() as usize) {
             let page_flag = elf_sections_flag_to_page_flag(elf_section.flags());
             p4_table.map_page_1_to_1(elf_frame, page_flag, frame_allocator);
