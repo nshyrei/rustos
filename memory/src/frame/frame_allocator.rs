@@ -1,6 +1,6 @@
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::memory_map::*;
-use multiboot::multiboot_header::tags::elf_sections::ElfSections;
+use multiboot::multiboot_header::tags::elf;
 use frame::*;
 use kernel::empty_frame_list::EmptyFrameList;
 use core::fmt;
@@ -60,12 +60,12 @@ impl<'a> FrameAllocator<'a> {
         self.empty_frame_list
     }
 
-    pub fn bump_allocator(&'a self) -> &'a BumpAllocator {
-        self.KERNEL_BASIC_HEAP_ALLOCATOR
+    pub fn bump_allocator(&'a self) -> BumpAllocator {
+        self.KERNEL_BASIC_HEAP_ALLOCATOR.clone()
     }  
     
     pub fn new(multiboot_header: &'a MultibootHeader, KERNEL_BASIC_HEAP_ALLOCATOR : &'a mut BumpAllocator) -> FrameAllocator<'a> {
-        let elf_sections = multiboot_header.read_tag::<ElfSections>()
+        let elf_sections = multiboot_header.read_tag::<elf::ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
             .expect("Cannot create frame allocator without multiboot memory map");        
@@ -194,7 +194,7 @@ impl<'a> FrameAllocator<'a> {
                 let frame = FrameAllocator::frame_for_base_address(e.base_address() as usize);
                 // frame must be fully inside memory area
                 frame.end_address() <= e.end_address() as usize && frame >= last_frame_number
-                 })
+             })
             .min_by_key(|e| e.base_address())            
     }
 

@@ -10,7 +10,7 @@ extern crate memory;
 extern crate hardware;
 
 use multiboot::multiboot_header::MultibootHeader;
-use multiboot::multiboot_header::tags::{basic_memory_info, elf_sections, memory_map};
+use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
 use display::vga::writer::Writer;
 use memory::kernel::bump_allocator::BumpAllocator;
 use memory::frame::frame_allocator::*;
@@ -34,18 +34,16 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         let memory_for_bump_allocator : [u8; 512] = [0; 512];
         let mut bump_allocator = BumpAllocator::from_address(memory_for_bump_allocator.as_ptr() as usize, 512);
         let mut frame_allocator = FrameAllocator::new(multiboot_header, &mut bump_allocator);
-
-        // run pre-init tests
-        
+                
         let predefined_p4_table = paging::p4_table();
-        let new_p4_table = frame_allocator.allocate().expect("No frames for kernel remap");        
         
-        paging::remap_kernel(predefined_p4_table, new_p4_table, &mut frame_allocator, multiboot_header);
+        paging::remap_kernel(predefined_p4_table, &mut frame_allocator, multiboot_header);
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
+        // run pre-init tests
         paging_map_should_properly_map_pages(predefined_p4_table, &mut frame_allocator, &mut vga_writer);
         paging_translate_page_should_properly_translate_pages(predefined_p4_table, &mut frame_allocator);
         paging_unmap_should_properly_unmap_elements(predefined_p4_table, &mut frame_allocator);
@@ -85,7 +83,7 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
     }
     
     let elf_sections = multiboot_header
-            .read_tag::<elf_sections::ElfSections>()
+            .read_tag::<elf::ElfSections>()
             .unwrap();
     let mut elf_sectionsIt = elf_sections.entries();
 

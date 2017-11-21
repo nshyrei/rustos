@@ -71,7 +71,7 @@ impl<'a> EmptyFrameList<'a> {
 
     pub fn take(&self, KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator) -> (Frame, Option<&'a EmptyFrameList>) {
         let result = (self.value, self.next);
-        unsafe { KERNEL_BASIC_HEAP_ALLOCATOR.free(mem::size_of::<EmptyFrameList>()); };
+        KERNEL_BASIC_HEAP_ALLOCATOR.free(mem::size_of::<EmptyFrameList>());
         result
     }    
 }

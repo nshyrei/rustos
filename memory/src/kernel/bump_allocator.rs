@@ -1,3 +1,5 @@
+
+#[derive(Clone)]
 pub struct BumpAllocator {
     current_pointer: usize,
     start_address : usize,
