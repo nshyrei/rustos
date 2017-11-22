@@ -1,5 +1,6 @@
 #![feature(lang_items)]
 #![feature(asm)]
+#![feature(alloc)]
 #![no_std]
 
 
@@ -8,6 +9,8 @@ extern crate multiboot;
 extern crate display;
 extern crate memory;
 extern crate hardware;
+extern crate alloc;
+
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
@@ -25,7 +28,7 @@ use core::fmt::Write;
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
-    unsafe {
+    unsafe {        
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
         let mut vga_writer = Writer::new();
 
@@ -195,15 +198,3 @@ fn sanity_assert_translate_address_result(virtual_address : usize, physical_addr
         result_address);
 }
 
-fn assert_that_virtual_and_physical_address_point_to_same_data(virtual_address : usize, physical_address : usize) {    
-    unsafe {
-        let result_data  = *((physical_address) as *const u8);
-        let raw_ptr_data = *((virtual_address) as *const u8);
-                
-        assert!(result_data == raw_ptr_data, 
-            "Translated and raw pointer reads produce different results. Virtual address {}. Translation points to u8 of value {}, but raw pointer points to {}",
-            virtual_address,
-            result_data,
-            raw_ptr_data);        
-    }    
-}

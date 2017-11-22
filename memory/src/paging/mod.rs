@@ -12,7 +12,7 @@ pub type P4Table = PageTable<P4>;
 
 /// Returns current p4 table.
 pub fn p4_table() -> &'static mut P4Table {
-    const P4_TABLE_ADDRESS : usize = 0xfffffffffffff000;  //recursive mapping to P4s 0 entry
+    const P4_TABLE_ADDRESS : usize = 0xfffffffffffff000;  // recursive mapping to P4s 0 entry
     unsafe { &mut (*(P4_TABLE_ADDRESS as *mut P4Table)) } // reading predefined recursive address is safe
 }
 

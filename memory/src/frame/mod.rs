@@ -40,7 +40,14 @@ impl Frame {
     // creates new frame with number = self.number + 1
     fn next(&self) -> Frame {
         Frame { number : self.number + 1}
-    }    
+    }
+
+    pub fn zero_frame(frame : &Frame) {
+        use core::ptr;
+        use frame::FRAME_SIZE;
+
+        unsafe { ptr::write(frame.address() as *mut [u8; FRAME_SIZE], [0; FRAME_SIZE]); }
+    }
 }
 
 impl fmt::Display for Frame {
