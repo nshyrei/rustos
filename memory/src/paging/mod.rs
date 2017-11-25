@@ -91,7 +91,7 @@ pub unsafe fn switch_tables(new_p4_table_address : usize) {
 /// * `frame_allocator` - frame allocator
 /// * `multiboot_header` - multiboot header
 /// # Why unsafe
-///  Uses modify_other_table(), page_table.unmap() which is unsafe
+///  Uses modify_other_table(), page_table.unmap() which are unsafe
 pub unsafe fn remap_kernel(frame_allocator : &mut FrameAllocator, multiboot_header : &MultibootHeader){     
     let new_p4_table_address = frame_allocator.allocate().expect("No frames for kernel remap");
 

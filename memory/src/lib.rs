@@ -2,8 +2,8 @@
 #![feature(const_fn)]
 #![no_std]
 
-#![feature(allocator)]
-#![allocator]
+//#![feature(allocator)]
+//#![allocator]
 
 #[macro_use]
 extern crate bitflags;

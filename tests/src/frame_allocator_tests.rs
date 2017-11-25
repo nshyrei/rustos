@@ -5,15 +5,15 @@ use memory::frame::FRAME_SIZE;
 use memory::kernel::bump_allocator::*;
 use memory::kernel::frame_bitmap::*;
 use std::mem;
-use multiboot::multiboot_header::tags_info::{basic_memory_info, elf_sections, memory_map};
+use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
 
 #[test]
 fn should_properly_determine_first_memory_area() {
-    let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
-    let elf_sections_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
+    let elf_section_entry_size = mem::size_of::<elf::ElfSectionHeader>();
+    let elf_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
     let memory_map_entry_size = mem::size_of::<memory_map::MemoryMapEntry>();
     let memory_map_size = 4 * mem::size_of::<u32>() + memory_map_entry_size * 3;
-    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_sections_size;
+    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_size;
 
     let bytes : [u32; 47] = [
         multiboot_size as u32,          // multiboot length
@@ -46,7 +46,7 @@ fn should_properly_determine_first_memory_area() {
         1,
         
         9,  // elf
-        elf_sections_size as u32,        
+        elf_size as u32,        
         1,   // entries num
         elf_section_entry_size as u32,
         1,  //shndx
@@ -77,9 +77,9 @@ fn should_properly_determine_first_memory_area() {
     let addr = bytes.as_ptr() as usize;
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
-    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
 
-    let frame_allocator = FrameAllocator::new(multiboot_header1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
 
     assert!(frame_allocator.current_memory_area().base_address() == FRAME_SIZE as u64, 
         "Frame allocator failed to determine proper first memory area, determined base address was {}, but should be {}. Frame allocator {}",
@@ -90,11 +90,11 @@ fn should_properly_determine_first_memory_area() {
 
 #[test]
 fn should_properly_determine_kernel_start_and_end_address() {
-    let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
-    let elf_sections_size = 5 * mem::size_of::<u32>() + 4 * elf_section_entry_size;
+    let elf_section_entry_size = mem::size_of::<elf::ElfSectionHeader>();
+    let elf_size = 5 * mem::size_of::<u32>() + 4 * elf_section_entry_size;
     let memory_map_entry_size = mem::size_of::<memory_map::MemoryMapEntry>();
     let memory_map_size = 4 * mem::size_of::<u32>() + memory_map_entry_size;
-    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_sections_size;
+    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_size;
 
     let bytes : [u32; 83] = [
         multiboot_size as u32,          // multiboot length
@@ -113,7 +113,7 @@ fn should_properly_determine_kernel_start_and_end_address() {
         1, // memory map entry reserved
         
         9,  // elf
-        elf_sections_size as u32,        
+        elf_size as u32,        
         1,   // entries num
         elf_section_entry_size as u32,
         1,  //shndx
@@ -195,9 +195,9 @@ fn should_properly_determine_kernel_start_and_end_address() {
     let addr = bytes.as_ptr() as usize;
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
-    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
 
-    let frame_allocator = FrameAllocator::new(multiboot_header1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
     let kernel_start_valid_result = Frame::from_address(0);
     let kernel_end_valid_result = Frame::from_address(50 + 50);
 
@@ -216,11 +216,11 @@ fn should_properly_determine_kernel_start_and_end_address() {
 
 #[test]
 fn should_make_allocation_in_current_memory_area() {
-    let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
-    let elf_sections_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
+    let elf_section_entry_size = mem::size_of::<elf::ElfSectionHeader>();
+    let elf_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
     let memory_map_entry_size = mem::size_of::<memory_map::MemoryMapEntry>();
     let memory_map_size = 4 * mem::size_of::<u32>() + 2 * memory_map_entry_size;
-    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_sections_size;
+    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_size;
 
     let bytes : [u32; 41] = [
         multiboot_size as u32,          // multiboot length
@@ -246,7 +246,7 @@ fn should_make_allocation_in_current_memory_area() {
         1, 
                 
         9,  // elf
-        elf_sections_size as u32,
+        elf_size as u32,
         1,   // entries num
         elf_section_entry_size as u32,
         1,  //shndx
@@ -278,8 +278,8 @@ fn should_make_allocation_in_current_memory_area() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
-        let mut frame_allocator = FrameAllocator::new(multiboot_header1,&mut KERNEL_BASIC_HEAP_ALLOCATOR);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
         let allocation_result1 = frame_allocator.allocate();
         let allocation_result2 = frame_allocator.allocate();
 
@@ -311,11 +311,11 @@ fn should_make_allocation_in_current_memory_area() {
 
 #[test]
 fn should_move_to_next_memory_area() {
-    let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
-    let elf_sections_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
+    let elf_section_entry_size = mem::size_of::<elf::ElfSectionHeader>();
+    let elf_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
     let memory_map_entry_size = mem::size_of::<memory_map::MemoryMapEntry>();
     let memory_map_size = 4 * mem::size_of::<u32>() + 2 * memory_map_entry_size;
-    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_sections_size;
+    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_size;
 
     let bytes : [u32; 41] = [
         multiboot_size as u32,          // multiboot length
@@ -341,7 +341,7 @@ fn should_move_to_next_memory_area() {
         1, 
                 
         9,  // elf
-        elf_sections_size as u32,
+        elf_size as u32,
         1,   // entries num
         elf_section_entry_size as u32,
         1,  //shndx
@@ -373,9 +373,9 @@ fn should_move_to_next_memory_area() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
         
-        let mut frame_allocator = FrameAllocator::new(multiboot_header1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);        
+        let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);        
 
         frame_allocator.allocate(); //frame at 00000 - 04905
         frame_allocator.allocate(); // 04906 - 08191
@@ -397,11 +397,11 @@ fn should_move_to_next_memory_area() {
 
 #[test]
 fn should_return_last_freed_frame() {
-    let elf_section_entry_size = mem::size_of::<elf_sections::ElfSectionHeader>();
-    let elf_sections_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
+    let elf_section_entry_size = mem::size_of::<elf::ElfSectionHeader>();
+    let elf_size = 5 * mem::size_of::<u32>() + elf_section_entry_size;
     let memory_map_entry_size = mem::size_of::<memory_map::MemoryMapEntry>();
     let memory_map_size = 4 * mem::size_of::<u32>() + 2 * memory_map_entry_size;
-    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_sections_size;
+    let multiboot_size = 2 * mem::size_of::<u32>() + memory_map_size + elf_size;
 
     let bytes : [u32; 41] = [
         multiboot_size as u32,          // multiboot length
@@ -427,7 +427,7 @@ fn should_return_last_freed_frame() {
         1, 
                 
         9,  // elf
-        elf_sections_size as u32,
+        elf_size as u32,
         1,   // entries num
         elf_section_entry_size as u32,
         1,  //shndx
@@ -459,9 +459,9 @@ fn should_return_last_freed_frame() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
         
-        let mut frame_allocator = FrameAllocator::new(multiboot_header1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);        
+        let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);        
 
         let result = frame_allocator.allocate(); //frame at 00000 - 04905
         
