@@ -34,13 +34,14 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
-        let memory_for_bump_allocator : [u8; 512] = [0; 512];
-        let mut bump_allocator = BumpAllocator::from_address(memory_for_bump_allocator.as_ptr() as usize, 512);
-        let mut frame_allocator = FrameAllocator::new(multiboot_header, &mut bump_allocator);                        
+        let mut frame_allocator = FrameAllocator::new(multiboot_header);                        
         
+        let before_remap = paging::p4_table().total_mapped_memory();
         paging::remap_kernel(&mut frame_allocator, multiboot_header);
+        let after_remap = paging::p4_table().total_mapped_memory();
 
         let p4_table = paging::p4_table();
+        
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
@@ -80,6 +81,7 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
                 .entries()
                 .filter(|e| e.entry_type() == memory_map::MemoryMapEntryType::Available as u32);
 
+    writeln!(vga_writer, "---Available memory {}", memInfo.available_memory());
     writeln!(vga_writer, "---Memory sections---");
     while let Some(e) = mem_sections.next() {
         writeln!(vga_writer, "{}", e);
@@ -91,9 +93,12 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
     let mut elf_sectionsIt = elf_sections.entries();
 
     writeln!(vga_writer, "---Elf sections---");
+    writeln!(vga_writer, "Elf sections start: {}", elf_sections.entries_start_address().unwrap());
+    writeln!(vga_writer, "Elf sections end: {}", elf_sections.entries_end_address().unwrap());
     while let Some(e) = elf_sectionsIt.next() {
         writeln!(vga_writer, "{}", e);
     }
+    
 }
 
 unsafe fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator, vga_writer : &mut Writer) {    

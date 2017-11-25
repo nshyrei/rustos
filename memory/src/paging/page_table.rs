@@ -159,6 +159,42 @@ impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
 
 impl PageTable<P4> {
 
+    /// Returns overrall number of mapped memory in bytes    
+    pub fn total_mapped_memory(&self) -> usize {
+        let mut result : usize = 0;
+
+        for entry in self.entries.iter().take(511).filter(|e| e.is_set()) {
+            let p4Page = Frame::from_address(entry.address());
+
+            match self.next_table_opt(p4Page) {
+                Some(p3) => {
+                    for p3Entry in p3.entries.iter().filter(|e| e.is_set()){
+                        let p3Page = Frame::from_address(p3Entry.address());
+
+                        match p3.next_table_opt(p3Page) {
+                            Some(p2) => {
+                                for p2Entry in p2.entries.iter().filter(|e| e.is_set()){
+                                    let p1Page = Frame::from_address(p3Entry.address());
+
+                                    match p2.next_table_opt(p1Page) {
+                                        Some(p1) =>{
+                                            result += p1.entries.iter().filter(|e| e.is_set()).count();
+                                        },
+                                        None => (),
+                                    }
+                                }
+                            },
+                            None => (),
+                        }
+                    }
+                },
+                None => (), 
+            }
+        };
+
+        result * FRAME_SIZE
+    }
+
     /// maps virtual page to physical frame
     ///
     /// # Arguments
@@ -300,6 +336,10 @@ impl PageTableEntry {
     pub fn set_unused(&mut self) {
         self.value = 0;
     }    
+
+    pub fn is_set(&self) -> bool {
+        self.value != 0
+    }
 
     pub fn set_frame(&mut self, frame : Frame, flags : EntryFlags) {
         self.set(frame.address(), flags)

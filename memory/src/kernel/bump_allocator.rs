@@ -7,8 +7,7 @@ pub struct BumpAllocator {
 }
 
 impl BumpAllocator {
-    
-    // should be used only for test
+        
     pub fn from_address(address: usize, size : usize) -> BumpAllocator {
         BumpAllocator { current_pointer: address, start_address : address, end_address : address + size - 1 }
     }    

@@ -1,9 +1,10 @@
 use multiboot_header::MultibootHeaderTag;
 use core::fmt;
 use core::iter;
+use stdx::iterator::IteratorExt;
 
 #[repr(C)] // repr(C) is crucial to make read(address as *const MemoryMap) work properly
-// default struct pack couldn't be read like this
+          // default struct packaging couldn't be read like this
 pub struct MemoryMap {
     tag_type: u32,
     tag_size: u32,
@@ -17,6 +18,10 @@ impl MemoryMap {
         let entry_address = (&self.first_entry) as *const _ as usize;
         let tag_end_address = (self as *const _ as usize) + self.tag_size as usize;
         AvailableMemorySectionsIterator::new(entry_address, tag_end_address, self.entry_size as usize)
+    }
+
+    pub fn available_memory(&self) -> u64 {
+        self.entries().sum_by(|e| e.length())    
     }
 }
 
@@ -118,4 +123,8 @@ impl iter::Iterator for AvailableMemorySectionsIterator {
             }
         }
     }
+}
+
+impl IteratorExt for AvailableMemorySectionsIterator {
+
 }

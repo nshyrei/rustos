@@ -15,3 +15,9 @@ pub mod kernel;
 pub mod frame;
 pub mod paging;
 pub mod heap;
+
+/*
+    kernel memory layout
+
+    *---kernel code + stack---**--- frame allocator data structures---**---kernel heap---*
+*/

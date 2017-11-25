@@ -24,6 +24,18 @@ impl ElfSections {
         let tag_end_address = (self as *const _ as usize) + self.tag_size as usize;
         ElfSectionsIterator::new(entry_address, tag_end_address, self.entry_size as usize)
     }
+
+    pub fn entries_start_address(&self) -> Option<u64> {
+        self.entries()
+            .next()
+            .map(|e| e.start_address())
+    }
+
+    pub fn entries_end_address(&self) -> Option<u64> {
+        self.entries()
+            .last()
+            .map(|e| e.end_address())
+    }
 }
 
 #[repr(C)]
