@@ -1,8 +1,11 @@
 use core::fmt;
 use core::option;
+use core::marker;
+use core::clone;
 
-#[derive(Copy, Clone)]
 pub struct Option<T>(pub option::Option<T>);
+
+
 
 impl<T> fmt::Display for Option<T> where T : fmt::Display {    
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

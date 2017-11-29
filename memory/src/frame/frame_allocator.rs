@@ -3,9 +3,9 @@ use multiboot::multiboot_header::tags::memory_map::*;
 use multiboot::multiboot_header::tags::elf;
 use frame::Frame;
 use frame::FRAME_SIZE;
-use kernel::empty_frame_list::EmptyFrameList;
-use kernel::bump_allocator::BumpAllocator;
-use stdx::util;
+use util::free_list::FreeList;
+use util::bump_allocator::BumpAllocator;
+use stdx::ptr;
 use core::fmt;
 use core::mem;
 
@@ -18,19 +18,19 @@ use core::mem;
     You can think of bump allocation as a meachanism to populate free frame stack, the other option to do it without bump allocation is to 
     create a big free frame stack that describes all available memory and use only it.  
 */
-pub struct FrameAllocator<'a> {
+pub struct FrameAllocator {
     multiboot_start_frame: Frame,
     multiboot_end_frame: Frame,
     kernel_start_frame: Frame,
     kernel_end_frame: Frame,
-    current_memory_area : &'a MemoryMapEntry,
+    current_memory_area : ptr::Unique<MemoryMapEntry>,
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,    
-    empty_frame_list: util::Option<&'a EmptyFrameList<'a>>,
+    empty_frame_list: Option<ptr::Unique<FreeList<Frame>>>,
     frame_list_allocator : BumpAllocator
 }
 
-impl<'a> FrameAllocator<'a> {
+impl FrameAllocator {
 
     pub fn multiboot_start_frame(&self) -> Frame {
         self.multiboot_start_frame
@@ -48,8 +48,8 @@ impl<'a> FrameAllocator<'a> {
         self.kernel_end_frame
     }
 
-    pub fn current_memory_area(&self) -> &'a MemoryMapEntry {
-        self.current_memory_area
+    pub fn current_memory_area(&self) -> &MemoryMapEntry {
+        self.current_memory_area.pointer()
     }
 
     pub fn memory_areas(&self) -> AvailableMemorySectionsIterator {
@@ -58,17 +58,13 @@ impl<'a> FrameAllocator<'a> {
 
     pub fn last_frame_number(&self) -> Frame {
         self.last_frame_number
-    }    
-
-    pub fn empty_frame_list(&self) -> util::Option<&'a EmptyFrameList> {
-        self.empty_frame_list
     }
 
-    pub fn bump_allocator(&'a self) -> BumpAllocator {
+    pub fn bump_allocator(&self) -> BumpAllocator {
         self.frame_list_allocator.clone()
-    }  
-    
-    pub fn new_test(multiboot_header: &'a MultibootHeader, bump_allocator : BumpAllocator) -> FrameAllocator<'a> {
+    }
+        
+    pub fn new_test(multiboot_header: &MultibootHeader, bump_allocator : BumpAllocator) -> FrameAllocator {
         let elf_sections = multiboot_header.read_tag::<elf::ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
@@ -100,16 +96,16 @@ impl<'a> FrameAllocator<'a> {
             multiboot_end_frame: Frame::from_address(multiboot_header.end_address()),
             kernel_start_frame: Frame::from_address(kernel_start_address),
             kernel_end_frame: Frame::from_address(kernel_end_address),
-            current_memory_area : first_memory_area,
+            current_memory_area : ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: util::Option(None),
+            empty_frame_list: None,
             frame_list_allocator : bump_allocator
         }
     }
 
 
-    pub fn new(multiboot_header: &'a MultibootHeader) -> FrameAllocator<'a> {
+    pub fn new(multiboot_header: &MultibootHeader) -> FrameAllocator {
         let elf_sections = multiboot_header.read_tag::<elf::ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
@@ -137,18 +133,18 @@ impl<'a> FrameAllocator<'a> {
         let last_frame_number = FrameAllocator::frame_for_base_address(first_memory_area.base_address() as usize);        
 
         let empty_frame_list_size = FrameAllocator::get_empty_frame_list_size(&memory_areas);
-        let kernel_end_address = elf_sections.entries_end_address().unwrap() as usize;
-        let bump_allocator = BumpAllocator::from_address(kernel_end_address + 1, empty_frame_list_size);
+        let kernel_end_frame = Frame::from_address(elf_sections.entries_end_address().unwrap() as usize);
+        let bump_allocator = BumpAllocator::from_address(kernel_end_frame.next().address(), empty_frame_list_size);
 
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),
             multiboot_end_frame: Frame::from_address(multiboot_header.end_address()),
             kernel_start_frame: Frame::from_address(kernel_start_address),
-            kernel_end_frame: Frame::from_address(kernel_end_address),
-            current_memory_area : first_memory_area,
+            kernel_end_frame: kernel_end_frame,
+            current_memory_area : ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: util::Option(None),
+            empty_frame_list: None,
             frame_list_allocator : bump_allocator
         }
     }
@@ -157,34 +153,36 @@ impl<'a> FrameAllocator<'a> {
         let available_memory = memory_map.available_memory() as usize;
         let total_frames_count = available_memory / FRAME_SIZE;
 
-        total_frames_count * mem::size_of::<EmptyFrameList>()        
+        total_frames_count * mem::size_of::<FreeList<Frame>>()        
     }
 
     pub fn allocate(&mut self) -> Option<Frame> {
         
-        // check empty frame list first, if nothing perform bump allocation        
-        if let Some(empty_frame_list) = self.empty_frame_list.0 {
-            // pick first result from empty frame list
-            let (result, tail) = empty_frame_list.take(&mut self.frame_list_allocator);
+        // check empty frame list first, if nothing perform bump allocation
+        match self.empty_frame_list {
+            Some(li) => {
+                // pick first result from empty frame list
+                let (result, tail) = li.value().take(&mut self.frame_list_allocator);
 
-            self.empty_frame_list = util::Option(tail);
-            //self.frame_bit_map.set_in_use(result.number());
+                self.empty_frame_list = tail;
+                //self.frame_bit_map.set_in_use(result.number());
 
-            Some(result)
-        }
-        else {
-            match self.bump_allocate() {
-                Some(allocate_result) => {                    
-                    self.last_frame_number = allocate_result.next(); // next possible frame for bump allocator
-                    //self.frame_bit_map.set_in_use(allocate_result.number());
+                Some(result)
+            },
+            None => {
+                match self.bump_allocate() {
+                    Some(allocate_result) => {                    
+                        self.last_frame_number = allocate_result.next(); // next possible frame for bump allocator
+                        //self.frame_bit_map.set_in_use(allocate_result.number());
 
-                    Some(allocate_result)
+                        Some(allocate_result)
+                    },
+                    // if we can't allocate with bump and there is nothing in free frame stack
+                    // then we are out of memory
+                    None => None
                 }
-                // if we can't allocate with bump and there is nothing in free frame stack
-                // then we are out of memory
-                None => None
             }
-        }
+        }        
     }
 
     /*
@@ -192,11 +190,12 @@ impl<'a> FrameAllocator<'a> {
         Changes self.current_memory_area when moving to new memory area.
     */
     fn bump_allocate(&mut self) -> Option<Frame> {
-        let result = self.step_over_reserved_memory_if_needed();        
+        let possible_frame = self.last_frame_number;
+        let result = self.step_over_reserved_memory_if_needed(possible_frame);        
 
-        if result.end_address() > self.current_memory_area.end_address() as usize {  
+        if result.end_address() > self.current_memory_area.pointer().end_address() as usize {  
             if let Some(memory_area) = FrameAllocator::next_fitting_memory_area(self.memory_areas.clone(), result) {
-                self.current_memory_area = memory_area;
+                self.current_memory_area = ptr::Unique::new(memory_area);
 
                 let result = FrameAllocator::frame_for_base_address(memory_area.base_address() as usize);
                 Some(result)
@@ -224,19 +223,25 @@ impl<'a> FrameAllocator<'a> {
         }
     }
 
-    fn step_over_reserved_memory_if_needed(&self) -> Frame {
+    fn step_over_reserved_memory_if_needed(&self, frame : Frame) -> Frame {
         // dont touch multiboot data
-        if self.last_frame_number >= self.multiboot_start_frame &&
-           self.last_frame_number <= self.multiboot_end_frame {
-            self.multiboot_end_frame.next()
+        if frame >= self.multiboot_start_frame &&
+           frame <= self.multiboot_end_frame {
+            self.step_over_reserved_memory_if_needed(self.multiboot_end_frame.next()) // in case next will touch kernel code
         }
         // dont touch kernel code
-        else if self.last_frame_number >= self.kernel_start_frame &&
-                self.last_frame_number <= self.kernel_end_frame {
-            self.kernel_end_frame.next()
+        else if frame >= self.kernel_start_frame &&
+                frame <= self.kernel_end_frame {
+            self.step_over_reserved_memory_if_needed(self.kernel_end_frame.next()) // in case next will touch empty frame list
+        }
+        // dont touch empty frame list
+        else if frame >= Frame::from_address(self.frame_list_allocator.start_address()) &&
+                frame <= Frame::from_address(self.frame_list_allocator.end_address()) {
+            let possible_frame = Frame::from_address(self.frame_list_allocator.end_address()).next();
+            self.step_over_reserved_memory_if_needed(possible_frame) // in case next will touch heap data structure
         }
         else{
-            self.last_frame_number
+            frame            
         }
     }
 
@@ -257,16 +262,16 @@ impl<'a> FrameAllocator<'a> {
     pub fn deallocate(&mut self, frame : Frame) {
         //self.frame_bit_map.set_free(frame.number());
         
-        let new_empty_frame_list = self.empty_frame_list.0.map_or(
-            EmptyFrameList::new_tail(frame, &mut self.frame_list_allocator), 
-            |e| e.add(frame, &mut self.frame_list_allocator)
+        let new_list = self.empty_frame_list.map_or(
+            FreeList::new(frame, &mut self.frame_list_allocator),
+            |e| e.pointer().add(frame, &mut self.frame_list_allocator)            
         );
 
-        self.empty_frame_list = util::Option(Some(new_empty_frame_list));
+        self.empty_frame_list = Some(new_list);
     }
 }
 
-impl<'a> fmt::Display for FrameAllocator<'a> {    
+impl fmt::Display for FrameAllocator {    
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
                "multiboot_start_frame: {}, 
@@ -285,6 +290,6 @@ impl<'a> fmt::Display for FrameAllocator<'a> {
                self.memory_areas,
                self.last_frame_number,
                //self.frame_bit_map,
-               self.empty_frame_list)
+               "")
     }
 }

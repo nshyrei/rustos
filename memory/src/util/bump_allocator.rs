@@ -10,7 +10,7 @@ impl BumpAllocator {
         
     pub fn from_address(address: usize, size : usize) -> BumpAllocator {
         BumpAllocator { current_pointer: address, start_address : address, end_address : address + size - 1 }
-    }    
+    }
 
     pub fn current_pointer(&self) -> usize {
         self.current_pointer

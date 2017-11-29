@@ -1,5 +1,5 @@
-use memory::kernel::bump_allocator::BumpAllocator;
-use memory::kernel::empty_frame_list::{EmptyFrameList, EmptyFrameListIterator};
+use memory::util::bump_allocator::BumpAllocator;
+use memory::util::free_list::{FreeList, FreeListIterator};
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 
@@ -19,13 +19,13 @@ fn adding_elems_should_work_properly() {
     ];
     let test_values_len = test_values.len();
     let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 256);
-    let mut head = EmptyFrameList::new_tail(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let mut head = FreeList::new(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
     for i in 1..test_values_len {
-        head = head.add(test_values[i],&mut KERNEL_BASIC_HEAP_ALLOCATOR);
+        head = head.pointer().add(test_values[i],&mut KERNEL_BASIC_HEAP_ALLOCATOR);
     }
 
-    let it = EmptyFrameListIterator::new(head);
+    let it = FreeListIterator::new(head.pointer());
     let it_count = it.count();
 
     assert!(it_count == test_values_len,
@@ -33,7 +33,7 @@ fn adding_elems_should_work_properly() {
             test_values_len,
             it_count);
 
-    let mut iterator = EmptyFrameListIterator::new(head);
+    let mut iterator = FreeListIterator::new(head.pointer());
     let mut idx = test_values_len - 1;
     while let Some(e) = iterator.next() {
         assert!(e == test_values[idx],

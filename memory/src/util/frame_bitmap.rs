@@ -1,9 +1,9 @@
-use kernel::bump_allocator::BumpAllocator;
+use util::bump_allocator::BumpAllocator;
 use core::ptr;
 use core::fmt;
-use core::iter;
+use core::mem;
 
-const FRAME_BITMAP_ENTRY_SIZE: usize = 8; //number of bits in byte
+const bitmap_entry_size: usize = 8; //number of bits in byte
 
 pub struct FrameBitMap {    
     start_address : usize,
@@ -17,11 +17,11 @@ impl FrameBitMap {
                -> FrameBitMap {
         let frames_count = total_available_memory / frame_size;
 
-        let bitmap_size_help = frames_count % FRAME_BITMAP_ENTRY_SIZE;
+        let bitmap_size_help = frames_count % bitmap_entry_size;
         let bitmap_size = if bitmap_size_help > 0 {
-            (frames_count / FRAME_BITMAP_ENTRY_SIZE) + 1
+            (frames_count / bitmap_entry_size) + 1
         } else {
-            frames_count / FRAME_BITMAP_ENTRY_SIZE
+            frames_count / bitmap_entry_size
         };
 
         let address = unsafe { KERNEL_BASIC_HEAP_ALLOCATOR
@@ -41,7 +41,7 @@ impl FrameBitMap {
 
     //todo check for out of bounds
     fn index(&self, frame_number: usize) -> &'static mut FrameBitMapEntry {        
-        let index = frame_number / FRAME_BITMAP_ENTRY_SIZE;
+        let index = frame_number / bitmap_entry_size;
 
         unsafe { &mut (*((self.start_address + index) as *mut FrameBitMapEntry)) }
     }
@@ -81,12 +81,12 @@ impl FrameBitMapEntry {
     }
 
     fn index_in_byte_field(frame_number: usize) -> usize {
-        frame_number % FRAME_BITMAP_ENTRY_SIZE
+        frame_number % bitmap_entry_size
     }
 
     fn offset_count(frame_number: usize) -> usize {
         let index_in_byte_field = FrameBitMapEntry::index_in_byte_field(frame_number);
-        FRAME_BITMAP_ENTRY_SIZE - 1 - index_in_byte_field
+        bitmap_entry_size - 1 - index_in_byte_field
     }
 
     fn is_in_use(&self, frame_number: usize) -> bool {

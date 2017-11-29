@@ -10,12 +10,12 @@ extern crate display;
 extern crate memory;
 extern crate hardware;
 extern crate alloc;
-
+extern crate malloc;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
 use display::vga::writer::Writer;
-use memory::kernel::bump_allocator::BumpAllocator;
+use memory::util::bump_allocator::BumpAllocator;
 use memory::frame::frame_allocator::*;
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
@@ -34,8 +34,8 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
-        let mut frame_allocator = FrameAllocator::new(multiboot_header);                        
-        
+        let mut frame_allocator = FrameAllocator::new(multiboot_header);        
+
         let before_remap = paging::p4_table().total_mapped_memory();
         paging::remap_kernel(&mut frame_allocator, multiboot_header);
         let after_remap = paging::p4_table().total_mapped_memory();
