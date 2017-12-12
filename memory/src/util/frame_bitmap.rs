@@ -1,21 +1,23 @@
-use util::bump_allocator::BumpAllocator;
+use allocator::MemoryAllocator;
 use core::ptr;
 use core::fmt;
 use core::mem;
 
 const bitmap_entry_size: usize = 8; //number of bits in byte
 
-pub struct FrameBitMap {    
+pub struct FrameBitMap {
     start_address : usize,
     size : usize
 }
 
 impl FrameBitMap {
-    pub fn new(total_available_memory: usize,
-               frame_size: usize,
-               KERNEL_BASIC_HEAP_ALLOCATOR : &mut BumpAllocator)
-               -> FrameBitMap {
-        let frames_count = total_available_memory / frame_size;
+
+    pub fn new_from_available_memory(available_memory: usize, frame_size: usize, memory_allocator : &mut MemoryAllocator) -> FrameBitMap {
+        let frames_count = available_memory / frame_size;
+        FrameBitMap::new(frames_count, memory_allocator)
+    }
+
+    pub fn new(frames_count : usize, memory_allocator : &mut MemoryAllocator) -> FrameBitMap {
 
         let bitmap_size_help = frames_count % bitmap_entry_size;
         let bitmap_size = if bitmap_size_help > 0 {
@@ -24,9 +26,9 @@ impl FrameBitMap {
             frames_count / bitmap_entry_size
         };
 
-        let address = unsafe { KERNEL_BASIC_HEAP_ALLOCATOR
+        let address = memory_allocator
             .allocate(bitmap_size)
-            .expect("Failed to allocate memory for frame bitmap") };
+            .expect("Failed to allocate memory for frame bitmap");
             
         for i in address..(address + bitmap_size) {
             unsafe { ptr::write(i as *mut FrameBitMapEntry, FrameBitMapEntry::new()) }
@@ -36,7 +38,6 @@ impl FrameBitMap {
             start_address : address,
             size : bitmap_size
         }
-        //unsafe { &(*(address as *const FrameBitMap)) }
     }
 
     //todo check for out of bounds
@@ -65,8 +66,7 @@ impl FrameBitMap {
 
 impl fmt::Display for FrameBitMap {    
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "")
+        write!(f,"")
     }    
 }
 

@@ -14,8 +14,8 @@ impl FreeListAllocator {
         }
     }
 
-    pub fn allocate(&mut self) -> usize {
-1
+    pub fn allocate(&mut self, size : usize) -> Option<usize> {
+        None
     }
 
     pub fn free(&mut self, pointer : usize) {

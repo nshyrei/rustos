@@ -21,6 +21,7 @@ use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 use memory::paging;
 use memory::paging::page_table;
+use memory::paging::page_table::P4Table;
 use hardware::x86_64::registers;
 
 use core::fmt::Write;
@@ -36,8 +37,9 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let mut frame_allocator = FrameAllocator::new(multiboot_header);        
 
+        let mut temp_p4_table = paging::p4_table();
         let before_remap = paging::p4_table().total_mapped_memory();
-        paging::remap_kernel(&mut frame_allocator, multiboot_header);
+        paging::remap_kernel(&mut temp_p4_table, &mut frame_allocator, multiboot_header);
         let after_remap = paging::p4_table().total_mapped_memory();
 
         let p4_table = paging::p4_table();
@@ -101,7 +103,7 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
     
 }
 
-unsafe fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator, vga_writer : &mut Writer) {    
+unsafe fn paging_map_should_properly_map_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator, vga_writer : &mut Writer) {    
 
     let virtual_frame = Frame::from_address(0x400000000000);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
@@ -123,7 +125,7 @@ unsafe fn paging_map_should_properly_map_pages(page_table : &mut paging::P4Table
     page_table.unmap_page(virtual_frame);
 }
 
-unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator) {
+unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
         
@@ -137,7 +139,7 @@ unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mu
     page_table.unmap_page(virtual_frame);
 }
 
-unsafe fn paging_translate_address_should_properly_translate_virtual_address(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator) {
+unsafe fn paging_translate_address_should_properly_translate_virtual_address(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
         
@@ -158,7 +160,7 @@ unsafe fn paging_translate_address_should_properly_translate_virtual_address(pag
     page_table.unmap_page(virtual_frame);
 }
 
-unsafe fn paging_unmap_should_properly_unmap_elements(page_table : &mut paging::P4Table, frame_alloc : &mut FrameAllocator) {
+unsafe fn paging_unmap_should_properly_unmap_elements(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
     let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
 

@@ -2,6 +2,7 @@
 #![feature(const_fn)]
 #![feature(unique)]
 #![feature(nonzero)]
+#![feature(step_by)]
 #![no_std]
 
 #[macro_use]
@@ -13,7 +14,7 @@ extern crate hardware;
 pub mod util;
 pub mod frame;
 pub mod paging;
-pub mod heap;
+pub mod allocator;
 
 /*
     kernel memory layout. All physical addressess are equal to virtual here.

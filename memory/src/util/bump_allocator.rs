@@ -1,3 +1,4 @@
+use allocator::MemoryAllocator;
 
 #[derive(Clone)]
 pub struct BumpAllocator {
@@ -22,9 +23,11 @@ impl BumpAllocator {
 
     pub fn end_address(&self) -> usize {
         self.end_address
-    }
+    }    
+}
 
-    pub fn allocate(&mut self, size: usize) -> Option<usize> {        
+impl MemoryAllocator for BumpAllocator {
+    fn allocate(&mut self, size: usize) -> Option<usize> {        
         if self.current_pointer + size > self.end_address {
             None
         }
@@ -36,7 +39,7 @@ impl BumpAllocator {
         }        
     }
 
-    pub fn free(&mut self, size: usize) {
+    fn free(&mut self, size: usize) {
         self.current_pointer -= size;
     }
 }

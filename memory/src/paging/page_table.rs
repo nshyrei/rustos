@@ -10,6 +10,8 @@ pub type VirtualFrame = Frame;
 
 pub type PhysicalFrame = Frame;
 
+pub type P4Table = PageTable<P4>;
+
 pub trait TableLevel {
     
     fn index_shift() -> usize;
@@ -159,7 +161,8 @@ impl<Level> PageTable<Level> where  Level : HasNextTableLevel {
 
 impl PageTable<P4> {
 
-    /// Returns overrall number of mapped memory in bytes    
+    /// Returns overrall number of mapped memory in bytes  
+    // todo: rewrite  
     pub fn total_mapped_memory(&self) -> usize {
         let mut result : usize = 0;
 
@@ -305,6 +308,64 @@ impl PageTable<P4> {
     pub fn set_recursive_entry(&mut self, frame : Frame, flags : EntryFlags) {
         self[511].set_frame(frame, flags);
     }
+
+    /// Performs action on another p4 table through this p4 table.
+    /// # Arguments
+    /// * `current_p4_table` - current p4 table
+    /// * `other_p4_table_address` - frame that holds another p4 table
+    /// * `frame_allocator` - frame allocator
+    /// * `action` - function to be executed on another p4 table
+    /// # Why unsafe
+    ///  Uses tlb::flush() which is unsafe
+    pub unsafe fn modify_other_table<F>(&mut self, other_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, action : F)
+    where F : FnOnce(&mut P4Table, &mut FrameAllocator)
+    {
+        let current_p4_table = self;
+        // 1# map some unused virtual address to point to current p4
+        // 2# map some unused virtual address to point to temp p4
+        // 3# set recursive entry in temp p4
+        // 4# unmap temp p4
+        // 5# set recursive entry in current p4 to point to temp p4, this will
+        //    make magical address '0xfffffffffffff000' point to temp table (thus not breaking any logic associated with that address)
+        // 6# perform modifications on temp4
+        // 7# read current p4 through temp virtual address defined in #1
+        // 8# restore recursive entry in current p4
+        // 9# unmap temp virtual address    
+
+        // map some unused virtual address to point to current p4
+        // this will be used to restore recursive mapping in current p4
+        // after all the operations with temp p4 
+        let p4_physical_address = Frame::from_address(current_p4_table[511].address());   // p4's 511 entry points to self
+        let current_p4_save_address = Frame::from_address(0x400000000000);    // some temp address to save current p4
+        current_p4_table.map_page(current_p4_save_address, p4_physical_address, PRESENT | WRITABLE, frame_allocator);
+        
+        // map temp table
+        let temp_p4_virtual_address = Frame::from_address(0x200000000000);   // some temp address to map temp p4
+        current_p4_table.map_page(temp_p4_virtual_address, other_p4_table_address, PRESENT, frame_allocator);
+        
+        // set recursive entry in temp table
+        let temp_p4 = &mut (*(0x200000000000 as *mut P4Table));
+        temp_p4.clear_all_entries();
+        temp_p4.set_recursive_entry(other_p4_table_address, PRESENT | WRITABLE);
+        
+        current_p4_table.unmap_page(temp_p4_virtual_address);
+
+        // set recursive entry of the current p4 to point to temp table
+        current_p4_table.set_recursive_entry(other_p4_table_address, PRESENT | WRITABLE);
+        
+        tlb::flush_all();
+
+        action(current_p4_table, frame_allocator); // reading recursive entry again will move us to the temp table
+        
+        // read old p4 and place recursive entry back
+        let saved_p4 = &mut (*(current_p4_save_address.address() as *mut P4Table));
+        saved_p4.set_recursive_entry(p4_physical_address, PRESENT | WRITABLE);
+        
+        // unmap recursive address saving
+        current_p4_table.unmap_page(current_p4_save_address);
+
+        tlb::flush_all();
+    }    
 }
 
 #[repr(C)]

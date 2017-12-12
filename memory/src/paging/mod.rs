@@ -1,6 +1,6 @@
 pub mod page_table;
 
-use paging::page_table::{P4, PageTable};
+use paging::page_table::{P4, PageTable, P4Table};
 use frame::frame_allocator::*;
 use frame::Frame;
 use multiboot::multiboot_header::MultibootHeader;
@@ -8,70 +8,12 @@ use multiboot::multiboot_header::tags::elf;
 use hardware::x86_64::tlb;
 use hardware::x86_64::registers;
 
-pub type P4Table = PageTable<P4>;
+
 
 /// Returns current p4 table.
 pub fn p4_table() -> &'static mut P4Table {
     const P4_TABLE_ADDRESS : usize = 0xfffffffffffff000;  // recursive mapping to P4s 0 entry
     unsafe { &mut (*(P4_TABLE_ADDRESS as *mut P4Table)) } // reading predefined recursive address is safe
-}
-
-/// Performs action on another p4 table through current p4 table.
-/// # Arguments
-/// * `current_p4_table` - current p4 table
-/// * `other_p4_table_address` - frame that holds another p4 table
-/// * `frame_allocator` - frame allocator
-/// * `action` - function to be executed on another p4 table
-/// # Why unsafe
-///  Uses tlb::flush() which is unsafe
-pub unsafe fn modify_other_table<F>(other_p4_table_address : Frame, frame_allocator : &mut FrameAllocator, action : F)
-where F : FnOnce(&mut P4Table, &mut FrameAllocator)
-{
-    let current_p4_table = p4_table();
-    // 1# map some unused virtual address to point to current p4
-    // 2# map some unused virtual address to point to temp p4
-    // 3# set recursive entry in temp p4
-    // 4# unmap temp p4
-    // 5# set recursive entry in current p4 to point to temp p4, this will
-    //    make magical address '0xfffffffffffff000' point to temp table (thus not breaking any logic associated with that address)
-    // 6# perform modifications on temp4
-    // 7# read current p4 through temp virtual address defined in #1
-    // 8# restore recursive entry in current p4
-    // 9# unmap temp virtual address    
-
-    // map some unused virtual address to point to current p4
-    // this will be used to restore recursive mapping in current p4
-    // after all the operations with temp p4 
-    let p4_physical_address = Frame::from_address(current_p4_table[511].address());   // p4's 511 entry points to self
-    let current_p4_save_address = Frame::from_address(0x400000000000);    // some temp address to save current p4
-    current_p4_table.map_page(current_p4_save_address, p4_physical_address, page_table::PRESENT | page_table::WRITABLE, frame_allocator);
-    
-    // map temp table
-    let temp_p4_virtual_address = Frame::from_address(0x200000000000);   // some temp address to map temp p4
-    current_p4_table.map_page(temp_p4_virtual_address, other_p4_table_address, page_table::PRESENT, frame_allocator);
-    
-    // set recursive entry in temp table
-    let temp_p4 = &mut (*(0x200000000000 as *mut P4Table));
-    temp_p4.clear_all_entries();
-    temp_p4.set_recursive_entry(other_p4_table_address, page_table::PRESENT | page_table::WRITABLE);
-    
-    current_p4_table.unmap_page(temp_p4_virtual_address);
-
-    // set recursive entry of the current p4 to point to temp table
-    current_p4_table.set_recursive_entry(other_p4_table_address, page_table::PRESENT | page_table::WRITABLE);
-    
-    tlb::flush_all();
-
-    action(current_p4_table, frame_allocator); // reading recursive entry again will move us to the temp table
-    
-    // read old p4 and place recursive entry back
-    let saved_p4 = &mut (*(current_p4_save_address.address() as *mut P4Table));
-    saved_p4.set_recursive_entry(p4_physical_address, page_table::PRESENT | page_table::WRITABLE);
-    
-    // unmap recursive address saving
-    current_p4_table.unmap_page(current_p4_save_address);
-
-    tlb::flush_all();
 }
 
 /// Switches paging tables
@@ -92,10 +34,10 @@ pub unsafe fn switch_tables(new_p4_table_address : usize) {
 /// * `multiboot_header` - multiboot header
 /// # Why unsafe
 ///  Uses modify_other_table(), page_table.unmap() which are unsafe
-pub unsafe fn remap_kernel(frame_allocator : &mut FrameAllocator, multiboot_header : &MultibootHeader){     
+pub unsafe fn remap_kernel(current_p4_table : &mut P4Table, frame_allocator : &mut FrameAllocator, multiboot_header : &MultibootHeader){     
     let new_p4_table_address = frame_allocator.allocate().expect("No frames for kernel remap");
 
-    modify_other_table(new_p4_table_address, 
+    current_p4_table.modify_other_table(new_p4_table_address, 
         frame_allocator, 
         |p4, frame_alloc| remap_kernel0(p4, frame_alloc, multiboot_header));
 

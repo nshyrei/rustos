@@ -1,12 +1,12 @@
 use core::iter;
 use core::mem;
 use core::fmt;
-use util::bump_allocator::BumpAllocator;
+use allocator::MemoryAllocator;
 use stdx::ptr;
 use core;
 
 /*
-    Linked list of free memory blocks
+    A classic cons list
 */
 
 #[repr(C)]
@@ -16,8 +16,8 @@ pub struct FreeList<T> {
     next: Option<ptr::Unique<FreeList<T>>>,
 }
 
-impl<T> FreeList<T> where T : Clone {
-    pub fn new(value: T, memory_allocator : &mut BumpAllocator) -> ptr::Unique<FreeList<T>> {
+impl<T> FreeList<T> {
+    pub fn new(value: T, memory_allocator : &mut MemoryAllocator) -> ptr::Unique<FreeList<T>> {
         unsafe {            
             let address = memory_allocator
                 .allocate(mem::size_of::<FreeList<T>>())
@@ -32,15 +32,15 @@ impl<T> FreeList<T> where T : Clone {
         }
     }
 
-    pub fn value(&self) -> T {
-        self.value.clone()
+    pub fn value_ref(&self) -> ptr::Unique<T> {
+        ptr::Unique::new(&self.value)
     }
 
     pub fn next(&self) -> Option<ptr::Unique<FreeList<T>>> {
         self.next
     }
 
-    pub fn add(&self, value: T, memory_allocator : &mut BumpAllocator) -> ptr::Unique<FreeList<T>> {
+    pub fn add(&self, value: T, memory_allocator : &mut MemoryAllocator) -> ptr::Unique<FreeList<T>> {
         unsafe {
             let address = memory_allocator
                 .allocate(mem::size_of::<FreeList<T>>())
@@ -53,10 +53,16 @@ impl<T> FreeList<T> where T : Clone {
             core::ptr::write(address as *mut FreeList<T>, result);
             ptr::Unique::new(&*(address as *const FreeList<T>))
         }
+    }    
+}
+
+impl <T> FreeList<T> where T : Clone {
+    pub fn value_copy(&self) -> T {
+        self.value.clone()
     }
 
-    pub fn take(self, memory_allocator : &mut BumpAllocator) -> (T, Option<ptr::Unique<FreeList<T>>>) {
-        let result = (self.value.clone(), self.next);
+    pub fn take(self, memory_allocator : &mut MemoryAllocator) -> (T, Option<ptr::Unique<FreeList<T>>>) {
+        let result = (self.value_copy(), self.next);
         memory_allocator.free(mem::size_of::<FreeList<T>>());
         result
     }
@@ -64,30 +70,29 @@ impl<T> FreeList<T> where T : Clone {
 
 impl<T> fmt::Display for FreeList<T> where T : Clone {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "")
+        write!(f,"")
     }
 }
 
-pub struct FreeListIterator<T> where T : Clone {
+pub struct FreeListIterator<T> {
     current: Option<ptr::Unique<FreeList<T>>>,
 }
 
-impl<T> FreeListIterator<T> where T : Clone {
+impl<T> FreeListIterator<T> {
     pub fn new(head: &FreeList<T>) -> FreeListIterator<T> {
         FreeListIterator { current: Some(ptr::Unique::new(head)) }
     }
 }
 
-impl<T> iter::Iterator for FreeListIterator<T> where T : Clone {
-    type Item = T;
+impl<T> iter::Iterator for FreeListIterator<T> {
+    type Item = ptr::Unique<T>;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<ptr::Unique<T>> {
         match self.current {
             Some(li) => {
                 let current = li.pointer();
                 self.current = current.next();
-                Some(current.value())
+                Some(current.value_ref())
             }
             None => None,
         }

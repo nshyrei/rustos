@@ -111,29 +111,17 @@ impl FrameAllocator {
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
             .expect("Cannot create frame allocator without multiboot memory map");        
 
-        if elf_sections.entries().count() == 0 {
-            panic!("No elf sections, cannot determine kernel code address");
-        }
-
-        if memory_areas.entries().count() == 0 {
-            panic!("No available memory areas for frame allocator");
-        }
-                
-        let kernel_start_section = elf_sections.entries()
-            .min_by_key(|e| e.start_address())
-            .unwrap();
-        let kernel_end_section = elf_sections.entries()
-            .max_by_key(|e| e.end_address())
-            .unwrap();
-
-        let kernel_start_address = kernel_start_section.start_address() as usize;
-        let kernel_end_address = kernel_end_section.end_address() as usize;        
+        assert!(elf_sections.entries().count() != 0, "No elf sections, cannot determine kernel code address");        
+        assert!(memory_areas.entries().count() != 0, "No available memory areas for frame allocator");
+        
+        let kernel_start_address = elf_sections.entries_start_address().unwrap() as usize;
+        let kernel_end_address = elf_sections.entries_end_address().unwrap() as usize;        
             
         let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::from_address(0)).expect("Cannot determine first memory area");            
         let last_frame_number = FrameAllocator::frame_for_base_address(first_memory_area.base_address() as usize);        
 
         let empty_frame_list_size = FrameAllocator::get_empty_frame_list_size(&memory_areas);
-        let kernel_end_frame = Frame::from_address(elf_sections.entries_end_address().unwrap() as usize);
+        let kernel_end_frame = Frame::from_address(kernel_end_address);        
         let bump_allocator = BumpAllocator::from_address(kernel_end_frame.next().address(), empty_frame_list_size);
 
         FrameAllocator {
@@ -238,7 +226,7 @@ impl FrameAllocator {
         else if frame >= Frame::from_address(self.frame_list_allocator.start_address()) &&
                 frame <= Frame::from_address(self.frame_list_allocator.end_address()) {
             let possible_frame = Frame::from_address(self.frame_list_allocator.end_address()).next();
-            self.step_over_reserved_memory_if_needed(possible_frame) // in case next will touch heap data structure
+            self.step_over_reserved_memory_if_needed(possible_frame) // in case next() will touch heap data structure
         }
         else{
             frame            
@@ -259,12 +247,10 @@ impl FrameAllocator {
             .min_by_key(|e| e.base_address())            
     }
 
-    pub fn deallocate(&mut self, frame : Frame) {
-        //self.frame_bit_map.set_free(frame.number());
-        
+    pub fn deallocate(&mut self, frame : Frame) {        
         let new_list = self.empty_frame_list.map_or(
             FreeList::new(frame, &mut self.frame_list_allocator),
-            |e| e.pointer().add(frame, &mut self.frame_list_allocator)            
+            |e| e.pointer().add(frame, &mut self.frame_list_allocator)          
         );
 
         self.empty_frame_list = Some(new_list);
