@@ -7,7 +7,8 @@ const bitmap_entry_size: usize = 8; //number of bits in byte
 
 pub struct FrameBitMap {
     start_address : usize,
-    size : usize
+    size : usize,
+    frames_count : usize
 }
 
 impl FrameBitMap {
@@ -36,12 +37,13 @@ impl FrameBitMap {
 
         FrameBitMap {
             start_address : address,
-            size : bitmap_size
+            size : bitmap_size,
+            frames_count : frames_count
         }
     }
 
     //todo check for out of bounds
-    fn index(&self, frame_number: usize) -> &'static mut FrameBitMapEntry {        
+    fn index(&self, frame_number: usize) -> &mut FrameBitMapEntry {        
         let index = frame_number / bitmap_entry_size;
 
         unsafe { &mut (*((self.start_address + index) as *mut FrameBitMapEntry)) }
@@ -51,16 +53,20 @@ impl FrameBitMap {
         self.index(frame_number).is_in_use(frame_number)
     }
 
-    pub fn set_in_use(&self, frame_number: usize) {
+    pub fn set_in_use(&mut self, frame_number: usize) {
         self.index(frame_number).set_in_use(frame_number)
     }
 
-    pub fn set_free(&self, frame_number: usize) {
+    pub fn set_free(&mut self, frame_number: usize) {
         self.index(frame_number).set_free(frame_number)
     }
 
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    pub fn frames_count(&self) -> usize {
+        self.frames_count
     }
 }
 
