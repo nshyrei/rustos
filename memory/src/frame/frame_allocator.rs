@@ -5,6 +5,8 @@ use frame::Frame;
 use frame::FRAME_SIZE;
 use util::free_list::FreeList;
 use util::bump_allocator::BumpAllocator;
+use util::buddy_allocator::BuddyAllocator;
+use allocator::MemoryAllocator;
 use stdx::ptr;
 use core::fmt;
 use core::mem;
@@ -27,7 +29,9 @@ pub struct FrameAllocator {
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,    
     empty_frame_list: Option<ptr::Unique<FreeList<Frame>>>,
-    frame_list_allocator : BumpAllocator
+    frame_list_allocator : BumpAllocator,
+    buddy_allocator_start_frame : Frame,
+    buddy_allocator_end_frame : Frame
 }
 
 impl FrameAllocator {
@@ -63,7 +67,19 @@ impl FrameAllocator {
     pub fn bump_allocator(&self) -> BumpAllocator {
         self.frame_list_allocator.clone()
     }
+
+    pub fn end_address(&self) -> usize {
+        self.frame_list_allocator.end_address()
+    }
         
+    pub fn set_buddy_start(&mut self, f : Frame){
+        self.buddy_allocator_start_frame = f
+    }
+
+    pub fn set_buddy_end(&mut self, f : Frame){
+        self.buddy_allocator_end_frame = f
+    }
+
     pub fn new_test(multiboot_header: &MultibootHeader, bump_allocator : BumpAllocator) -> FrameAllocator {
         let elf_sections = multiboot_header.read_tag::<elf::ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
@@ -100,7 +116,9 @@ impl FrameAllocator {
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
             empty_frame_list: None,
-            frame_list_allocator : bump_allocator
+            frame_list_allocator : bump_allocator,
+            buddy_allocator_start_frame : Frame::from_address(0),
+            buddy_allocator_end_frame : Frame::from_address(0)
         }
     }
 
@@ -133,7 +151,9 @@ impl FrameAllocator {
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
             empty_frame_list: None,
-            frame_list_allocator : bump_allocator
+            frame_list_allocator : bump_allocator,
+            buddy_allocator_start_frame : Frame::from_address(0),
+            buddy_allocator_end_frame : Frame::from_address(0)
         }
     }
     
@@ -228,8 +248,15 @@ impl FrameAllocator {
             let possible_frame = Frame::from_address(self.frame_list_allocator.end_address()).next();
             self.step_over_reserved_memory_if_needed(possible_frame) // in case next() will touch heap data structure
         }
+        // don't touch heap
+        else if frame >= self.buddy_allocator_start_frame &&
+                frame <= self.buddy_allocator_end_frame
+        {
+            let possible_frame = self.buddy_allocator_end_frame.next();
+            self.step_over_reserved_memory_if_needed(possible_frame) // in case next() will touch heap data structure
+        }
         else{
-            frame            
+            frame
         }
     }
 

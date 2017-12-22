@@ -37,9 +37,32 @@ impl Frame {
         address % FRAME_SIZE == 0
     }
 
+    pub fn aligned_up(address : usize) -> Frame {
+        if Frame::is_frame_aligned(address) {
+            Frame::from_address(address)
+        }
+        else {
+            Frame::from_address(address).next()
+        }
+    }
+
+    pub fn aligned_down(address : usize) -> Frame {
+        if Frame::is_frame_aligned(address) {
+            Frame::from_address(address)
+        }
+        else {
+            Frame::from_address(address).previous()
+        }
+    }
+
     // creates new frame with number = self.number + 1
     fn next(&self) -> Frame {
         Frame { number : self.number + 1}
+    }
+
+    fn previous(&self) -> Frame {
+        let number = if self.number == 0 { 0 } else { self.number - 1 };
+        Frame { number : number }
     }
 
     pub fn zero_frame(frame : &Frame) {

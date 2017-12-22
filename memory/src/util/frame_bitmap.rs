@@ -1,4 +1,5 @@
 use allocator::MemoryAllocator;
+use util::bump_allocator::BumpAllocator;
 use core::ptr;
 use core::fmt;
 use core::mem;
@@ -13,12 +14,22 @@ pub struct FrameBitMap {
 
 impl FrameBitMap {
 
-    pub fn new_from_available_memory(available_memory: usize, frame_size: usize, memory_allocator : &mut MemoryAllocator) -> FrameBitMap {
+    pub fn new_from_available_memory(available_memory: usize, frame_size: usize, memory_allocator : &mut BumpAllocator) -> FrameBitMap {
         let frames_count = available_memory / frame_size;
         FrameBitMap::new(frames_count, memory_allocator)
     }
 
-    pub fn new(frames_count : usize, memory_allocator : &mut MemoryAllocator) -> FrameBitMap {
+    pub fn cell_size(frames_count : usize) -> usize {
+        let bitmap_size_help = frames_count % bitmap_entry_size;
+
+        if bitmap_size_help > 0 {
+            (frames_count / bitmap_entry_size) + 1
+        } else {
+            frames_count / bitmap_entry_size
+        }
+    }
+
+    pub fn new(frames_count : usize, memory_allocator : &mut BumpAllocator) -> FrameBitMap {
 
         let bitmap_size_help = frames_count % bitmap_entry_size;
         let bitmap_size = if bitmap_size_help > 0 {

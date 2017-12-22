@@ -2,38 +2,54 @@ use allocator::MemoryAllocator;
 use util::array::Array;
 use util::frame_bitmap::FrameBitMap;
 use util::free_list::FreeList;
+use util::bump_allocator::BumpAllocator;
 use frame::{Frame, FRAME_SIZE};
 use stdx::ptr::Unique;
 use stdx::iterator::IteratorExt;
+use stdx::math;
 use core::iter;
-use core::f64;
+use core::mem;
 
-pub struct BuddyAllocator<'a> {
+pub struct BuddyAllocator {
     allocation_sizes : Array<usize>,
     buddy_bitmaps    : Array<FrameBitMap>,
     buddy_free_lists : Array<Option<Unique<FreeList<Frame>>>>,
     total_memory     : usize,
-    memory_allocator : &'a mut MemoryAllocator
+    start_address : usize,
+    end_address : usize,
+    memory_allocator : BumpAllocator
 }
 
-impl<'a> BuddyAllocator<'a> {
-    pub unsafe fn new(start_address : usize, total_memory : usize, memory_allocator : &mut MemoryAllocator) -> BuddyAllocator {        
+impl BuddyAllocator {
+    pub unsafe fn new(start_address : usize, end_address : usize) -> BuddyAllocator {        
+        let memory_size = end_address - start_address;
+        let total_memory = Frame::aligned_down(memory_size).end_address();
         let total_frames_count = total_memory / FRAME_SIZE;        
-        let total_buddy_levels = BuddyAllocator::log(FRAME_SIZE, total_memory);
-        let allocation_sizes      = Array::<usize>::new_fill_default(total_frames_count, memory_allocator);
-        let mut buddy_bitmaps     = Array::<FrameBitMap>::new(total_buddy_levels, memory_allocator);
-        let mut buddy_free_lists  = Array::<Option<Unique<FreeList<Frame>>>>::new_fill_default(total_buddy_levels, memory_allocator);
-
-
-        let mut buddy_level_sizes_it = BuddyLevelSizesIterator::new(total_frames_count);
-        let mut i = 0;
-        while let Some(buddy_bitmap_size) = buddy_level_sizes_it.next() {            
-            buddy_bitmaps[i] = FrameBitMap::new(buddy_bitmap_size, memory_allocator);
-            i += 1;
-        };
+        let total_buddy_levels = BuddyAllocator::buddy_index(total_memory);
         
+        let sizes_array_size = mem::size_of::<usize>() * total_frames_count;
+        let (buddy_bitmaps_size, buddy_free_lists_size) = BuddyAllocator::buddy_bitmaps_size(total_buddy_levels, total_frames_count);
+        
+        let aux_data_structures_size = sizes_array_size + buddy_bitmaps_size + buddy_free_lists_size; 
 
-        let top_level_free_list = FreeList::new(Frame::from_address(start_address), memory_allocator);
+        let mut memory_allocator  = BumpAllocator::from_address(start_address, aux_data_structures_size);
+        
+        let allocation_sizes      = Array::<usize>::new(total_buddy_levels, &mut memory_allocator);
+        let mut buddy_bitmaps     = Array::<FrameBitMap>::new(total_buddy_levels, &mut memory_allocator);
+        let mut buddy_free_lists  = Array::<Option<Unique<FreeList<Frame>>>>::new(total_buddy_levels, &mut memory_allocator);
+
+        buddy_free_lists.fill_default();
+
+        let mut block_size = FRAME_SIZE;
+        for i in 0 .. total_buddy_levels {
+            let block_count = total_memory / block_size;
+            let bitmap = FrameBitMap::new(block_count, &mut memory_allocator);
+
+            buddy_bitmaps.update(i, bitmap);
+            block_size *= 2;
+        }        
+
+        let top_level_free_list = FreeList::new(Frame::from_address(start_address), &mut memory_allocator);
         buddy_free_lists[total_buddy_levels - 1] = Some(top_level_free_list);
 
         BuddyAllocator {
@@ -41,25 +57,28 @@ impl<'a> BuddyAllocator<'a> {
             buddy_bitmaps    : buddy_bitmaps,
             buddy_free_lists : buddy_free_lists,
             total_memory     : total_memory,
+            start_address : start_address,
+            end_address : end_address,
             memory_allocator : memory_allocator
         }
     }
 
-    fn log(base : usize, x : usize) -> usize {        
-        let mut result = 0;
-        let mut pow = base;
+    fn buddy_bitmaps_size(buddy_levels_count : usize, total_memory : usize) -> (usize, usize) {
 
-        while pow <= x {
-            pow *= 2;
-            result += 1;
+        let mut bitmaps_size = 0;
+        let mut free_list_size = 0;
+        let mut block_size = FRAME_SIZE;
+
+        for _ in 0 .. buddy_levels_count {
+            let block_count = total_memory / block_size;
+            let free_list_cell_size = mem::size_of::<FreeList<Frame>>() + mem::size_of::<Option<Unique<FreeList<Frame>>>>() + mem::size_of::<Unique<FreeList<Frame>>>();
+            bitmaps_size += FrameBitMap::cell_size(block_count) + mem::size_of::<FrameBitMap>();
+            free_list_size += block_count * free_list_cell_size;
+            block_size *= 2;
         }
-
-        result
-    }
-
-    fn log2(x : usize) -> usize {
-        BuddyAllocator::log(2, x)
-    }
+        
+        (bitmaps_size, free_list_size)
+    } 
 
     fn round_to_nearest_block_size(allocation_size : usize) -> usize {
         if allocation_size % FRAME_SIZE != 0 {
@@ -71,7 +90,7 @@ impl<'a> BuddyAllocator<'a> {
     }
 
     fn buddy_index(block_size : usize) -> usize {
-        12 - BuddyAllocator::log2(block_size) // 2 ^ 12 = 4096 = FRAME_SIZE
+        math::log2(block_size) - 12 // 2 ^ 12 = 4096 = FRAME_SIZE
     }
 
     fn search_free_list_up(&self, buddy_index : usize) -> Option<(usize, Unique<FreeList<Frame>>)> {
@@ -96,32 +115,26 @@ impl<'a> BuddyAllocator<'a> {
         (2 as usize).pow((12 + buddy_index + 1) as u32)
     }
 
-    fn split(&mut self, allocation_size : usize, buddy_index : usize) {
+    fn split(&mut self, allocation_size : usize, buddy_index : usize) -> Frame {
         let mut i = buddy_index;
         let mut possible_allocation = self.buddy_free_lists.elem_val(i).unwrap().pointer().value_copy();
         
-        while i > 0 && allocation_size != possible_allocation.number() {
-            let mut splitted = self.split_buddy(i);
-            let (left, right) = splitted;
-            
+        while i > 0 && allocation_size != possible_allocation.number() {            
+            let (left, right) = self.split_buddy(i);
+            let buddy_lower_level = self.buddy_free_lists.elem_val(i - 1);            
+            let new_buddy_lower_level = buddy_lower_level.map(|e| e.pointer().add(right, &mut self.memory_allocator))
+                                                         .or_else(|| Some(FreeList::new(right, &mut self.memory_allocator)));
 
-            let buddy_lower_level = self.buddy_free_lists.elem_val(i - 1);
-            let mut new_buddy_lower_level = buddy_lower_level.map(|e| e.pointer().add(right, self.memory_allocator));
-            let mut r = self.buddy_free_lists.elem_ref_mut(1);
-             r = &mut new_buddy_lower_level;
-
+            self.buddy_free_lists.update(i - 1, new_buddy_lower_level);             
 
             let buddy_bitmap = self.buddy_bitmaps.elem_ref_mut(i - 1);
             buddy_bitmap.set_in_use(possible_allocation.number());
             
             possible_allocation = left;
-
-            
-            
-
-            
+            i -= 1;
         }
-                
+
+        possible_allocation                
     }
 
     fn split_buddy(&self, buddy_index : usize) -> (Frame, Frame) {
@@ -136,7 +149,7 @@ impl<'a> BuddyAllocator<'a> {
     }
 }
 
-impl<'a> MemoryAllocator for BuddyAllocator<'a> {
+impl MemoryAllocator for BuddyAllocator {
 
     fn allocate(&mut self, size : usize) -> Option<usize> {
 
@@ -161,16 +174,24 @@ impl<'a> MemoryAllocator for BuddyAllocator<'a> {
             }
             else {
                 let (buddy_index, free_list_value) = free_list_opt.unwrap();
+                let result = self.split(allocation_size_rounded, buddy_index);
 
 
-
-                Some(1)
-            }            
-        }            
+                Some(result.number())
+            }
+        }        
     }
 
     fn free(&mut self, pointer : usize) {
 
+    }
+
+    fn start_address(&self) -> usize {
+        self.start_address
+    }
+
+    fn end_address(&self) -> usize {
+        self.end_address
     }
 }
 
@@ -204,24 +225,4 @@ impl iter::Iterator for BuddyLevelSizesIterator {
     }
 }
 
-/*
-fn total_buddy_levels(total_frame_count : usize) -> usize {
-        let mut result = 0;
-        let mut i = 1;
-
-        while i * i < total_frame_count {
-            if total_frame_count % i == 0 {
-                result += 2;
-            }
-
-            i += 1;
-        }
-
-        if i * i == total_frame_count {
-            result + 1
-        }
-        else {
-            result
-        }
-    }
-*/
+impl IteratorExt for BuddyLevelSizesIterator {}

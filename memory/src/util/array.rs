@@ -4,6 +4,7 @@ use core::mem;
 use core::ops;
 use core::iter;
 use util::free_list_allocator::FreeListAllocator;
+use util::bump_allocator::BumpAllocator;
 use allocator::MemoryAllocator;
 use stdx::ptr;
 use stdx::iterator;
@@ -15,12 +16,12 @@ pub struct Array<T> {
     phantom : marker::PhantomData<T>
 }
 
-impl <T> Array<T> {    
-     pub unsafe fn new(length : usize, memory_allocator : &mut MemoryAllocator) -> Array<T> {
+impl <T> Array<T> {
+     pub unsafe fn new(length : usize, memory_allocator : &mut BumpAllocator) -> Array<T> {
 
         let size = mem::size_of::<T>() * length;
         let start_address = memory_allocator.allocate(size).expect("No memory for Array");
-                
+
         // zero vector memory
         for i in 0..size {
             let address = start_address + i;
@@ -32,6 +33,38 @@ impl <T> Array<T> {
             start_address : start_address,            
             phantom : marker::PhantomData
         }
+    }
+
+    pub unsafe fn new_with_size(length : usize, size : usize, memory_allocator : &mut BumpAllocator) ->  Array<T> {        
+        let start_address = memory_allocator.allocate(size).expect("No memory for Array");
+
+        // zero vector memory
+        for i in 0..size {
+            let address = start_address + i;
+            core::ptr::write_unaligned(address as *mut u8, 0);
+        }
+
+        Array { 
+            length : length,
+            start_address : start_address,            
+            phantom : marker::PhantomData
+        }
+    }
+
+    pub fn empty(memory_allocator : &mut BumpAllocator) -> Array<T> {
+        let start_address = memory_allocator.allocate(0).expect("No memory for Array");
+        Array { 
+            length : 0,
+            start_address : start_address,
+            phantom : marker::PhantomData
+        }
+    }
+
+    pub fn add(&mut self, value : T, memory_allocator : &mut BumpAllocator) {
+        let cell = memory_allocator.allocate(mem::size_of::<T>()).expect("No memory for Array element");
+
+        unsafe { core::ptr::write_unaligned(cell as *mut T, value); }
+        self.length += 1;
     }
 
     pub fn size(&self) -> usize {
@@ -51,7 +84,7 @@ impl <T> Array<T> {
         unsafe { core::ptr::write_unaligned(entry_address as *mut T, value);         }
     }    
 
-    pub fn free(self, memory_allocator : &mut MemoryAllocator) {
+    pub fn free(self, memory_allocator : &mut BumpAllocator) {
         memory_allocator.free(self.start_address)
     }
 
@@ -84,22 +117,15 @@ impl <T> Array<T> where T : Copy {
 }
 
 impl <T> Array<T> where T : Default {
-    pub unsafe fn new_fill_default(length : usize, memory_allocator : &mut MemoryAllocator) -> Array<T> {
+    pub unsafe fn fill_default(&self) {
 
         let elem_size = mem::size_of::<T>();
-        let total_size = elem_size * length;
-        let start_address = memory_allocator.allocate(total_size).expect("No memory for Array");
+        let total_size = elem_size * self.length;        
                 
         // fill default values
         for i in (0..total_size).step_by(elem_size) {
-            let address = start_address + i;
+            let address = self.start_address + i;
             core::ptr::write_unaligned(address as *mut T, T::default());
-        }
-
-        Array { 
-            length : length,
-            start_address : start_address,            
-            phantom : marker::PhantomData
         }
     }
 }

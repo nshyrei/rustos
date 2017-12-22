@@ -22,6 +22,8 @@ use memory::frame::FRAME_SIZE;
 use memory::paging;
 use memory::paging::page_table;
 use memory::paging::page_table::P4Table;
+use memory::util::buddy_allocator::BuddyAllocator;
+use memory::allocator::MemoryAllocator;
 use hardware::x86_64::registers;
 
 use core::fmt::Write;
@@ -29,18 +31,20 @@ use core::fmt::Write;
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
-    unsafe {        
+    unsafe {
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
         let mut vga_writer = Writer::new();
 
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
-        let mut frame_allocator = FrameAllocator::new(multiboot_header);        
+        let mut frame_allocator = FrameAllocator::new(multiboot_header);
+        let mut buddy_allocator = BuddyAllocator::new(frame_allocator.end_address() + 1, 104857600);
+        frame_allocator.set_buddy_start(Frame::from_address(buddy_allocator.start_address()));
+        frame_allocator.set_buddy_end(Frame::from_address(buddy_allocator.end_address()));
+        buddy_allocator.allocate(1024);
 
-        let mut temp_p4_table = paging::p4_table();
-        let before_remap = paging::p4_table().total_mapped_memory();
-        paging::remap_kernel(&mut temp_p4_table, &mut frame_allocator, multiboot_header);
-        let after_remap = paging::p4_table().total_mapped_memory();
+        let mut temp_p4_table = paging::p4_table();        
+        paging::remap_kernel(&mut temp_p4_table, &mut frame_allocator, multiboot_header);        
 
         let p4_table = paging::p4_table();
         
@@ -53,7 +57,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_map_should_properly_map_pages(p4_table, &mut frame_allocator, &mut vga_writer);
         paging_translate_page_should_properly_translate_pages(p4_table, &mut frame_allocator);
         paging_unmap_should_properly_unmap_elements(p4_table, &mut frame_allocator);
-        paging_translate_address_should_properly_translate_virtual_address(p4_table, &mut frame_allocator);
+        paging_translate_address_should_properly_translate_virtual_address(p4_table, &mut frame_allocator);        
     }
     loop {}
 }
