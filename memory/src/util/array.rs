@@ -7,7 +7,7 @@ use util::free_list_allocator::FreeListAllocator;
 use util::bump_allocator::BumpAllocator;
 use allocator::MemoryAllocator;
 use stdx::ptr;
-use stdx::iterator;
+use stdx::iterator::IteratorExt;
 
 
 pub struct Array<T> {
@@ -30,41 +30,9 @@ impl <T> Array<T> {
 
         Array { 
             length : length,
-            start_address : start_address,            
-            phantom : marker::PhantomData
-        }
-    }
-
-    pub unsafe fn new_with_size(length : usize, size : usize, memory_allocator : &mut BumpAllocator) ->  Array<T> {        
-        let start_address = memory_allocator.allocate(size).expect("No memory for Array");
-
-        // zero vector memory
-        for i in 0..size {
-            let address = start_address + i;
-            core::ptr::write_unaligned(address as *mut u8, 0);
-        }
-
-        Array { 
-            length : length,
-            start_address : start_address,            
-            phantom : marker::PhantomData
-        }
-    }
-
-    pub fn empty(memory_allocator : &mut BumpAllocator) -> Array<T> {
-        let start_address = memory_allocator.allocate(0).expect("No memory for Array");
-        Array { 
-            length : 0,
             start_address : start_address,
             phantom : marker::PhantomData
         }
-    }
-
-    pub fn add(&mut self, value : T, memory_allocator : &mut BumpAllocator) {
-        let cell = memory_allocator.allocate(mem::size_of::<T>()).expect("No memory for Array element");
-
-        unsafe { core::ptr::write_unaligned(cell as *mut T, value); }
-        self.length += 1;
     }
 
     pub fn size(&self) -> usize {
@@ -81,7 +49,7 @@ impl <T> Array<T> {
         let start_address = self.start_address;
         let entry_address = start_address + (mem::size_of::<T>() * index); 
         
-        unsafe { core::ptr::write_unaligned(entry_address as *mut T, value);         }
+        unsafe { core::ptr::write_unaligned(entry_address as *mut T, value); }
     }    
 
     pub fn free(self, memory_allocator : &mut BumpAllocator) {
@@ -92,25 +60,22 @@ impl <T> Array<T> {
         ArrayIterator::new(self)
     }
 
-    pub fn elem_ref(&self, index : usize) -> &T {
-        let start_address = &self as *const _ as usize;
-        let entry_address = start_address + (mem::size_of::<T>() * index); 
+    pub fn elem_ref(&self, index : usize) -> &T {        
+        let entry_address = self.start_address + (mem::size_of::<T>() * index); 
         
         unsafe { &*(entry_address as *const T) }
     }
 
-    pub fn elem_ref_mut(&self, index : usize) -> &mut T {
-        let start_address = &self as *const _ as usize;
-        let entry_address = start_address + (mem::size_of::<T>() * index);
+    pub fn elem_ref_mut(&self, index : usize) -> &mut T {        
+        let entry_address = self.start_address + (mem::size_of::<T>() * index);
         
         unsafe { &mut *(entry_address as *mut T) }
     }    
 }
 
 impl <T> Array<T> where T : Copy {
-    pub fn elem_val(&self, index : usize) -> T {
-        let start_address = &self as *const _ as usize;
-        let entry_address = start_address + (mem::size_of::<T>() * index); 
+    pub fn value(&self, index : usize) -> T {        
+        let entry_address = self.start_address + (mem::size_of::<T>() * index); 
         
         unsafe { *(entry_address as *mut T) }
     }
@@ -120,10 +85,8 @@ impl <T> Array<T> where T : Default {
     pub unsafe fn fill_default(&self) {
 
         let elem_size = mem::size_of::<T>();
-        let total_size = elem_size * self.length;        
-                
         // fill default values
-        for i in (0..total_size).step_by(elem_size) {
+        for i in (0..self.size()).step_by(elem_size) {
             let address = self.start_address + i;
             core::ptr::write_unaligned(address as *mut T, T::default());
         }
@@ -158,7 +121,7 @@ pub struct ArrayIterator<'a, T> where T : 'a {
 
 impl<'a, T> ArrayIterator <'a, T> {
 
-    fn new(array : &'a Array<T>) -> Self {
+    pub fn new(array : &'a Array<T>) -> Self {
         ArrayIterator {
             i  : 0,
             array : array,            
@@ -181,3 +144,6 @@ impl<'a, T> iter::Iterator for ArrayIterator<'a, T> {
         }
     }
 }
+
+
+impl <'a, T> IteratorExt for ArrayIterator <'a, T> {}

@@ -14,6 +14,15 @@ pub trait IteratorExt : iter::Iterator + marker::Sized {
         self.fold(A::zero(), |base, e| base.append(f(e)))
     }
     
+    /// Counts the number of elements for which the predicate holds
+    /// # Arguments
+    /// * `p` - the predicate
+    fn count_by<F>(self, p : F) -> u32
+    where F : Fn(Self::Item) -> bool,          
+    {
+        self.fold(0, |base, e| if p(e) { base + 1 } else { base })
+    }
+
     fn closest(self, item : Self::Item) -> Option<Self::Item>
     where Self::Item : Ord
     {

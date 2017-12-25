@@ -59,16 +59,22 @@ impl<T> FreeList<T> {
             core::ptr::write(address as *mut FreeList<T>, result);
             ptr::Unique::new(&*(address as *const FreeList<T>))
         }
-    }    
+    }
+
+    pub fn free(self, memory_allocator : &mut BumpAllocator) -> Option<ptr::Unique<FreeList<T>>> {
+        memory_allocator.free(mem::size_of::<FreeList<T>>());
+            
+        self.next
+    }
 }
 
-impl <T> FreeList<T> where T : Clone {
-    pub fn value_copy(&self) -> T {
-        self.value.clone()
+impl <T> FreeList<T> where T : Copy {
+    pub fn value(&self) -> T {
+        self.value
     }
 
     pub fn take(self, memory_allocator : &mut BumpAllocator) -> (T, Option<ptr::Unique<FreeList<T>>>) {
-        let result = (self.value_copy(), self.next);
+        let result = (self.value(), self.next);
         memory_allocator.free(mem::size_of::<FreeList<T>>());
         result
     }
