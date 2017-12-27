@@ -3,10 +3,11 @@ use core::marker;
 use core::mem;
 use core::ops;
 use core::iter;
+use core::ptr;
 use util::free_list_allocator::FreeListAllocator;
 use util::bump_allocator::BumpAllocator;
 use allocator::MemoryAllocator;
-use stdx::ptr;
+use stdx::smart_ptr;
 use stdx::iterator::IteratorExt;
 
 
@@ -17,7 +18,7 @@ pub struct Array<T> {
 }
 
 impl <T> Array<T> {
-     pub unsafe fn new(length : usize, memory_allocator : &mut BumpAllocator) -> Array<T> {
+     pub fn new(length : usize, memory_allocator : &mut BumpAllocator) -> Array<T> {
 
         let size = mem::size_of::<T>() * length;
         let start_address = memory_allocator.allocate(size).expect("No memory for Array");
@@ -25,7 +26,7 @@ impl <T> Array<T> {
         // zero vector memory
         for i in 0..size {
             let address = start_address + i;
-            core::ptr::write_unaligned(address as *mut u8, 0);
+            unsafe { ptr::write_unaligned(address as *mut u8, 0); }
         }
 
         Array { 
@@ -49,7 +50,7 @@ impl <T> Array<T> {
         let start_address = self.start_address;
         let entry_address = start_address + (mem::size_of::<T>() * index); 
         
-        unsafe { core::ptr::write_unaligned(entry_address as *mut T, value); }
+        unsafe { ptr::write_unaligned(entry_address as *mut T, value); }
     }    
 
     pub fn free(self, memory_allocator : &mut BumpAllocator) {
@@ -88,7 +89,7 @@ impl <T> Array<T> where T : Default {
         // fill default values
         for i in (0..self.size()).step_by(elem_size) {
             let address = self.start_address + i;
-            core::ptr::write_unaligned(address as *mut T, T::default());
+            ptr::write_unaligned(address as *mut T, T::default());
         }
     }
 }
@@ -130,9 +131,9 @@ impl<'a, T> ArrayIterator <'a, T> {
 }
 
 impl<'a, T> iter::Iterator for ArrayIterator<'a, T> {
-    type Item = ptr::Unique<T>;
+    type Item = smart_ptr::Unique<T>;
 
-    fn next(&mut self) -> Option<ptr::Unique<T>> {
+    fn next(&mut self) -> Option<smart_ptr::Unique<T>> {
         if self.i >= self.array.length() {
             None
         }
@@ -140,7 +141,7 @@ impl<'a, T> iter::Iterator for ArrayIterator<'a, T> {
             let result = self.array.elem_ref(self.i);
             self.i += 1;
 
-            Some(ptr::Unique::new(result))
+            Some(smart_ptr::Unique::new(result))
         }
     }
 }

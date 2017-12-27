@@ -59,6 +59,10 @@ impl Frame {
         }
     }
 
+    pub fn number_for_address(address : usize) -> usize {
+        address / FRAME_SIZE
+    }
+
     pub fn aligned_up(address : usize) -> Frame {
         if Frame::is_frame_aligned(address) {
             Frame::from_address(address)

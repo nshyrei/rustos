@@ -1,9 +1,12 @@
 use core::iter;
 use core::mem;
 use core::fmt;
+use core::ptr;
 use allocator::MemoryAllocator;
 use util::bump_allocator::BumpAllocator;
-use stdx::ptr;
+use stdx::smart_ptr;
+use util::Box;
+use util::SharedBox;
 use core;
 
 /*
@@ -11,57 +14,45 @@ use core;
 */
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+//#[derive(Copy, Clone)]
 pub struct FreeList<T> {
     value: T,
-    next: Option<ptr::Unique<FreeList<T>>>,
+    next: Option<SharedBox<FreeList<T>>>,
 }
 
 impl<T> FreeList<T> {
 
     pub fn size() -> usize {
-        mem::size_of::<T>() + mem::size_of::<Option<ptr::Unique<FreeList<T>>>>()    
+        mem::size_of::<T>() + mem::size_of::<Option<SharedBox<FreeList<T>>>>()    
     }
 
-    pub fn new(value: T, memory_allocator : &mut BumpAllocator) -> ptr::Unique<FreeList<T>> {
-        unsafe {            
-            let address = memory_allocator
-                .allocate(mem::size_of::<FreeList<T>>())
-                .expect("Failed to allocate memory for FreeList node");
-            let result = FreeList {
+    pub fn new(value: T, memory_allocator : &mut BumpAllocator) -> SharedBox<FreeList<T>> {
+        let result = FreeList {
                 value: value,
                 next: None,
-            };
+        };
 
-            core::ptr::write_unaligned(address as *mut FreeList<T>, result);
-            ptr::Unique::new(&*(address as *const FreeList<T>))
-        }
+        SharedBox::new(result, memory_allocator)
     }
 
-    pub fn value_ref(&self) -> ptr::Unique<T> {
-        ptr::Unique::new(&self.value)
+    pub fn value_ref(&self) -> &T {
+        &self.value
     }
 
-    pub fn next(&self) -> Option<ptr::Unique<FreeList<T>>> {
+    pub fn next(&self) -> Option<SharedBox<FreeList<T>>> {
         self.next
     }
 
-    pub fn add(&self, value: T, memory_allocator : &mut BumpAllocator) -> ptr::Unique<FreeList<T>> {
-        unsafe {
-            let address = memory_allocator
-                .allocate(mem::size_of::<FreeList<T>>())
-                .expect("Failed to allocate memory for FreeList node");
-            let result = FreeList {
-                value: value,
-                next: Some(ptr::Unique::new(self)),
-            };
+    pub fn add(&self, value: T, memory_allocator : &mut BumpAllocator) -> SharedBox<FreeList<T>> {
+        let result = FreeList {
+                value : value,
+                next  : Some(SharedBox::from_pointer(self)),
+        };
 
-            core::ptr::write(address as *mut FreeList<T>, result);
-            ptr::Unique::new(&*(address as *const FreeList<T>))
-        }
+        SharedBox::new(result, memory_allocator)        
     }
 
-    pub fn free(self, memory_allocator : &mut BumpAllocator) -> Option<ptr::Unique<FreeList<T>>> {
+    pub fn free(self, memory_allocator : &mut BumpAllocator) -> Option<SharedBox<FreeList<T>>> {
         memory_allocator.free(mem::size_of::<FreeList<T>>());
             
         self.next
@@ -73,7 +64,7 @@ impl <T> FreeList<T> where T : Copy {
         self.value
     }
 
-    pub fn take(self, memory_allocator : &mut BumpAllocator) -> (T, Option<ptr::Unique<FreeList<T>>>) {
+    pub fn take(self, memory_allocator : &mut BumpAllocator) -> (T, Option<SharedBox<FreeList<T>>>) {
         let result = (self.value(), self.next);
         memory_allocator.free(mem::size_of::<FreeList<T>>());
         result
@@ -86,20 +77,21 @@ impl<T> fmt::Display for FreeList<T> where T : Clone {
     }
 }
 
+/*
 pub struct FreeListIterator<T> {
-    current: Option<ptr::Unique<FreeList<T>>>,
+    current: Option<Box<FreeList<T>>>,
 }
 
 impl<T> FreeListIterator<T> {
-    pub fn new(head: &FreeList<T>) -> FreeListIterator<T> {
-        FreeListIterator { current: Some(ptr::Unique::new(head)) }
+    pub fn new(head: Box<FreeList<T>>) -> FreeListIterator<T> {
+        FreeListIterator { current: Some(head) }
     }
 }
 
 impl<T> iter::Iterator for FreeListIterator<T> {
-    type Item = ptr::Unique<T>;
+    type Item = Box<T>;
 
-    fn next(&mut self) -> Option<ptr::Unique<T>> {
+    fn next(&mut self) -> Option<Box<T>> {
         match self.current {
             Some(li) => {
                 let current = li.pointer();
@@ -110,3 +102,4 @@ impl<T> iter::Iterator for FreeListIterator<T> {
         }
     }
 }
+*/

@@ -1,4 +1,4 @@
-use stdx::ptr;
+use stdx::smart_ptr;
 use core::mem;
 use core::ptr::write_unaligned;
 

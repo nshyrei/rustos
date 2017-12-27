@@ -7,7 +7,9 @@ use util::free_list::FreeList;
 use util::bump_allocator::BumpAllocator;
 use util::buddy_allocator::BuddyAllocator;
 use allocator::MemoryAllocator;
-use stdx::ptr;
+use stdx::smart_ptr;
+use util::Box;
+use util::SharedBox;
 use core::fmt;
 use core::mem;
 
@@ -25,10 +27,10 @@ pub struct FrameAllocator {
     multiboot_end_frame: Frame,
     kernel_start_frame: Frame,
     kernel_end_frame: Frame,
-    current_memory_area : ptr::Unique<MemoryMapEntry>,
+    current_memory_area : smart_ptr::Unique<MemoryMapEntry>,
     memory_areas: AvailableMemorySectionsIterator,
-    last_frame_number: Frame,    
-    empty_frame_list: Option<ptr::Unique<FreeList<Frame>>>,
+    last_frame_number: Frame,
+    empty_frame_list: Option<SharedBox<FreeList<Frame>>>,
     frame_list_allocator : BumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
@@ -112,7 +114,7 @@ impl FrameAllocator {
             multiboot_end_frame: Frame::from_address(multiboot_header.end_address()),
             kernel_start_frame: Frame::from_address(kernel_start_address),
             kernel_end_frame: Frame::from_address(kernel_end_address),
-            current_memory_area : ptr::Unique::new(first_memory_area),
+            current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
             empty_frame_list: None,
@@ -147,7 +149,7 @@ impl FrameAllocator {
             multiboot_end_frame: Frame::from_address(multiboot_header.end_address()),
             kernel_start_frame: Frame::from_address(kernel_start_address),
             kernel_end_frame: kernel_end_frame,
-            current_memory_area : ptr::Unique::new(first_memory_area),
+            current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
             empty_frame_list: None,
@@ -170,9 +172,10 @@ impl FrameAllocator {
         match self.empty_frame_list {
             Some(li) => {
                 // pick first result from empty frame list
-                let (result, tail) = li.value().take(&mut self.frame_list_allocator);
+                let (result, tail) = (li.pointer().value(), li.pointer().next());
 
                 self.empty_frame_list = tail;
+                li.free(&mut self.frame_list_allocator);
                 //self.frame_bit_map.set_in_use(result.number());
 
                 Some(result)
@@ -203,7 +206,7 @@ impl FrameAllocator {
 
         if result.end_address() > self.current_memory_area.pointer().end_address() as usize {  
             if let Some(memory_area) = FrameAllocator::next_fitting_memory_area(self.memory_areas.clone(), result) {
-                self.current_memory_area = ptr::Unique::new(memory_area);
+                self.current_memory_area = smart_ptr::Unique::new(memory_area);
 
                 let result = FrameAllocator::frame_for_base_address(memory_area.base_address() as usize);
                 Some(result)
