@@ -3,7 +3,7 @@ use multiboot::multiboot_header::tags::memory_map::*;
 use multiboot::multiboot_header::tags::elf;
 use frame::Frame;
 use frame::FRAME_SIZE;
-use util::free_list::FreeList;
+use util::free_list::LinkedList;
 use util::bump_allocator::BumpAllocator;
 use util::buddy_allocator::BuddyAllocator;
 use allocator::MemoryAllocator;
@@ -30,7 +30,7 @@ pub struct FrameAllocator {
     current_memory_area : smart_ptr::Unique<MemoryMapEntry>,
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,
-    empty_frame_list: Option<SharedBox<FreeList<Frame>>>,
+    empty_frame_list: SharedBox<LinkedList<Frame>>,
     frame_list_allocator : BumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
@@ -82,7 +82,11 @@ impl FrameAllocator {
         self.buddy_allocator_end_frame = f
     }
 
-    pub fn new_test(multiboot_header: &MultibootHeader, bump_allocator : BumpAllocator) -> FrameAllocator {
+    fn empty_frame_list(&self) -> &SharedBox<LinkedList<Frame>> {
+        &self.empty_frame_list
+    }
+
+    pub fn new_test(multiboot_header: &MultibootHeader, bump_allocator1 : BumpAllocator) -> FrameAllocator {
         let elf_sections = multiboot_header.read_tag::<elf::ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
@@ -108,7 +112,8 @@ impl FrameAllocator {
             
         let first_memory_area = FrameAllocator::next_fitting_memory_area(memory_areas.entries(), Frame::from_address(0)).expect("Cannot determine first memory area");            
         let last_frame_number = FrameAllocator::frame_for_base_address(first_memory_area.base_address() as usize);        
-        
+        let mut bump_allocator = bump_allocator1;
+
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),
             multiboot_end_frame: Frame::from_address(multiboot_header.end_address()),
@@ -117,7 +122,7 @@ impl FrameAllocator {
             current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: None,
+            empty_frame_list: SharedBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -142,7 +147,7 @@ impl FrameAllocator {
 
         let empty_frame_list_size = FrameAllocator::get_empty_frame_list_size(&memory_areas);
         let kernel_end_frame = Frame::from_address(kernel_end_address);        
-        let bump_allocator = BumpAllocator::from_address(kernel_end_frame.next().address(), empty_frame_list_size);
+        let mut bump_allocator = BumpAllocator::from_address(kernel_end_frame.next().address(), empty_frame_list_size);
 
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),
@@ -152,7 +157,7 @@ impl FrameAllocator {
             current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: None,
+            empty_frame_list: SharedBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -163,24 +168,22 @@ impl FrameAllocator {
         let available_memory = memory_map.available_memory() as usize;
         let total_frames_count = available_memory / FRAME_SIZE;
 
-        total_frames_count * mem::size_of::<FreeList<Frame>>()        
+        total_frames_count * mem::size_of::<LinkedList<Frame>>()
     }
 
     pub fn allocate(&mut self) -> Option<Frame> {
-        
+                        
         // check empty frame list first, if nothing perform bump allocation
-        match self.empty_frame_list {
-            Some(li) => {
-                // pick first result from empty frame list
-                let (result, tail) = (li.pointer().value(), li.pointer().next());
-
-                self.empty_frame_list = tail;
-                li.free(&mut self.frame_list_allocator);
-                //self.frame_bit_map.set_in_use(result.number());
-
-                Some(result)
+        match *self.empty_frame_list {
+            LinkedList::Cell { value, prev } => {
+                
+                // pick first result from empty frame list                
+                self.empty_frame_list = prev;
+                prev.free(&mut self.frame_list_allocator);
+                
+                Some(value)
             },
-            None => {
+            _ => {
                 match self.bump_allocate() {
                     Some(allocate_result) => {                    
                         self.last_frame_number = allocate_result.next(); // next possible frame for bump allocator
@@ -277,13 +280,15 @@ impl FrameAllocator {
             .min_by_key(|e| e.base_address())            
     }
 
-    pub fn deallocate(&mut self, frame : Frame) {        
+    pub fn deallocate(&mut self, frame : Frame) {   
+        /*     
         let new_list = self.empty_frame_list.map_or(
             FreeList::new(frame, &mut self.frame_list_allocator),
             |e| e.pointer().add(frame, &mut self.frame_list_allocator)          
         );
 
         self.empty_frame_list = Some(new_list);
+        */
     }
 }
 

@@ -30,13 +30,7 @@ impl <T> Box<T> {
 
     pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
         memory_allocator.free(self.pointer() as *const _ as usize)
-    }
-
-    fn from_pointer(pointer : &T) -> Self {
-        Box {
-            unique : smart_ptr::Unique::new(pointer)
-        }
-    }
+    }    
 
     pub fn pointer(&self) -> &T {
         self.unique.pointer()
@@ -87,6 +81,10 @@ impl <T> SharedBox<T> {
         }
     }
 
+    pub fn pointer_equal(&self, other : &SharedBox<T>) -> bool {
+        self.pointer() as *const T == other.pointer() as *const T
+    }
+
     fn from_pointer(pointer : &T) -> Self {
         SharedBox {
             unique : smart_ptr::Shared::new(pointer)
@@ -99,7 +97,11 @@ impl <T> SharedBox<T> {
 
     pub fn pointer_mut(&self) -> &mut T {
         self.unique.pointer_mut()
-    }    
+    }
+
+    pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
+        memory_allocator.free(self.pointer() as *const _ as usize)
+    }
 }
 
 impl<T> ops::Deref for SharedBox<T> {
