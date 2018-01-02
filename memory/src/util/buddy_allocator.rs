@@ -1,7 +1,7 @@
 use allocator::MemoryAllocator;
 use util::array::{Array, ArrayIterator};
 use util::frame_bitmap::FrameBitMap;
-use util::free_list::LinkedList;
+use util::linked_list::LinkedList;
 use util::bump_allocator::BumpAllocator;
 use frame::{Frame, FRAME_SIZE};
 use util::Box;

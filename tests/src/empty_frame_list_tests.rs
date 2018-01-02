@@ -1,5 +1,5 @@
 use memory::util::bump_allocator::BumpAllocator;
-use memory::util::free_list::{FreeList, FreeListIterator};
+use memory::util::linked_list::{LinkedList, LinkedListIterator};
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 
@@ -19,13 +19,13 @@ fn adding_elems_should_work_properly() {
     ];
     let test_values_len = test_values.len();
     let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 256);
-    let mut head = FreeList::new(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let mut head = LinkedList::new(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
     for i in 1..test_values_len {
         head = head.pointer().add(test_values[i],&mut KERNEL_BASIC_HEAP_ALLOCATOR);
     }
 
-    let it = FreeListIterator::new(head.pointer());
+    let it = LinkedListIterator::new(head);
     let it_count = it.count();
 
     assert!(it_count == test_values_len,
@@ -33,7 +33,7 @@ fn adding_elems_should_work_properly() {
             test_values_len,
             it_count);
 
-    let mut iterator = FreeListIterator::new(head.pointer());
+    let mut iterator = LinkedListIterator::new(head);
     let mut idx = test_values_len - 1;
     while let Some(e) = iterator.next() {
         assert!(e == test_values[idx],

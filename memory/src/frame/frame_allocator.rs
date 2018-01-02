@@ -3,7 +3,7 @@ use multiboot::multiboot_header::tags::memory_map::*;
 use multiboot::multiboot_header::tags::elf;
 use frame::Frame;
 use frame::FRAME_SIZE;
-use util::free_list::LinkedList;
+use util::linked_list::LinkedList;
 use util::bump_allocator::BumpAllocator;
 use util::buddy_allocator::BuddyAllocator;
 use allocator::MemoryAllocator;
