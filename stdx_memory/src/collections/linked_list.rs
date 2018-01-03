@@ -64,18 +64,22 @@ impl <T> LinkedList<T> where T : Copy {
             _ => None
         }
     }
-
-    // # Comment out reason : unused, but can be usefull in the future
-    /*
+        
     /// Returns copy of the cell data if `self` is cell then clears memory associated with that cell,
-    /// does nothing and returns None if `self` is LinkedList::Nil
-    /// otherwise returns None
-    pub fn take(self, memory_allocator : &mut BumpAllocator) -> Option<(T, SharedBox<LinkedList<T>>)> {
-        let result = (self.value(), self.next);
-        memory_allocator.free(mem::size_of::<LinkedList<T>>());
-        result
-    }
-    */
+    /// does nothing if `self` is LinkedList::Nil
+    /// # Arguments    
+    /// * `memory_allocator` - memory allocator
+    pub fn take<A>(&self, memory_allocator : &mut A) -> Option<(T, SharedBox<LinkedList<T>>)>
+    where A : MemoryAllocator {
+        match *self {
+            LinkedList::Cell { value, prev } => { 
+                let result = Some((value, prev));
+                memory_allocator.free(&self as *const _ as usize);
+                result        
+            },
+            _ => None
+        }        
+    }    
 }
 
 impl<T> fmt::Display for LinkedList<T> {

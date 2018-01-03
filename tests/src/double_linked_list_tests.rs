@@ -1,14 +1,24 @@
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
+use stdx_memory::MemoryAllocator;
 use stdx_memory::heap::SharedBox;
 use stdx_memory::collections::double_linked_list::{DoubleLinkedListCell, DoubleLinkedList};
 use memory::allocator::bump::BumpAllocator;
+use memory::allocator::free_list::FreeListAllocator;
 
 
 fn heap() -> BumpAllocator {
     let heap = [0;256];
-    let heap_addr = heap.as_ptr() as usize;        
+    let heap_addr = heap.as_ptr() as usize;
     BumpAllocator::from_address(heap_addr, heap.len())
+}
+
+macro_rules! heap_raw {
+    () => {{
+        let heap = [0;256];    
+
+        (heap.as_ptr() as usize, 256)
+    }}    
 }
 
 #[test]
@@ -94,8 +104,10 @@ pub fn is_end_should_return_true_for_end_cell() {
 }
 
 #[test]
-pub fn remove_should_properly_delete_start_element() {    
-    let mut bump_allocator = heap();
+pub fn remove_should_properly_delete_start_element() {  
+    use std::mem;  
+    let (heap_start, heap_size) = heap_raw!();
+    let mut bump_allocator = FreeListAllocator::from_address(heap_start, heap_size, mem::size_of::<DoubleLinkedListCell<u8>>());
 
     let mut start = DoubleLinkedListCell::new(10, &mut bump_allocator);
     let mut mid = start.add(20, &mut bump_allocator);
@@ -109,5 +121,26 @@ pub fn remove_should_properly_delete_start_element() {
 
     assert!(end.is_end(), 
         "DoubleLinkedList::remove() didn't properly removed start element. Element {} should be the end element but it wasn't",
+        end.value());    
+}
+
+#[test]
+pub fn remove_should_properly_delete_end_element() {  
+    use std::mem;  
+    let (heap_start, heap_size) = heap_raw!();
+    let mut bump_allocator = FreeListAllocator::from_address(heap_start, heap_size, mem::size_of::<DoubleLinkedListCell<u8>>());
+
+    let mut start = DoubleLinkedListCell::new(10, &mut bump_allocator);
+    let mut mid = start.add(20, &mut bump_allocator);
+    let mut end = mid.add(30, &mut bump_allocator);
+
+    end.remove(&mut bump_allocator);
+
+    assert!(start.is_start(), 
+        "DoubleLinkedList::remove() didn't properly removed end element. Element {} should be the start element but it wasn't",
+        start.value());
+
+    assert!(mid.is_end(), 
+        "DoubleLinkedList::remove() didn't properly removed end element. Element {} should be the end element but it wasn't",
         end.value());    
 }
