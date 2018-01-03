@@ -1,9 +1,8 @@
 use core::fmt;
 use core::iter;
 use core::marker;
-use allocator::MemoryAllocator;
-use util::bump_allocator::BumpAllocator;
-use util::SharedBox;
+use MemoryAllocator;
+use heap::SharedBox;
 
 /// Type that represents linked list of cells.
 #[repr(C)]
@@ -20,7 +19,7 @@ impl<T> LinkedList<T> {
     /// # Arguments
     /// * `value` - value to put into cell
     /// * `memory_allocator` - memory allocator
-    pub fn new(value: T, memory_allocator : &mut BumpAllocator) -> SharedBox<LinkedList<T>> {
+    pub fn new<A>(value: T, memory_allocator : &mut A) -> SharedBox<LinkedList<T>> where A : MemoryAllocator {
         let result = LinkedList::Cell {
                 value: value,
                 prev: SharedBox::new(LinkedList::Nil, memory_allocator),
@@ -33,7 +32,7 @@ impl<T> LinkedList<T> {
     /// # Arguments
     /// * `value` - value to put into cell
     /// * `memory_allocator` - memory allocator
-    pub fn add(&self, value: T, memory_allocator : &mut BumpAllocator) -> SharedBox<LinkedList<T>> {
+    pub fn add<A>(&self, value: T, memory_allocator : &mut A) -> SharedBox<LinkedList<T>> where A : MemoryAllocator {
         let result = LinkedList::Cell {
                 value : value,
                 prev  : SharedBox::from_pointer(self),
@@ -54,33 +53,6 @@ impl<T> LinkedList<T> {
             _ => false
         }
     }
-
-    // # Comment out reason : unused, but can be usefull in the future
-    /*
-    /// Returns reference to cell data if `self` is LinkedList::Cell, returns None if `self` is LinkedList::Nil
-    pub fn value_ref(&self) -> Option<&T> {
-        match *self {
-            LinkedList::Cell { ref value, .. } => Some(value),
-            _ => None
-        }
-    }
-
-    /// Returns mut reference to cell data if `self` is LinkedList::Cell, returns None if `self` is LinkedList::Nil
-    pub fn value_mut_ref(&mut self) -> Option<&mut T> {
-        match *self {
-            LinkedList::Cell { ref mut value, .. } => Some(value),
-            _ => None
-        }
-    }
-
-    /// Returns previous LinkedList if `self` is LinkedList::Cell, returns None if `self` is LinkedList::Nil    
-    pub fn prev(&self) -> Option<&SharedBox<LinkedList<T>>> {
-        match *self {
-            LinkedList::Cell { ref prev, .. } => Some(prev),
-            _ => None
-        }
-    }
-    */   
 }
 
 impl <T> LinkedList<T> where T : Copy {
@@ -136,7 +108,7 @@ impl<T> iter::Iterator for LinkedListIterator<T> where T : Copy {
                 Some(value)
                 
             },
-            _ => None            
+            _ => None
         }
     }
 }

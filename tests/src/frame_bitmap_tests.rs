@@ -1,5 +1,5 @@
 use memory::util::frame_bitmap::FrameBitMap;
-use memory::util::bump_allocator::BumpAllocator;
+use memory::allocator::bump::BumpAllocator;
 use std::mem;
 use std::u8;
 

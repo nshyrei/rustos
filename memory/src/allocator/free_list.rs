@@ -1,4 +1,4 @@
-use util::bump_allocator::BumpAllocator;
+use allocator::bump::BumpAllocator;
 
 pub struct FreeListAllocator {
     bump_allocator : BumpAllocator,
@@ -22,4 +22,3 @@ impl FreeListAllocator {
 
     }
 }
-

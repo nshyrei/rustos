@@ -1,5 +1,5 @@
-use allocator::MemoryAllocator;
-use util::bump_allocator::BumpAllocator;
+use allocator::bump::BumpAllocator;
+use stdx_memory::MemoryAllocator;
 use core::ptr;
 use core::fmt;
 use core::mem;

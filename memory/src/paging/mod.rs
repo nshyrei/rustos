@@ -7,7 +7,8 @@ use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::elf;
 use hardware::x86_64::tlb;
 use hardware::x86_64::registers;
-use allocator::MemoryAllocator;
+use stdx_memory::MemoryAllocator;
+
 
 
 

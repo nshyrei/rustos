@@ -1,14 +1,10 @@
-use core;
 use core::marker;
 use core::mem;
 use core::ops;
 use core::iter;
 use core::ptr;
-use util::free_list_allocator::FreeListAllocator;
-use util::bump_allocator::BumpAllocator;
-use allocator::MemoryAllocator;
-use stdx::smart_ptr;
-use stdx::iterator::IteratorExt;
+use MemoryAllocator;
+use smart_ptr;
 
 
 pub struct Array<T> {
@@ -18,7 +14,7 @@ pub struct Array<T> {
 }
 
 impl <T> Array<T> {
-     pub fn new(length : usize, memory_allocator : &mut BumpAllocator) -> Array<T> {
+     pub fn new<A>(length : usize, memory_allocator : &mut A) -> Array<T> where A : MemoryAllocator {
 
         let size = mem::size_of::<T>() * length;
         let start_address = memory_allocator.allocate(size).expect("No memory for Array");
@@ -53,7 +49,7 @@ impl <T> Array<T> {
         unsafe { ptr::write_unaligned(entry_address as *mut T, value); }
     }    
 
-    pub fn free(self, memory_allocator : &mut BumpAllocator) {
+    pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
         memory_allocator.free(self.start_address)
     }
 
@@ -147,4 +143,4 @@ impl<'a, T> iter::Iterator for ArrayIterator<'a, T> {
 }
 
 
-impl <'a, T> IteratorExt for ArrayIterator <'a, T> {}
+//impl <'a, T> IteratorExt for ArrayIterator <'a, T> {}

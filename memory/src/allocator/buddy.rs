@@ -1,16 +1,16 @@
-use allocator::MemoryAllocator;
-use util::array::{Array, ArrayIterator};
+use stdx_memory::MemoryAllocator;
+use stdx_memory::collections::array;
+use stdx_memory::collections::linked_list;
+use stdx_memory::heap::{Box, SharedBox};
 use util::frame_bitmap::FrameBitMap;
-use util::linked_list::LinkedList;
-use util::bump_allocator::BumpAllocator;
+use allocator::bump::BumpAllocator;
 use frame::{Frame, FRAME_SIZE};
-use util::Box;
-use util::SharedBox;
 use stdx::iterator::IteratorExt;
 use stdx::math;
 use core::iter;
 use core::mem;
 
+/*
 pub struct BuddyAllocator {
     allocation_sizes : Array<usize>,
     buddy_bitmaps    : Array<FrameBitMap>,
@@ -230,3 +230,4 @@ impl iter::Iterator for BuddyLevelSizesIterator {
 }
 
 impl IteratorExt for BuddyLevelSizesIterator {}
+*/

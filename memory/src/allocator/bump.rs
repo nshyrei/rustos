@@ -1,4 +1,4 @@
-use allocator::MemoryAllocator;
+use stdx_memory::MemoryAllocator;
 
 #[derive(Clone)]
 pub struct BumpAllocator {

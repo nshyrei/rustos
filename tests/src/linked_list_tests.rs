@@ -1,6 +1,6 @@
-use memory::util::bump_allocator::BumpAllocator;
-use memory::util::linked_list::{LinkedList, LinkedListIterator};
-use memory::util::SharedBox;
+use memory::allocator::bump::BumpAllocator;
+use stdx_memory::collections::linked_list::{LinkedList, LinkedListIterator};
+use stdx_memory::heap::SharedBox;
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 

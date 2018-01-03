@@ -10,6 +10,7 @@ extern crate bitflags;
 extern crate multiboot;
 extern crate stdx;
 extern crate hardware;
+extern crate stdx_memory;
 
 pub mod util;
 pub mod frame;

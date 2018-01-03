@@ -3,13 +3,11 @@ use multiboot::multiboot_header::tags::memory_map::*;
 use multiboot::multiboot_header::tags::elf;
 use frame::Frame;
 use frame::FRAME_SIZE;
-use util::linked_list::LinkedList;
-use util::bump_allocator::BumpAllocator;
-use util::buddy_allocator::BuddyAllocator;
-use allocator::MemoryAllocator;
+use stdx_memory::collections::linked_list::LinkedList;
+use allocator::bump::BumpAllocator;
+use stdx_memory::MemoryAllocator;
 use stdx::smart_ptr;
-use util::Box;
-use util::SharedBox;
+use stdx_memory::heap;
 use core::fmt;
 use core::mem;
 
@@ -30,7 +28,7 @@ pub struct FrameAllocator {
     current_memory_area : smart_ptr::Unique<MemoryMapEntry>,
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,
-    empty_frame_list: SharedBox<LinkedList<Frame>>,
+    empty_frame_list: heap::SharedBox<LinkedList<Frame>>,
     frame_list_allocator : BumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
@@ -82,7 +80,7 @@ impl FrameAllocator {
         self.buddy_allocator_end_frame = f
     }
 
-    fn empty_frame_list(&self) -> &SharedBox<LinkedList<Frame>> {
+    fn empty_frame_list(&self) -> &heap::SharedBox<LinkedList<Frame>> {
         &self.empty_frame_list
     }
 
@@ -122,7 +120,7 @@ impl FrameAllocator {
             current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: SharedBox::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::SharedBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -157,7 +155,7 @@ impl FrameAllocator {
             current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: SharedBox::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::SharedBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
