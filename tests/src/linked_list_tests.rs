@@ -137,13 +137,13 @@ fn adding_elems_should_work_properly() {
             it_count);
 
     let mut iterator = LinkedListIterator::new(head);
-    let mut idx = test_values_len - 1;
+    let mut idx = test_values_len;
     while let Some(e) = iterator.next() {
-        assert!(e == test_values[idx],
+        assert!(e == test_values[idx - 1],
                 "Test value elem and returned elem aren't equal. Test value = {}, returned value = {}",
-                test_values[idx],
+                test_values[idx - 1],
                 e);
 
-        idx = if idx <= 0 { 0 } else { idx - 1 }; // if idx = 0 it will throw underflow exception, because idx is usize
+        idx -= 1;
     }
 }

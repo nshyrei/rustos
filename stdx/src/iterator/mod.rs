@@ -1,7 +1,36 @@
 use core::iter;
 use core::marker;
-use core::cmp::Ordering;
 use monoid::Monoid;
+
+pub struct IndexingIterator<I, T> where I : iter::Iterator<Item = T> {
+    iterator : I,
+    index : usize
+}
+
+impl<I, T> IndexingIterator<I, T> where I : iter::Iterator<Item = T> {
+    fn new(iterator : I) -> Self {        
+        IndexingIterator {
+            iterator : iterator,
+            index    : 0 
+        }
+    }
+}
+
+impl<I, T> iter::Iterator for IndexingIterator<I, T> where I : iter::Iterator<Item = T> {
+    type Item = (T, usize);
+
+    fn next(&mut self) -> Option<(T, usize)> {
+        if let Some(value) = self.iterator.next() {
+            let result = (value, self.index);
+            self.index += 1;
+
+            Some(result)
+        }
+        else {
+            None
+        }
+    }
+}
 
 pub trait IteratorExt : iter::Iterator + marker::Sized {
     /// Applies function to all elems and then sums the result
@@ -23,29 +52,9 @@ pub trait IteratorExt : iter::Iterator + marker::Sized {
         self.fold(0, |base, e| if p(e) { base + 1 } else { base })
     }
 
-    fn closest(self, item : Self::Item) -> Option<Self::Item>
-    where Self::Item : Ord
-    {
-        self.fold(None, |base : Option<Self::Item>, e| {
-            match e.cmp(&item) {
-                Ordering::Greater | Ordering::Equal => {
-                    if base.is_some() {
-                        let base_value = base.unwrap();                        
-                        match e.cmp(&base_value) {
-                            Ordering::Less | Ordering::Equal => Some(e),
-                            _ => Some(base_value)
-                        }
-                    }else {                        
-                        Some(e)
-                    }
-                    
-                },
-                  
-                _ => base
-            }
-        })
-    }     
+    fn index_items(self) -> IndexingIterator<Self, Self::Item> {
+        IndexingIterator::new(self)
+    }
 }
-
 
 impl<I, F, B> IteratorExt for iter::Map<I, F> where I : iter::Iterator, F : FnMut(I::Item) -> B {}

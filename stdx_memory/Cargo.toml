@@ -3,4 +3,6 @@ name = "stdx_memory"
 version = "0.1.0"
 authors = ["charlolizard <nikitas2209@gmail.com>"]
 
-[dependencies]
+
+[dependencies.stdx]
+path = "../stdx"

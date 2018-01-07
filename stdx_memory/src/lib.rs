@@ -4,6 +4,8 @@
 #![feature(nonzero)]
 #![no_std]
 
+extern crate stdx;
+
 pub mod smart_ptr;
 pub mod heap;
 pub mod collections;

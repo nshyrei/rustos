@@ -1,7 +1,5 @@
 use core::fmt;
 use core::option;
-use core::marker;
-use core::clone;
 
 pub struct Option<T>(pub option::Option<T>);
 

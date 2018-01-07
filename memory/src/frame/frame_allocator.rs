@@ -6,7 +6,7 @@ use frame::FRAME_SIZE;
 use stdx_memory::collections::linked_list::LinkedList;
 use allocator::bump::BumpAllocator;
 use stdx_memory::MemoryAllocator;
-use stdx::smart_ptr;
+use stdx_memory::smart_ptr;
 use stdx_memory::heap;
 use core::fmt;
 use core::mem;

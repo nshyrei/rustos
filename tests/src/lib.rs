@@ -1,6 +1,7 @@
 extern crate memory;
 extern crate multiboot;
 extern crate stdx_memory;
+extern crate stdx;
 
 #[cfg(test)]
 mod frame_bitmap_tests;
