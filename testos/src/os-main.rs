@@ -11,19 +11,19 @@ extern crate memory;
 extern crate hardware;
 extern crate alloc;
 extern crate malloc;
+extern crate stdx_memory;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
 use display::vga::writer::Writer;
-use memory::util::bump_allocator::BumpAllocator;
+use memory::allocator::bump::BumpAllocator;
 use memory::frame::frame_allocator::*;
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 use memory::paging;
 use memory::paging::page_table;
 use memory::paging::page_table::P4Table;
-use memory::util::buddy_allocator::BuddyAllocator;
-use memory::allocator::MemoryAllocator;
+use stdx_memory::MemoryAllocator;
 use hardware::x86_64::registers;
 
 use core::fmt::Write;
@@ -38,13 +38,12 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         print_multiboot_data(multiboot_header, &mut vga_writer);
 
         let mut frame_allocator = FrameAllocator::new(multiboot_header);
-        let mut buddy_allocator = BuddyAllocator::new(frame_allocator.end_address() + 1, 104857600);
-        frame_allocator.set_buddy_start(Frame::from_address(buddy_allocator.start_address()));
-        frame_allocator.set_buddy_end(Frame::from_address(buddy_allocator.end_address()));
-        buddy_allocator.allocate(1024);
-
-        let mut temp_p4_table = paging::p4_table();        
-        paging::remap_kernel(&mut temp_p4_table, &mut frame_allocator, multiboot_header);        
+        //let mut buddy_allocator = BuddyAllocator::new(frame_allocator.end_address() + 1, 104857600);
+        //frame_allocator.set_buddy_start(Frame::from_address(buddy_allocator.start_address()));
+        //frame_allocator.set_buddy_end(Frame::from_address(buddy_allocator.end_address()));
+        //buddy_allocator.allocate(1024);        
+        let mut temp_p4_table = paging::p4_table();
+        paging::remap_kernel(&mut temp_p4_table, &mut frame_allocator, multiboot_header);
 
         let p4_table = paging::p4_table();
         
@@ -61,6 +60,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     }
     loop {}
 }
+
 
 #[lang = "eh_personality"]
 extern "C" fn eh_personality() {}

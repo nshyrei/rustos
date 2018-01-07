@@ -77,7 +77,7 @@ fn should_properly_determine_first_memory_area() {
     let addr = bytes.as_ptr() as usize;
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
-    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256, 20);
 
     let frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
 
@@ -195,7 +195,7 @@ fn should_properly_determine_kernel_start_and_end_address() {
     let addr = bytes.as_ptr() as usize;
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
-    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256, 20);
 
     let frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
     let kernel_start_valid_result = Frame::from_address(0);
@@ -278,7 +278,7 @@ fn should_make_allocation_in_current_memory_area() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256, 20);
         let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
         let allocation_result1 = frame_allocator.allocate();
         let allocation_result2 = frame_allocator.allocate();
@@ -373,7 +373,7 @@ fn should_move_to_next_memory_area() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256, 20);
         
         let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);        
 
@@ -459,7 +459,7 @@ fn should_return_last_freed_frame() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 1024);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 1024, 20);
         
         let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);        
         let mut allocated_frames = Vec::<Option<Frame>>::new();

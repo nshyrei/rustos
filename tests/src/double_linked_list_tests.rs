@@ -5,17 +5,18 @@ use stdx_memory::heap::SharedBox;
 use stdx_memory::collections::double_linked_list::{DoubleLinkedListCell, DoubleLinkedList};
 use memory::allocator::bump::BumpAllocator;
 use memory::allocator::free_list::FreeListAllocator;
+use std::mem;
 
 
 fn heap() -> BumpAllocator {
     let heap = [0;256];
     let heap_addr = heap.as_ptr() as usize;
-    BumpAllocator::from_address(heap_addr, heap.len())
+    BumpAllocator::from_address_for_type::<DoubleLinkedListCell<u64>>(heap_addr, heap.len())
 }
 
 macro_rules! heap_raw {
-    () => {{
-        let heap = [0;256];    
+    ($x:expr) => {{
+        let heap = [0;$x];    
 
         (heap.as_ptr() as usize, 256)
     }}    
@@ -106,7 +107,7 @@ pub fn is_end_should_return_true_for_end_cell() {
 #[test]
 pub fn remove_should_properly_delete_start_element() {  
     use std::mem;  
-    let (heap_start, heap_size) = heap_raw!();
+    let (heap_start, heap_size) = heap_raw!(256);
     let mut bump_allocator = FreeListAllocator::from_address(heap_start, heap_size, mem::size_of::<DoubleLinkedListCell<u8>>());
 
     let mut start = DoubleLinkedListCell::new(10, &mut bump_allocator);
@@ -125,9 +126,9 @@ pub fn remove_should_properly_delete_start_element() {
 }
 
 #[test]
-pub fn remove_should_properly_delete_end_element() {  
+pub fn remove_should_properly_delete_end_element() {
     use std::mem;  
-    let (heap_start, heap_size) = heap_raw!();
+    let (heap_start, heap_size) = heap_raw!(256);
     let mut bump_allocator = FreeListAllocator::from_address(heap_start, heap_size, mem::size_of::<DoubleLinkedListCell<u8>>());
 
     let mut start = DoubleLinkedListCell::new(10, &mut bump_allocator);
@@ -142,5 +143,17 @@ pub fn remove_should_properly_delete_end_element() {
 
     assert!(mid.is_end(), 
         "DoubleLinkedList::remove() didn't properly removed end element. Element {} should be the end element but it wasn't",
-        end.value());    
+        end.value());
+}
+
+#[test]
+pub fn new_should_create_an_empty_list() {
+    //let size = mem::size_of::<DoubleLinkedListCell<u8>>() * 2;
+    let (heap_start, heap_size) = heap_raw!(48); //todo rework to dynamic array
+    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
+    let mut allocator = BumpAllocator::from_address(heap_start, 48, mem::size_of::<DoubleLinkedListCell<u8>>());
+    let list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);    
+
+    assert!(list.is_nil(), 
+        "DoubleLinkedList::new didn't properly create an empty list. Head or tail wasn't nil");    
 }

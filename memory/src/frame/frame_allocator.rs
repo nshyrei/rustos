@@ -145,7 +145,7 @@ impl FrameAllocator {
 
         let empty_frame_list_size = FrameAllocator::get_empty_frame_list_size(&memory_areas);
         let kernel_end_frame = Frame::from_address(kernel_end_address);        
-        let mut bump_allocator = BumpAllocator::from_address(kernel_end_frame.next().address(), empty_frame_list_size);
+        let mut bump_allocator = BumpAllocator::from_address_for_type::<LinkedList<Frame>>(kernel_end_frame.next().address(), empty_frame_list_size);
 
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),

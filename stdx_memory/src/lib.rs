@@ -11,7 +11,7 @@ pub mod collections;
 pub trait MemoryAllocator {
     fn allocate(&mut self, size : usize) -> Option<usize>;
 
-    fn allocate_from<T>(&mut self) -> Option<usize> {
+    fn allocate_for<T>(&mut self) -> Option<usize> {
         use core::mem;
         self.allocate(mem::size_of::<T>())        
     }

@@ -10,7 +10,7 @@ pub struct Box<T>{
 impl <T> Box<T> {
     
     pub fn new<A>(value : T, memory_allocator : &mut A) -> Box<T>  where A : MemoryAllocator {
-        let pointer = memory_allocator.allocate_from::<T>().expect("No memory for box value");
+        let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
 
         unsafe { write_unaligned(pointer as *mut T, value); }
 
@@ -63,7 +63,7 @@ pub struct SharedBox<T>{
 impl <T> SharedBox<T> {
     
     pub fn new<A>(value : T, memory_allocator : &mut A) -> Self  where A : MemoryAllocator {
-        let pointer = memory_allocator.allocate_from::<T>().expect("No memory for box value");
+        let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
 
         unsafe { write_unaligned(pointer as *mut T, value); }
 

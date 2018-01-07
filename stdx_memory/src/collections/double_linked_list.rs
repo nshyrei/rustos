@@ -10,7 +10,7 @@ impl<T> DoubleLinkedList<T> {
 
     /// Creates new Empty DoubleLinkedList
     /// # Arguments    
-    /// * `memory_allocator` - memory allocator    
+    /// * `memory_allocator` - memory allocator
     pub fn new<A>(memory_allocator : &mut A) -> Self where A : MemoryAllocator
     {
         DoubleLinkedList {            

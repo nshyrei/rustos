@@ -13,11 +13,11 @@ pub struct FreeListAllocator {
 
 impl FreeListAllocator {
     pub fn from_address(address: usize, size : usize, block_size : usize) -> FreeListAllocator {
-        let bump_allocator = BumpAllocator::from_address(address, size);
+        let bump_allocator = BumpAllocator::from_address(address, size, block_size);
         let block_count = (address + size - 1) / block_size;
         let free_blocks_list_size = block_count * mem::size_of::<LinkedList<usize>>();
 
-        let mut free_blocks_allocator = BumpAllocator::from_address(bump_allocator.end_address() + 1, free_blocks_list_size);
+        let mut free_blocks_allocator = BumpAllocator::from_address_for_type::<LinkedList<usize>>(bump_allocator.end_address() + 1, free_blocks_list_size);
         let free_blocks = heap::SharedBox::new(LinkedList::Nil, &mut free_blocks_allocator);
 
         FreeListAllocator {
@@ -26,9 +26,7 @@ impl FreeListAllocator {
             free_blocks           : free_blocks,
             free_blocks_allocator : free_blocks_allocator
         }
-    }
-
-    
+    }    
 }
 
 impl MemoryAllocator for FreeListAllocator {
