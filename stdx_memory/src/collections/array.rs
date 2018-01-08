@@ -19,7 +19,7 @@ impl <T> Array<T> {
         let size = mem::size_of::<T>() * length;
         let start_address = memory_allocator.allocate(size).expect("No memory for Array");
 
-        // zero vector memory
+        // zero array memory
         for i in 0..size {
             let address = start_address + i;
             unsafe { ptr::write_unaligned(address as *mut u8, 0); }
@@ -31,8 +31,8 @@ impl <T> Array<T> {
             phantom : marker::PhantomData
         }
     }
-
-    pub fn size(&self) -> usize {
+    
+    pub fn mem_size(&self) -> usize {
         mem::size_of::<T>() * self.length 
     }
 
@@ -83,7 +83,7 @@ impl <T> Array<T> where T : Default {
 
         let elem_size = mem::size_of::<T>();
         // fill default values
-        for i in (0..self.size()).step_by(elem_size) {
+        for i in (0..self.mem_size()).step_by(elem_size) {
             let address = self.start_address + i;
             ptr::write_unaligned(address as *mut T, T::default());
         }

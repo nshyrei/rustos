@@ -1,7 +1,7 @@
 use stdx_memory::MemoryAllocator;
-use stdx_memory::collections::array;
-use stdx_memory::collections::linked_list;
-use stdx_memory::heap::{Box, SharedBox};
+use stdx_memory::collections::array::Array;
+use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListCell};
+use stdx_memory::heap;
 use util::frame_bitmap::FrameBitMap;
 use allocator::bump::BumpAllocator;
 use frame::{Frame, FRAME_SIZE};
@@ -231,3 +231,113 @@ impl iter::Iterator for BuddyLevelSizesIterator {
 
 impl IteratorExt for BuddyLevelSizesIterator {}
 */
+
+pub struct BuddyFreeList {
+    frame_to_free_buddy : Array<heap::SharedBox<DoubleLinkedListCell<usize>>>,
+    free_blocks         : DoubleLinkedList<usize>,
+    block_size          : usize
+}
+
+impl BuddyFreeList {
+    pub fn new<A>(block_count : usize, block_size : usize, memory_allocator : &mut A) -> Self 
+    where A : MemoryAllocator {
+        let mut array = Array::new(block_count, memory_allocator);
+        for i in 0 .. array.length() {
+            array.update(i, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));
+        }
+
+        BuddyFreeList {
+            frame_to_free_buddy : array,
+            free_blocks         : DoubleLinkedList::new(memory_allocator),
+            block_size          : block_size
+        }
+    }
+
+    /// Determines if block is free to use
+    /// # Arguments    
+    /// * `block_start_address` - start address of memory block
+    pub fn is_free(&self, block_start_address : usize) -> bool {
+        !self.is_in_use(block_start_address)
+    }
+
+    /// Determines if block is occupied
+    /// # Arguments
+    /// * `block_start_address` - start address of memory blockfree_list_should_properly_set_free()
+    pub fn is_in_use(&self, block_start_address : usize) -> bool {
+        // todo block_start_address or frame number will be out of range
+        let index = self.address_to_array_index(block_start_address);
+        self.is_in_use_with_idx(index)
+    }
+
+    fn is_free_with_idx(&self, index : usize) -> bool {
+        !self.is_in_use_with_idx(index)
+    }
+
+    fn is_in_use_with_idx(&self, index : usize) -> bool {
+        self.frame_to_free_buddy.elem_ref(index).is_nil()
+    }
+
+    /// Sets the block as occupied
+    /// # Arguments    
+    /// * `block_start_address` - start address of memory block
+    /// * `memory_allocator` - memory allocator
+    pub fn set_in_use<A>(&mut self, block_start_address : usize, memory_allocator : &mut A)
+    where A : MemoryAllocator {
+        let index = self.address_to_array_index(block_start_address);
+
+        if self.is_free_with_idx(index) {
+            let cell = self.frame_to_free_buddy.value(index);
+            self.remove_free_block(cell, memory_allocator);
+            self.frame_to_free_buddy.update(index, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));        
+        }
+    }
+
+    /// Sets the block as free to use
+    /// # Arguments    
+    /// * `block_start_address` - start address of memory block
+    /// * `memory_allocator` - memory allocator
+    pub fn set_free<A>(&mut self, block_start_address : usize, memory_allocator : &mut A) 
+    where A : MemoryAllocator {
+        let index = self.address_to_array_index(block_start_address);
+
+        if self.is_in_use_with_idx(index) {
+            let cell = self.free_blocks.add_to_tail(block_start_address, memory_allocator);            
+            self.frame_to_free_buddy.update(index, cell);        
+        }
+    }
+
+    /// Returns first unused memory block if any.
+    /// # Arguments        
+    /// * `memory_allocator` - memory allocator
+    pub fn first_free_block<A>(&mut self, memory_allocator : &mut A) -> Option<usize> 
+    where A : MemoryAllocator{
+        let result = self.free_blocks.take_head(memory_allocator);
+
+        if let Some(block_start_address) = result {
+            let index = self.address_to_array_index(block_start_address);
+            self.frame_to_free_buddy.update(index, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));
+        }
+
+        result
+    }
+
+    fn address_to_array_index(&self, address : usize) -> usize {
+        address / self.block_size
+    }
+
+    fn remove_free_block<A>(&mut self, cell : heap::SharedBox<DoubleLinkedListCell<usize>>, memory_allocator : &mut A)
+    where A : MemoryAllocator {
+        if self.free_blocks.head_equals_tail() && cell.is_start() {
+            self.free_blocks.remove_head(memory_allocator);            
+        }
+        else if cell.is_start() {
+            self.free_blocks.remove_head(memory_allocator);            
+        }
+        else if cell.is_end() {
+            self.free_blocks.remove_tail(memory_allocator);            
+        }
+        else {
+            cell.pointer_mut().remove(memory_allocator);
+        }
+    }
+}
