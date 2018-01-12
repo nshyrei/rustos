@@ -82,6 +82,12 @@ impl <T> LinkedList<T> where T : Copy {
     }    
 }
 
+impl<T> Default for LinkedList<T> {
+    fn default() -> Self {
+        LinkedList::Nil
+    }
+}
+
 impl<T> fmt::Display for LinkedList<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,"")

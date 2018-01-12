@@ -2,6 +2,7 @@ use MemoryAllocator;
 use heap;
 use stdx::iterator;
 use core::iter;
+use core::mem;
 
 pub struct DoubleLinkedList<T> {
     head : heap::SharedBox<DoubleLinkedListCell<T>>,
@@ -48,6 +49,11 @@ impl<T> DoubleLinkedList<T> {
     /// Determines if this linked list consists only of DoubleLinkedListCell::Nil    
     pub fn is_nil(&self) -> bool {
         self.head.is_nil() && self.tail.is_nil()
+    }
+
+    /// Determines if this linked list contains any DoubleLinkedListCell::Cell
+    pub fn is_cell(&self) -> bool {
+        !self.is_nil()
     }
 
     /// Determines if this linked list consists only of one DoubleLinkedListCell::Cell
@@ -103,6 +109,14 @@ impl<T> DoubleLinkedList<T> {
                 }
             }
         }        
+    }
+
+    pub fn mem_size_for<A>(length : usize) -> usize {
+        mem::size_of::<DoubleLinkedListCell<A>>() * length
+    }
+
+    pub fn cell_size<A>() -> usize {
+        mem::size_of::<DoubleLinkedListCell<A>>()
     }
 }
 
@@ -271,6 +285,12 @@ impl<T> DoubleLinkedListCell<T> {
     }
 }
 
+impl<T> Default for DoubleLinkedListCell<T> {
+    fn default() -> Self {
+        DoubleLinkedListCell::Nil
+    }
+}
+
 impl<T> DoubleLinkedListCell<T> where T : Copy {
 
     /// Returns copy of the value in the cell if `self` is DoubleLinkedList::Cell,
@@ -355,9 +375,9 @@ impl<T> iter::Iterator for DoubleLinkedListIterator<T> where T : Copy {
 
     fn next(&mut self) -> Option<T> {
         match *self.current {
-            DoubleLinkedListCell::Cell { value, prev, next } => {
+            DoubleLinkedListCell::Cell { value, prev, .. } => {
                 self.current = prev;
-                Some(value)                
+                Some(value)
             },
             _ => None
         }

@@ -4,7 +4,7 @@ use multiboot::multiboot_header::tags::elf;
 use frame::Frame;
 use frame::FRAME_SIZE;
 use stdx_memory::collections::linked_list::LinkedList;
-use allocator::bump::BumpAllocator;
+use allocator::bump::{BumpAllocator, ConstSizeBumpAllocator};
 use stdx_memory::MemoryAllocator;
 use stdx_memory::smart_ptr;
 use stdx_memory::heap;
@@ -29,7 +29,7 @@ pub struct FrameAllocator {
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,
     empty_frame_list: heap::SharedBox<LinkedList<Frame>>,
-    frame_list_allocator : BumpAllocator,
+    frame_list_allocator : ConstSizeBumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
 }
@@ -64,7 +64,7 @@ impl FrameAllocator {
         self.last_frame_number
     }
 
-    pub fn bump_allocator(&self) -> BumpAllocator {
+    pub fn bump_allocator(&self) -> ConstSizeBumpAllocator {
         self.frame_list_allocator.clone()
     }
 
@@ -84,7 +84,7 @@ impl FrameAllocator {
         &self.empty_frame_list
     }
 
-    pub fn new_test(multiboot_header: &MultibootHeader, bump_allocator1 : BumpAllocator) -> FrameAllocator {
+    pub fn new_test(multiboot_header: &MultibootHeader, bump_allocator1 : ConstSizeBumpAllocator) -> FrameAllocator {
         let elf_sections = multiboot_header.read_tag::<elf::ElfSections>()
             .expect("Cannot create frame allocator without multiboot elf sections");
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
@@ -145,7 +145,7 @@ impl FrameAllocator {
 
         let empty_frame_list_size = FrameAllocator::get_empty_frame_list_size(&memory_areas);
         let kernel_end_frame = Frame::from_address(kernel_end_address);        
-        let mut bump_allocator = BumpAllocator::from_address_for_type::<LinkedList<Frame>>(kernel_end_frame.next().address(), empty_frame_list_size);
+        let mut bump_allocator = ConstSizeBumpAllocator::from_address_for_type::<LinkedList<Frame>>(kernel_end_frame.next().address(), empty_frame_list_size);
 
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),

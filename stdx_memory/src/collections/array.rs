@@ -16,7 +16,7 @@ pub struct Array<T> {
 impl <T> Array<T> {
      pub fn new<A>(length : usize, memory_allocator : &mut A) -> Array<T> where A : MemoryAllocator {
 
-        let size = mem::size_of::<T>() * length;
+        let size          = Array::<T>::mem_size_for(length);
         let start_address = memory_allocator.allocate(size).expect("No memory for Array");
 
         // zero array memory
@@ -32,8 +32,12 @@ impl <T> Array<T> {
         }
     }
     
+    pub fn mem_size_for(length : usize) -> usize {
+        mem::size_of::<T>() * length
+    }
+
     pub fn mem_size(&self) -> usize {
-        mem::size_of::<T>() * self.length 
+        mem::size_of::<T>() * self.length
     }
 
     pub fn length(&self) -> usize {
@@ -58,33 +62,33 @@ impl <T> Array<T> {
     }
 
     pub fn elem_ref(&self, index : usize) -> &T {        
-        let entry_address = self.start_address + (mem::size_of::<T>() * index); 
-        
-        unsafe { &*(entry_address as *const T) }
+        unsafe { &*(self.index_to_address(index) as *const T) }
     }
 
     pub fn elem_ref_mut(&self, index : usize) -> &mut T {        
-        let entry_address = self.start_address + (mem::size_of::<T>() * index);
-        
-        unsafe { &mut *(entry_address as *mut T) }
+        unsafe { &mut *(self.index_to_address(index) as *mut T) }
+    }
+
+    pub fn indices(&self) -> IndicesIterator {
+        IndicesIterator::new(self)
     }    
+
+    fn index_to_address(&self, index : usize) -> usize {
+        self.start_address + (mem::size_of::<T>() * index)
+    }
 }
 
 impl <T> Array<T> where T : Copy {
     pub fn value(&self, index : usize) -> T {        
-        let entry_address = self.start_address + (mem::size_of::<T>() * index); 
-        
-        unsafe { *(entry_address as *mut T) }
+        unsafe { *(self.index_to_address(index) as *mut T) }
     }
 }
 
 impl <T> Array<T> where T : Default {
     pub unsafe fn fill_default(&self) {
+        let addresses = self.indices().map(|i| self.index_to_address(i));
 
-        let elem_size = mem::size_of::<T>();
-        // fill default values
-        for i in (0..self.mem_size()).step_by(elem_size) {
-            let address = self.start_address + i;
+        for address in addresses {
             ptr::write_unaligned(address as *mut T, T::default());
         }
     }
@@ -93,21 +97,45 @@ impl <T> Array<T> where T : Default {
 impl<T> ops::Index<usize> for Array<T> {
     type Output = T;
 
-    fn index(&self, index: usize) -> &T {
-        let start_address = &self as *const _ as usize;
-        let entry_address = start_address + (mem::size_of::<T>() * index); 
-        
-        unsafe { &*(entry_address as *const T) }
+    fn index(&self, index: usize) -> &T {        
+        self.elem_ref(index)
     }
 }
 
 impl<T> ops::IndexMut<usize> for Array<T> {
 
     fn index_mut(&mut self, index: usize) -> &mut T {
-        let start_address = &self as *const _ as usize;
-        let entry_address = start_address + (mem::size_of::<T>() * index); 
-        
-        unsafe { &mut *(entry_address as *mut T) }
+        self.elem_ref_mut(index)
+    }
+}
+
+pub struct IndicesIterator {
+    i : usize,
+    last_index : usize
+}
+
+impl IndicesIterator {
+    pub fn new<T>(array : &Array<T>) -> Self {
+        IndicesIterator {
+            i          : 0,
+            last_index : array.length() - 1
+        }
+    }
+}
+
+impl iter::Iterator for IndicesIterator {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<usize> {
+        if self.i > self.last_index {
+            None
+        }
+        else {
+            let result = self.i;
+            self.i += 1;
+
+            Some(result)
+        }
     }
 }
 
@@ -121,7 +149,7 @@ impl<'a, T> ArrayIterator <'a, T> {
     pub fn new(array : &'a Array<T>) -> Self {
         ArrayIterator {
             i  : 0,
-            array : array,            
+            array : array,      
         }
     }
 }
