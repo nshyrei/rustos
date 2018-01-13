@@ -61,12 +61,24 @@ impl <T> Array<T> {
         ArrayIterator::new(self)
     }
 
-    pub fn elem_ref(&self, index : usize) -> &T {        
+    pub fn elem_ref(&self, index : usize) -> &T {
+        assert!(index < self.length);
         unsafe { &*(self.index_to_address(index) as *const T) }
     }
 
-    pub fn elem_ref_mut(&self, index : usize) -> &mut T {        
+    pub fn elem_ref_mut(&self, index : usize) -> &mut T {
+        assert!(index < self.length);
         unsafe { &mut *(self.index_to_address(index) as *mut T) }
+    }
+
+    pub fn elem_ref_i(&self, index : isize) -> &T {
+        assert!(index < self.length as isize && index > 0);
+        unsafe { &*(self.index_to_address_i(index) as *const T) }
+    }
+
+    pub fn elem_ref_mut_i(&self, index : isize) -> &mut T {
+        assert!(index < self.length as isize && index > 0);
+        unsafe { &mut *(self.index_to_address_i(index) as *mut T) }
     }
 
     pub fn indices(&self) -> IndicesIterator {
@@ -75,6 +87,10 @@ impl <T> Array<T> {
 
     fn index_to_address(&self, index : usize) -> usize {
         self.start_address + (mem::size_of::<T>() * index)
+    }
+
+    fn index_to_address_i(&self, index : isize) -> isize {
+        self.start_address as isize + (mem::size_of::<T>() as isize * index)
     }
 }
 
@@ -108,6 +124,22 @@ impl<T> ops::IndexMut<usize> for Array<T> {
         self.elem_ref_mut(index)
     }
 }
+
+impl<T> ops::Index<isize> for Array<T> {
+    type Output = T;
+
+    fn index(&self, index: isize) -> &T {        
+        self.elem_ref_i(index)
+    }
+}
+
+impl<T> ops::IndexMut<isize> for Array<T> {
+
+    fn index_mut(&mut self, index: isize) -> &mut T {
+        self.elem_ref_mut_i(index)
+    }
+}
+
 
 pub struct IndicesIterator {
     i : usize,

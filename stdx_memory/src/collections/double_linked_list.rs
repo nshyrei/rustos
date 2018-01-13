@@ -1,8 +1,168 @@
 use MemoryAllocator;
+use ConstantSizeMemoryAllocator;
 use heap;
+use collections::array::Array;
 use stdx::iterator;
 use core::iter;
 use core::mem;
+
+
+/*
+pub struct IndexedDoubleLinkedList<T> {
+    frame_to_free_buddy : Array<CellPointer<T>>,
+    free_blocks         : DoubleLinkedList<T>,
+    block_size          : usize
+}
+
+type CellPointer<T> = heap::SharedBox<DoubleLinkedListCell<T>>;
+
+impl<T> IndexedDoubleLinkedList<T> {
+    pub fn new<A, B>(block_count : usize, block_size : usize, memory_allocator : &mut A, list_allocator : &mut B) -> Self 
+    where A : MemoryAllocator, B : ConstantSizeMemoryAllocator {
+        let mut array = Array::new(block_count, memory_allocator);
+
+        // set list as fully occupied
+        for i in 0 .. array.length() {
+            array.update(i, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));
+        }
+
+        IndexedDoubleLinkedList {
+            frame_to_free_buddy : array,
+            free_blocks         : DoubleLinkedList::new(list_allocator),
+            block_size          : block_size
+        }
+    }
+
+    fn mem_size_for_array(block_count : usize) -> usize {
+        Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(block_count)
+    }
+
+    fn mem_size_for_linked_list(block_count : usize) -> usize {
+        DoubleLinkedList::<usize>::mem_size_for::<usize>(block_count)
+    }
+
+    /*
+    pub fn mem_size_for(block_count : usize) -> usize {
+        let array_size       = Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(block_count);
+        let linked_list_size = DoubleLinkedList::<usize>::mem_size_for(block_count);
+
+        array_size + linked_list_size
+    }
+    */   
+
+    pub fn cell_size() -> usize {
+        DoubleLinkedList::<usize>::cell_size::<usize>()
+    }
+
+    /// Determines if block is free to use
+    /// # Arguments
+    /// * `block_start_address` - start address of memory block
+    pub fn is_free(&self, block_start_address : usize) -> bool {
+        !self.is_in_use(block_start_address)
+    }
+
+    /// Determines if block is occupied
+    /// # Arguments
+    /// * `block_start_address` - start address of memory blockfree_list_should_properly_set_free()
+    pub fn is_in_use(&self, block_start_address : usize) -> bool {
+        // todo block_start_address or frame number will be out of range
+        let index = self.address_to_array_index(block_start_address);
+        self.is_in_use_with_idx(index)
+    }
+
+    fn is_free_with_idx(&self, index : usize) -> bool {
+        !self.is_in_use_with_idx(index)
+    }
+
+    fn is_in_use_with_idx(&self, index : usize) -> bool {
+        self.frame_to_free_buddy.elem_ref(index).is_nil()
+    }    
+
+    /// Sets the block as occupied
+    /// # Arguments    
+    /// * `block_start_address` - start address of memory block
+    /// * `memory_allocator` - memory allocator
+    pub fn set_in_use<A>(&mut self, block_start_address : usize, memory_allocator : &mut A)
+    where A : MemoryAllocator {
+        let index = self.address_to_array_index(block_start_address);
+
+        if self.is_free_with_idx(index) {
+            let cell = self.frame_to_free_buddy.value(index);
+            self.remove_free_block(cell, memory_allocator);
+            self.frame_to_free_buddy.update(index, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));        
+        }
+    }
+
+    pub fn remove_by_idx<A>(&mut self, index : usize, memory_allocator : &mut A)
+    where A : MemoryAllocator {
+        let cell = self.frame_to_free_buddy.value(index);
+        self.remove_free_block(cell, memory_allocator);
+        self.frame_to_free_buddy.update(index, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));        
+    }
+
+    pub fn add_to_tail_with_idx<A>(&mut self, index : usize, value : T, memory_allocator : &mut A)
+    where A : MemoryAllocator
+    {
+        let cell = self.free_blocks.add_to_tail(value, memory_allocator);            
+        self.frame_to_free_buddy.update(index, cell);
+    }
+
+    /// Sets the block as free to use
+    /// # Arguments    
+    /// * `block_start_address` - start address of memory block
+    /// * `memory_allocator` - memory allocator
+    pub fn set_free<A>(&mut self, block_start_address : usize, memory_allocator : &mut A) 
+    where A : MemoryAllocator {
+        let index = self.address_to_array_index(block_start_address);
+
+        if self.is_in_use_with_idx(index) {
+            let cell = self.free_blocks.add_to_tail(block_start_address, memory_allocator);
+            self.frame_to_free_buddy.update(index, cell);
+        }
+    }
+
+    /// Returns first unused memory block if any.
+    /// # Arguments        
+    /// * `memory_allocator` - memory allocator
+    pub fn first_free_block<A>(&mut self, memory_allocator : &mut A) -> Option<usize> 
+    where A : MemoryAllocator{
+        let result = self.free_blocks.take_head(memory_allocator);
+
+        if let Some(block_start_address) = result {
+            let index = self.address_to_array_index(block_start_address);
+            self.frame_to_free_buddy.update(index, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));
+        }
+
+        result
+    }
+
+    pub fn has_free_block(&self) -> bool {
+        self.free_blocks.is_cell()
+    }
+
+    fn address_to_array_index(&self, address : usize) -> usize {
+        address / self.block_size
+    }
+
+    fn remove_free_block<A>(&mut self, cell : heap::SharedBox<CellPointer<T>>, memory_allocator : &mut A)
+    where A : MemoryAllocator {
+        if self.free_blocks.head_equals_tail() && cell.is_start() {
+            self.free_blocks.remove_head(memory_allocator);            
+        }
+        else if cell.is_start() {
+            self.free_blocks.remove_head(memory_allocator);            
+        }
+        else if cell.is_end() {
+            self.free_blocks.remove_tail(memory_allocator);            
+        }
+        else {
+            cell.pointer_mut().remove(memory_allocator);
+        }
+    }
+}
+*/
+
+
 
 pub struct DoubleLinkedList<T> {
     head : heap::SharedBox<DoubleLinkedListCell<T>>,

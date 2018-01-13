@@ -13,3 +13,7 @@ pub fn log(base : usize, x : usize) -> usize {
 pub fn log2(x : usize) -> usize {
     log(2, x)
 }
+
+pub fn is_even(x : usize) -> bool {
+    x % 2 == 0
+}
