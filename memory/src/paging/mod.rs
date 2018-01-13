@@ -1,15 +1,11 @@
 pub mod page_table;
 
-use paging::page_table::{P4, PageTable, P4Table};
+use paging::page_table::P4Table;
 use frame::frame_allocator::*;
 use frame::Frame;
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::elf;
-use hardware::x86_64::tlb;
 use hardware::x86_64::registers;
-use stdx_memory::MemoryAllocator;
-
-
 
 
 /// Returns current p4 table.

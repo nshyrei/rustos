@@ -2,9 +2,8 @@ use allocator::bump::BumpAllocator;
 use stdx_memory::MemoryAllocator;
 use core::ptr;
 use core::fmt;
-use core::mem;
 
-const bitmap_entry_size: usize = 8; //number of bits in byte
+const BITMAP_ENTRY_SIZE: usize = 8; //number of bits in byte
 
 pub struct FrameBitMap {
     start_address : usize,
@@ -20,22 +19,22 @@ impl FrameBitMap {
     }
 
     pub fn cell_size(frames_count : usize) -> usize {
-        let bitmap_size_help = frames_count % bitmap_entry_size;
+        let bitmap_size_help = frames_count % BITMAP_ENTRY_SIZE;
 
         if bitmap_size_help > 0 {
-            (frames_count / bitmap_entry_size) + 1
+            (frames_count / BITMAP_ENTRY_SIZE) + 1
         } else {
-            frames_count / bitmap_entry_size
+            frames_count / BITMAP_ENTRY_SIZE
         }
     }
 
     pub fn new(frames_count : usize, memory_allocator : &mut BumpAllocator) -> FrameBitMap {
 
-        let bitmap_size_help = frames_count % bitmap_entry_size;
+        let bitmap_size_help = frames_count % BITMAP_ENTRY_SIZE;
         let bitmap_size = if bitmap_size_help > 0 {
-            (frames_count / bitmap_entry_size) + 1
+            (frames_count / BITMAP_ENTRY_SIZE) + 1
         } else {
-            frames_count / bitmap_entry_size
+            frames_count / BITMAP_ENTRY_SIZE
         };
 
         let address = memory_allocator
@@ -55,7 +54,7 @@ impl FrameBitMap {
 
     //todo check for out of bounds
     fn index(&self, frame_number: usize) -> &mut FrameBitMapEntry {        
-        let index = frame_number / bitmap_entry_size;
+        let index = frame_number / BITMAP_ENTRY_SIZE;
 
         unsafe { &mut (*((self.start_address + index) as *mut FrameBitMapEntry)) }
     }
@@ -98,12 +97,12 @@ impl FrameBitMapEntry {
     }
 
     fn index_in_byte_field(frame_number: usize) -> usize {
-        frame_number % bitmap_entry_size
+        frame_number % BITMAP_ENTRY_SIZE
     }
 
     fn offset_count(frame_number: usize) -> usize {
         let index_in_byte_field = FrameBitMapEntry::index_in_byte_field(frame_number);
-        bitmap_entry_size - 1 - index_in_byte_field
+        BITMAP_ENTRY_SIZE - 1 - index_in_byte_field
     }
 
     fn is_in_use(&self, frame_number: usize) -> bool {

@@ -1,10 +1,8 @@
-use allocator::bump::BumpAllocator;
 use allocator::bump::ConstSizeBumpAllocator;
 use stdx_memory::heap;
 use stdx_memory::collections::linked_list::LinkedList;
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
-use core::mem;
 
 pub struct FreeListAllocator {
     bump_allocator        : ConstSizeBumpAllocator,

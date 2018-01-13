@@ -1,8 +1,5 @@
 #![feature(asm)]
 #![feature(const_fn)]
-#![feature(unique)]
-#![feature(nonzero)]
-#![feature(step_by)]
 #![no_std]
 
 #[macro_use]
