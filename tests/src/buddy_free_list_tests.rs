@@ -32,16 +32,9 @@ pub fn free_list_should_properly_set_in_use() {
 
 #[test]
 pub fn free_list_should_properly_set_free() {    
-    use stdx_memory::collections::double_linked_list::DoubleLinkedList;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListCell;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListIterator;
-    use stdx::iterator::IteratorExt;
-    use memory::allocator::free_list::FreeListAllocator;
-    use memory::allocator::buddy::BuddyFreeList;
-    
     let heap = [0;400];    
     
-    let (heap_start, heap_size) =          (heap.as_ptr() as usize, 400);
+    let (heap_start, heap_size) = (heap.as_ptr() as usize, 400);
     
     let size = mem::size_of::<DoubleLinkedListCell<u8>>();
     let mut allocator = FreeListAllocator::from_address(heap_start, 400, mem::size_of::<DoubleLinkedListCell<u8>>());
@@ -62,16 +55,9 @@ pub fn free_list_should_properly_set_free() {
 
 #[test]
 pub fn set_free_should_properly_remove_elem_in_the_middle_of_the_list() {    
-    use stdx_memory::collections::double_linked_list::DoubleLinkedList;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListCell;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListIterator;
-    use stdx::iterator::IteratorExt;
-    use memory::allocator::free_list::FreeListAllocator;
-    use memory::allocator::buddy::BuddyFreeList;
-    
     let heap = [0;400];    
     
-    let (heap_start, heap_size) =          (heap.as_ptr() as usize, 400);
+    let (heap_start, heap_size) = (heap.as_ptr() as usize, 400);
     
     let size = mem::size_of::<DoubleLinkedListCell<u8>>();
     let mut allocator = FreeListAllocator::from_address(heap_start, 400, mem::size_of::<DoubleLinkedListCell<u8>>());
@@ -103,16 +89,9 @@ pub fn set_free_should_properly_remove_elem_in_the_middle_of_the_list() {
 
 #[test]
 pub fn set_free_should_properly_remove_elem_at_the_start_of_the_list() {    
-    use stdx_memory::collections::double_linked_list::DoubleLinkedList;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListCell;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListIterator;
-    use stdx::iterator::IteratorExt;
-    use memory::allocator::free_list::FreeListAllocator;
-    use memory::allocator::buddy::BuddyFreeList;
-    
     let heap = [0;400];    
     
-    let (heap_start, heap_size) =          (heap.as_ptr() as usize, 400);
+    let (heap_start, heap_size) = (heap.as_ptr() as usize, 400);
     
     let size = mem::size_of::<DoubleLinkedListCell<u8>>();
     let mut allocator = FreeListAllocator::from_address(heap_start, 400, mem::size_of::<DoubleLinkedListCell<u8>>());
@@ -143,17 +122,10 @@ pub fn set_free_should_properly_remove_elem_at_the_start_of_the_list() {
 }
 
 #[test]
-pub fn set_free_should_properly_remove_elem_at_the_end_of_the_list() {    
-    use stdx_memory::collections::double_linked_list::DoubleLinkedList;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListCell;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListIterator;
-    use stdx::iterator::IteratorExt;
-    use memory::allocator::free_list::FreeListAllocator;
-    use memory::allocator::buddy::BuddyFreeList;
-    
+pub fn set_free_should_properly_remove_elem_at_the_end_of_the_list() {        
     let heap = [0;400];    
     
-    let (heap_start, heap_size) =          (heap.as_ptr() as usize, 400);
+    let (heap_start, heap_size) = (heap.as_ptr() as usize, 400);
     
     let size = mem::size_of::<DoubleLinkedListCell<u8>>();
     let mut allocator = FreeListAllocator::from_address(heap_start, 400, mem::size_of::<DoubleLinkedListCell<u8>>());

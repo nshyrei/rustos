@@ -59,6 +59,15 @@ impl Frame {
         }
     }
 
+    pub fn address_align(address : usize) -> usize {
+        if Frame::is_frame_aligned(address) {
+            address
+        }
+        else {
+            Frame::address_to_frame_number(address) * FRAME_SIZE
+        }
+    }
+
     pub fn number_for_address(address : usize) -> usize {
         address / FRAME_SIZE
     }

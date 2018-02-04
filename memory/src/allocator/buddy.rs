@@ -1,19 +1,20 @@
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
 use stdx_memory::collections::array::Array;
-use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListCell};
+use stdx_memory::collections::double_linked_list::{DoubleLinkedList, BuddyFreeList};
 use stdx_memory::heap;
 use allocator::bump;
 use frame::{Frame, FRAME_SIZE};
 use stdx::iterator::IteratorExt;
 use allocator::free_list;
 use stdx::math;
+use stdx::Sequence;
 use core::iter;
 use core::mem;
 
 pub struct BuddyAllocator {
     allocation_sizes     : Array<usize>,    
-    buddy_free_lists     : Array<BuddyFreeList>,    
+    buddy_free_lists     : Array<BuddyFreeList0>,    
     array_allocator      : bump::BumpAllocator,
     free_list_allocator  : free_list::FreeListAllocator,
     total_memory         : usize,
@@ -32,7 +33,7 @@ impl BuddyAllocator {
 
     pub unsafe fn new(start_address1 : usize, end_address1 : usize) -> BuddyAllocator {
         let start_address      = Frame::address_align_up(start_address1);
-        let end_address        = Frame::address_align_down(end_address1);
+        let end_address        = Frame::address_align(end_address1);
         let total_memory       = end_address - start_address + 1;
         
         let total_frames_count = Frame::from_address(total_memory).number();        
@@ -45,14 +46,14 @@ impl BuddyAllocator {
         
         let array_sizes = sizes_array_size + buddy_array_size;
 
-        let mut array_allocator   = bump::BumpAllocator::from_address(start_address, array_sizes);
+        let mut array_allocator     = bump::BumpAllocator::from_address(start_address, array_sizes);
         let mut free_list_allocator = free_list::FreeListAllocator::from_address(
             array_allocator.end_address() + 1, 
             buddy_free_lists_size,
             BuddyFreeList::cell_size());
 
-        let allocation_sizes      = Array::<usize>::new(total_buddy_levels, &mut array_allocator);        
-        let mut buddy_free_lists_array  = Array::<BuddyFreeList>::new(total_buddy_levels, &mut array_allocator);        
+        let allocation_sizes            = Array::<usize>::new(total_buddy_levels, &mut array_allocator);        
+        let mut buddy_free_lists_array  = Array::<BuddyFreeList0>::new(total_buddy_levels, &mut array_allocator);        
 
         BuddyAllocator::create_buddy_free_lists(
             &mut buddy_free_lists_array, 
@@ -62,7 +63,7 @@ impl BuddyAllocator {
             total_buddy_levels);
 
         // set initial block that covers all memory as free
-        buddy_free_lists_array[total_buddy_levels - 1].set_free(0, &mut free_list_allocator);
+        buddy_free_lists_array[total_buddy_levels - 1].0.set_free(0, &mut free_list_allocator);
                 
         BuddyAllocator {
             allocation_sizes            : allocation_sizes,            
@@ -74,7 +75,7 @@ impl BuddyAllocator {
         }
     }
 
-    fn create_buddy_free_lists(buddy_free_lists : &mut Array<BuddyFreeList>, 
+    fn create_buddy_free_lists(buddy_free_lists : &mut Array<BuddyFreeList0>, 
         array_allocator : &mut bump::BumpAllocator,
         free_list_allocator : &mut free_list::FreeListAllocator,
         total_memory : usize, 
@@ -84,8 +85,8 @@ impl BuddyAllocator {
 
         for (block_count, i) in it {
             let buddy_free_list = BuddyFreeList::new(block_count, array_allocator, free_list_allocator);            
-            buddy_free_lists.update(i, buddy_free_list);      
-        }        
+            buddy_free_lists.update(i, BuddyFreeList0(buddy_free_list));      
+        }
     }
 
     fn buddy_free_list_size(buddy_levels_count : usize, total_memory : usize) -> (usize, usize) {
@@ -98,7 +99,7 @@ impl BuddyAllocator {
         }
         
         (array_size, free_list_size)
-    }    
+    }  
 
     fn search_free_list_up(&self, index_from : usize) -> Option<usize> {
         let list_length = self.buddy_free_lists.length();        
@@ -108,7 +109,7 @@ impl BuddyAllocator {
             if i > list_length - 1 {
                 return None
             }
-            else if self.buddy_free_lists[i].has_free_block() {
+            else if self.buddy_free_lists[i].0.has_free_block() {
                 return Some(i)
             }
             else {
@@ -137,7 +138,7 @@ impl BuddyAllocator {
             }
 
             let current_level_size = BuddyAllocator::block_size_from_index(i as usize);
-            let left = self.buddy_free_lists[i].first_free_block(&mut self.free_list_allocator).unwrap();
+            let left = self.buddy_free_lists[i].0.first_free_block(&mut self.free_list_allocator).unwrap();
 
             if allocation_size == current_level_size {
                 return Some(left * current_level_size)
@@ -149,7 +150,7 @@ impl BuddyAllocator {
                 let right_start_address = left_start_address + lower_level_size;
                 let right               = right_start_address / lower_level_size;
 
-                self.buddy_free_lists[i - 1].set_free(right, &mut self.free_list_allocator);
+                self.buddy_free_lists[i - 1].0.set_free(right, &mut self.free_list_allocator);
 
                 // No point in setting 'left' to 'in use'. The reason for that is after split there are only two 
                 // operations that could be done with 'left' : splitting again , which will set it to 'in use'
@@ -174,8 +175,8 @@ impl BuddyAllocator {
             let buddy_free_list_block_size = BuddyAllocator::block_size_from_index(buddy_list_index);
             let buddy_index                = pointer / buddy_free_list_block_size;
 
-            if !buddy_free_list.is_free(buddy_index) {
-                buddy_free_list.set_free(buddy_index, &mut self.free_list_allocator);
+            if !buddy_free_list.0.is_free(buddy_index) {
+                buddy_free_list.0.set_free(buddy_index, &mut self.free_list_allocator);
                 break;    
             }            
             else {
@@ -266,65 +267,10 @@ impl iter::Iterator for BlockCountIterator {
 
 impl IteratorExt for BlockCountIterator {}
 
-pub struct BuddyFreeList {
-    frame_to_free_buddy : Array<heap::SharedBox<DoubleLinkedListCell<usize>>>,
-    free_blocks         : DoubleLinkedList<usize>,    
-}
+struct BuddyFreeList0(BuddyFreeList);
 
-impl BuddyFreeList {
-    pub fn new<A, B>(block_count : usize, memory_allocator : &mut A, list_allocator : &mut B) -> Self 
-    where A : MemoryAllocator, B : ConstantSizeMemoryAllocator {
-        let mut array = Array::new(block_count, memory_allocator);
-
-        // set list as fully occupied
-        for i in 0 .. array.length() {
-            array.update(i, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));
-        }
-
-        BuddyFreeList {
-            frame_to_free_buddy : array,
-            free_blocks         : DoubleLinkedList::new(list_allocator),            
-        }
-    }
-
-    fn mem_size_for_array(block_count : usize) -> usize {
-        Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(block_count)
-    }
-
-    fn mem_size_for_linked_list(block_count : usize) -> usize {
-        DoubleLinkedList::<usize>::mem_size_for::<usize>(block_count)
-    }
-
-    /*
-    pub fn mem_size_for(block_count : usize) -> usize {
-        let array_size       = Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(block_count);
-        let linked_list_size = DoubleLinkedList::<usize>::mem_size_for(block_count);
-
-        array_size + linked_list_size
-    }
-    */   
-
-    pub fn cell_size() -> usize {
-        DoubleLinkedList::<usize>::cell_size::<usize>()
-    }
-
-    /// Determines if block is free to use
-    /// # Arguments
-    /// * `block_start_address` - start address of memory block
-    pub fn is_free(&self, index : usize) -> bool {
-        !self.is_in_use(index)
-    }
-
-    /// Determines if block is occupied
-    /// # Arguments
-    /// * `block_start_address` - start address of memory blockfree_list_should_properly_set_free()
-    pub fn is_in_use(&self, index : usize) -> bool {
-        self.frame_to_free_buddy[index].is_nil()
-    }    
-
-    fn buddy_index(i : usize) -> usize {
-        //let i = block_start_address / self.block_size;
-
+impl BuddyFreeList0 {
+    fn buddy_index(i : usize) -> usize {        
         if math::is_even(i) {
             i + 1
         }
@@ -333,69 +279,9 @@ impl BuddyFreeList {
         }
     }
 
-    /// Sets the block as occupied
-    /// # Arguments    
-    /// * `block_start_address` - start address of memory block
-    /// * `memory_allocator` - memory allocator
-    pub fn set_in_use<A>(&mut self, index : usize, memory_allocator : &mut A)
-    where A : MemoryAllocator {        
-        if self.is_free(index) {
-            let cell = self.frame_to_free_buddy.value(index);
-            self.remove_free_block(cell, memory_allocator);
-            self.frame_to_free_buddy.update(index, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));        
-        }
-    }    
-
-    pub fn set_buddy_in_use<A>(&mut self, index : usize, memory_allocator : &mut A)
+    fn set_buddy_in_use<A>(&mut self, index : usize, memory_allocator : &mut A)
     where A : MemoryAllocator {
-        let buddy_index = BuddyFreeList::buddy_index(index);
-        self.set_in_use(buddy_index, memory_allocator);
-    }
-
-    /// Sets the block as free to use
-    /// # Arguments    
-    /// * `block_start_address` - start address of memory block
-    /// * `memory_allocator` - memory allocator
-    pub fn set_free<A>(&mut self, index : usize, memory_allocator : &mut A) 
-    where A : MemoryAllocator {        
-        if self.is_in_use(index) {
-            let cell = self.free_blocks.add_to_tail(index, memory_allocator);            
-            self.frame_to_free_buddy.update(index, cell);        
-        }
-    }
-
-    /// Returns first unused memory block if any.
-    /// # Arguments        
-    /// * `memory_allocator` - memory allocator
-    pub fn first_free_block<A>(&mut self, memory_allocator : &mut A) -> Option<usize> 
-    where A : MemoryAllocator{
-        let result = self.free_blocks.take_head(memory_allocator);
-
-        if let Some(index) = result {
-            //let index = self.address_to_array_index(block_start_address);
-            self.frame_to_free_buddy.update(index, heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));
-        }
-
-        result
-    }
-
-    pub fn has_free_block(&self) -> bool {
-        self.free_blocks.is_cell()
-    }    
-
-    fn remove_free_block<A>(&mut self, cell : heap::SharedBox<DoubleLinkedListCell<usize>>, memory_allocator : &mut A)
-    where A : MemoryAllocator {
-        if self.free_blocks.head_equals_tail() && cell.is_start() {
-            self.free_blocks.remove_head(memory_allocator);            
-        }
-        else if cell.is_start() {
-            self.free_blocks.remove_head(memory_allocator);            
-        }
-        else if cell.is_end() {
-            self.free_blocks.remove_tail(memory_allocator);            
-        }
-        else {
-            cell.pointer_mut().remove(memory_allocator);
-        }
+        let buddy_index = BuddyFreeList0::buddy_index(index);
+        self.0.set_in_use(buddy_index, memory_allocator);
     }
 }

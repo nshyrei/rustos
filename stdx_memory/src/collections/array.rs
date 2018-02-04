@@ -5,7 +5,8 @@ use core::iter;
 use core::ptr;
 use MemoryAllocator;
 use smart_ptr;
-
+use stdx::Sequence;
+use stdx::Iterable;
 
 pub struct Array<T> {
     length : usize,
@@ -49,19 +50,7 @@ impl <T> Array<T> {
             start_address : start_address,
             phantom : marker::PhantomData
         }
-    }
-
-    pub fn mem_size_for(length : usize) -> usize {
-        mem::size_of::<T>() * length
-    }
-
-    pub fn mem_size(&self) -> usize {
-        mem::size_of::<T>() * self.length
-    }
-
-    pub fn length(&self) -> usize {
-        self.length
-    }
+    }    
     
     pub fn update(&mut self, index : usize, value : T) {
         assert!(index < self.length);
@@ -74,10 +63,11 @@ impl <T> Array<T> {
 
     pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
         memory_allocator.free(self.start_address)
-    }
+    }    
 
-    pub fn iterator(&self) -> ArrayIterator<T> {
-        ArrayIterator::new(self)
+    pub fn elem_read(&self, index : usize) -> T {
+        assert!(index < self.length);        
+        unsafe { ptr::read(self.index_to_address(index) as *const T) }
     }
 
     pub fn elem_ref(&self, index : usize) -> &T {
@@ -104,13 +94,13 @@ impl <T> Array<T> {
         IndicesIterator::new(self)
     }
 
-    pub fn fill<F>(&mut self, filler : F) where F : Fn() -> T {
+    pub fn fill<F>(&mut self, mut filler : F) where F : FnMut() -> T {
         let addresses = self.indices().map(|i| self.index_to_address(i));
 
         for address in addresses {
             unsafe { ptr::write_unaligned(address as *mut T, filler()); }
         }
-    }
+    }    
 
     fn index_to_address(&self, index : usize) -> usize {
         self.start_address + (mem::size_of::<T>() * index)
@@ -122,6 +112,24 @@ impl <T> Array<T> {
 
     fn start_address(&self) -> usize {
         self.start_address
+    }        
+}
+
+impl<T> Iterable for Array<T> {
+    
+    type Item = T;
+
+    type IntoIter = ArrayIterator<T>;
+
+    fn iterator(&self) -> ArrayIterator<T> {
+        ArrayIterator::new(smart_ptr::Shared::new(self))
+    }
+}
+
+impl<T> Sequence for Array<T> {
+    
+    fn length(&self) -> usize {
+        self.length
     }
 }
 
@@ -228,14 +236,14 @@ impl iter::Iterator for IndicesIterator {
     }
 }
 
-pub struct ArrayIterator<'a, T> where T : 'a {
+pub struct ArrayIterator<T> {
     i : usize,
-    array : &'a Array<T>,    
+    array : smart_ptr::Shared<Array<T>>,    
 }
 
-impl<'a, T> ArrayIterator <'a, T> {
+impl<T> ArrayIterator <T> {
 
-    pub fn new(array : &'a Array<T>) -> Self {
+    pub fn new(array : smart_ptr::Shared<Array<T>>) -> Self {
         ArrayIterator {
             i  : 0,
             array : array,      
@@ -243,18 +251,18 @@ impl<'a, T> ArrayIterator <'a, T> {
     }
 }
 
-impl<'a, T> iter::Iterator for ArrayIterator<'a, T> {
-    type Item = smart_ptr::Unique<T>;
+impl<T> iter::Iterator for ArrayIterator<T> {
+    type Item = T;
 
-    fn next(&mut self) -> Option<smart_ptr::Unique<T>> {
+    fn next(&mut self) -> Option<T> {
         if self.i >= self.array.length() {
             None
         }
         else {
-            let result = self.array.elem_ref(self.i);
+            let result = self.array.elem_read(self.i);
             self.i += 1;
 
-            Some(smart_ptr::Unique::new(result))
+            Some(result)
         }
     }
 }

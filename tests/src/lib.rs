@@ -10,3 +10,4 @@ mod linked_list_tests;
 mod double_linked_list_tests;
 mod free_list_allocator_tests;
 mod buddy_free_list_tests;
+mod buddy_allocator_tests;
