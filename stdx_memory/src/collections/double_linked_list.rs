@@ -404,31 +404,31 @@ impl<T> iter::Iterator for DoubleLinkedListIterator<T> where T : Copy {
 impl<T> iterator::IteratorExt for DoubleLinkedListIterator<T> where T : Copy { }
 
 
-pub struct BuddyFreeList {
+pub struct BuddyMap {
     frame_to_free_buddy : Array<heap::SharedBox<DoubleLinkedListCell<usize>>>,
     free_blocks         : DoubleLinkedList<usize>,    
 }
 
-impl BuddyFreeList {
-    pub fn new<A, B>(block_count : usize, memory_allocator : &mut A, list_allocator : &mut B) -> Self 
+impl BuddyMap {
+    pub fn new<A, B>(length : usize, memory_allocator : &mut A, list_allocator : &mut B) -> Self 
     where A : MemoryAllocator, B : ConstantSizeMemoryAllocator {
-        let mut array = Array::new(block_count, memory_allocator);
+        let mut array = Array::new(length, memory_allocator);
 
         // set list as fully occupied
         array.fill(|| heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator));
 
-        BuddyFreeList {
+        BuddyMap {
             frame_to_free_buddy : array,
             free_blocks         : DoubleLinkedList::new(list_allocator),            
         }
     }
 
-    pub fn mem_size_for_array(block_count : usize) -> usize {
-        Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(block_count)
+    pub fn mem_size_for_array(length : usize) -> usize {
+        Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(length)
     }
 
-    pub fn mem_size_for_linked_list(block_count : usize) -> usize {
-        DoubleLinkedList::<usize>::mem_size_for(block_count)
+    pub fn mem_size_for_linked_list(length : usize) -> usize {
+        DoubleLinkedList::<usize>::mem_size_for(length)
     }    
 
     /// Determines if block is free to use
@@ -505,7 +505,7 @@ impl BuddyFreeList {
     }
 }
 
-impl Iterable for BuddyFreeList {
+impl Iterable for BuddyMap {
     
     type Item = usize;
 
@@ -516,7 +516,7 @@ impl Iterable for BuddyFreeList {
     }
 }
 
-impl Sequence for BuddyFreeList {
+impl Sequence for BuddyMap {
     
     fn length(&self) -> usize {
         self.frame_to_free_buddy.length()

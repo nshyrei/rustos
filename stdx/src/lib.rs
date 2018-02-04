@@ -39,11 +39,13 @@ pub trait Map {
 
     type Value;
 
-    fn contains(&self, key : usize) -> bool;
+    fn contains_key(&self, key : Self::Key) -> bool;
 
-    fn doesnt_contain(&self, key : usize) -> bool {
-        !self.contains(key)
-    }    
+    fn misses_key(&self, key : Self::Key) -> bool {
+        !self.contains_key(key)
+    }
+
+    fn get_value(&self, key : Self::Key) -> Option<Self::Value>;
 }
 
 pub trait BiMap : Map {

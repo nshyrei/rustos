@@ -1,7 +1,7 @@
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
 use stdx_memory::collections::array::Array;
-use stdx_memory::collections::double_linked_list::{DoubleLinkedList, BuddyFreeList};
+use stdx_memory::collections::double_linked_list::BuddyMap;
 use stdx_memory::heap;
 use allocator::bump;
 use frame::{Frame, FRAME_SIZE};
@@ -14,7 +14,7 @@ use core::mem;
 
 pub struct BuddyAllocator {
     allocation_sizes     : Array<usize>,    
-    buddy_free_lists     : Array<BuddyFreeList0>,    
+    buddy_free_lists     : Array<BuddyFreeList>,    
     array_allocator      : bump::BumpAllocator,
     free_list_allocator  : free_list::FreeListAllocator,
     total_memory         : usize,
@@ -50,10 +50,10 @@ impl BuddyAllocator {
         let mut free_list_allocator = free_list::FreeListAllocator::from_address(
             array_allocator.end_address() + 1, 
             buddy_free_lists_size,
-            BuddyFreeList::cell_size());
+            BuddyMap::cell_size());
 
         let allocation_sizes            = Array::<usize>::new(total_buddy_levels, &mut array_allocator);        
-        let mut buddy_free_lists_array  = Array::<BuddyFreeList0>::new(total_buddy_levels, &mut array_allocator);        
+        let mut buddy_free_lists_array  = Array::<BuddyFreeList>::new(total_buddy_levels, &mut array_allocator);        
 
         BuddyAllocator::create_buddy_free_lists(
             &mut buddy_free_lists_array, 
@@ -75,7 +75,7 @@ impl BuddyAllocator {
         }
     }
 
-    fn create_buddy_free_lists(buddy_free_lists : &mut Array<BuddyFreeList0>, 
+    fn create_buddy_free_lists(buddy_free_lists : &mut Array<BuddyFreeList>, 
         array_allocator : &mut bump::BumpAllocator,
         free_list_allocator : &mut free_list::FreeListAllocator,
         total_memory : usize, 
@@ -84,8 +84,8 @@ impl BuddyAllocator {
         let it = BlockCountIterator::new(total_memory, total_buddy_levels, FRAME_SIZE).index_items();
 
         for (block_count, i) in it {
-            let buddy_free_list = BuddyFreeList::new(block_count, array_allocator, free_list_allocator);            
-            buddy_free_lists.update(i, BuddyFreeList0(buddy_free_list));      
+            let buddy_free_list = BuddyMap::new(block_count, array_allocator, free_list_allocator);            
+            buddy_free_lists.update(i, BuddyFreeList(buddy_free_list));      
         }
     }
 
@@ -94,8 +94,8 @@ impl BuddyAllocator {
         let mut free_list_size = 0;        
 
         for block_count in BlockCountIterator::new(total_memory, buddy_levels_count, FRAME_SIZE) {            
-            free_list_size += BuddyFreeList::mem_size_for_linked_list(block_count);
-            array_size += BuddyFreeList::mem_size_for_array(block_count);            
+            free_list_size += BuddyMap::mem_size_for_linked_list(block_count);
+            array_size += BuddyMap::mem_size_for_array(block_count);            
         }
         
         (array_size, free_list_size)
@@ -267,9 +267,9 @@ impl iter::Iterator for BlockCountIterator {
 
 impl IteratorExt for BlockCountIterator {}
 
-struct BuddyFreeList0(BuddyFreeList);
+struct BuddyFreeList(BuddyMap);
 
-impl BuddyFreeList0 {
+impl BuddyFreeList {
     fn buddy_index(i : usize) -> usize {        
         if math::is_even(i) {
             i + 1
@@ -281,7 +281,7 @@ impl BuddyFreeList0 {
 
     fn set_buddy_in_use<A>(&mut self, index : usize, memory_allocator : &mut A)
     where A : MemoryAllocator {
-        let buddy_index = BuddyFreeList0::buddy_index(index);
+        let buddy_index = BuddyFreeList::buddy_index(index);
         self.0.set_in_use(buddy_index, memory_allocator);
     }
 }
