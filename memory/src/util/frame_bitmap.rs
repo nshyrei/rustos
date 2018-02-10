@@ -1,19 +1,19 @@
-use allocator::bump::BumpAllocator;
 use stdx_memory::MemoryAllocator;
 use core::ptr;
 use core::fmt;
+use core::marker;
 
 const BITMAP_ENTRY_SIZE: usize = 8; //number of bits in byte
 
 pub struct FrameBitMap {
     start_address : usize,
     size : usize,
-    frames_count : usize
+    frames_count : usize,
 }
 
 impl FrameBitMap {
 
-    pub fn new_from_available_memory(available_memory: usize, frame_size: usize, memory_allocator : &mut BumpAllocator) -> FrameBitMap {
+    pub fn new_from_available_memory<A>(available_memory: usize, frame_size: usize, memory_allocator : &mut A) -> Self where A : MemoryAllocator {
         let frames_count = available_memory / frame_size;
         FrameBitMap::new(frames_count, memory_allocator)
     }
@@ -28,7 +28,7 @@ impl FrameBitMap {
         }
     }
 
-    pub fn new(frames_count : usize, memory_allocator : &mut BumpAllocator) -> FrameBitMap {
+    pub fn new<A>(frames_count : usize, memory_allocator : &mut A) -> Self where A : MemoryAllocator {
 
         let bitmap_size_help = frames_count % BITMAP_ENTRY_SIZE;
         let bitmap_size = if bitmap_size_help > 0 {
@@ -47,8 +47,8 @@ impl FrameBitMap {
 
         FrameBitMap {
             start_address : address,
-            size : bitmap_size,
-            frames_count : frames_count
+            size          : bitmap_size,
+            frames_count  : frames_count,            
         }
     }
 

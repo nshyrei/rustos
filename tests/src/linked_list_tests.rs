@@ -4,15 +4,19 @@ use stdx_memory::heap::SharedBox;
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 
-fn heap() -> BumpAllocator {
-    let heap = [0;256];
-    let heap_addr = heap.as_ptr() as usize;        
-    BumpAllocator::from_address_for_type::<LinkedList<u64>>(heap_addr, heap.len())
+
+macro_rules! bump_alloc {
+    ($x:expr) => {{
+        let heap = [0;$x];    
+
+        let heap_addr = heap.as_ptr() as usize;
+        BumpAllocator::from_address(heap_addr, $x)
+    }}    
 }
 
 #[test]
 pub fn new_should_create_a_new_cell() {    
-    let mut bump_allocator = heap();
+    let mut bump_allocator = bump_alloc!(200);
 
     let list = LinkedList::new(10, &mut bump_allocator);
 
@@ -25,7 +29,7 @@ pub fn new_should_create_a_new_cell() {
 
 #[test]
 pub fn is_cell_should_return_true_for_cell() {    
-    let mut bump_allocator = heap();
+    let mut bump_allocator = bump_alloc!(200);
 
     let nil = SharedBox::new(LinkedList::Nil, &mut bump_allocator);
     let list = SharedBox::new(LinkedList::Cell { value : 1, prev : nil }, &mut bump_allocator);
@@ -35,7 +39,7 @@ pub fn is_cell_should_return_true_for_cell() {
 
 #[test]
 pub fn is_cell_should_return_false_for_nil() {    
-    let mut bump_allocator = heap();
+    let mut bump_allocator = bump_alloc!(200);
 
     let nil : SharedBox<LinkedList<usize>> = SharedBox::new(LinkedList::Nil, &mut bump_allocator);    
 
@@ -44,7 +48,7 @@ pub fn is_cell_should_return_false_for_nil() {
 
 #[test]
 pub fn is_nil_should_return_true_for_nil() {    
-    let mut bump_allocator = heap();
+    let mut bump_allocator = bump_alloc!(200);
 
     let nil : SharedBox<LinkedList<usize>> = SharedBox::new(LinkedList::Nil, &mut bump_allocator);    
 
@@ -53,7 +57,7 @@ pub fn is_nil_should_return_true_for_nil() {
 
 #[test]
 pub fn is_nil_should_return_false_for_cell() {    
-    let mut bump_allocator = heap();
+    let mut bump_allocator = bump_alloc!(200);
 
     let nil = SharedBox::new(LinkedList::Nil, &mut bump_allocator);
     let list = SharedBox::new(LinkedList::Cell { value : 1, prev : nil }, &mut bump_allocator);
@@ -64,7 +68,7 @@ pub fn is_nil_should_return_false_for_cell() {
 
 #[test]
 pub fn add_should_create_a_new_cell_with_reference_to_the_old_one() {    
-    let mut bump_allocator = heap();
+    let mut bump_allocator = bump_alloc!(200);
 
     let start = LinkedList::new(1, &mut bump_allocator);
     let end = start.add(2, &mut bump_allocator);
@@ -87,7 +91,7 @@ pub fn add_should_create_a_new_cell_with_reference_to_the_old_one() {
 
 #[test]
 pub fn add_should_create_a_new_cell_with_reference_to_the_old_one_nil_case() {    
-    let mut bump_allocator = heap();
+    let mut bump_allocator = bump_alloc!(200);
 
     let start : SharedBox<LinkedList<u32>> = SharedBox::new(LinkedList::Nil, &mut bump_allocator);    
     let end = start.add(2, &mut bump_allocator);
@@ -108,8 +112,7 @@ pub fn add_should_create_a_new_cell_with_reference_to_the_old_one_nil_case() {
 
 #[test]
 fn adding_elems_should_work_properly() {
-    let bytes = [0; 256];
-    let addr = bytes.as_ptr() as usize;
+    let mut bump_allocator = bump_alloc!(256);
     let test_values  = [
         Frame::from_address(0), 
         Frame::from_address(FRAME_SIZE * 2), 
@@ -121,11 +124,10 @@ fn adding_elems_should_work_properly() {
         Frame::from_address(FRAME_SIZE * 10)
     ];
     let test_values_len = test_values.len();
-    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address_for_type::<LinkedList<Frame>>(addr, 256);
-    let mut head = LinkedList::new(test_values[0], &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let mut head = LinkedList::new(test_values[0], &mut bump_allocator);
 
     for i in 1..test_values_len {
-        head = head.pointer().add(test_values[i],&mut KERNEL_BASIC_HEAP_ALLOCATOR);
+        head = head.pointer().add(test_values[i],&mut bump_allocator);
     }
 
     let it = LinkedListIterator::new(head);

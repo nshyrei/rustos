@@ -1,28 +1,32 @@
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 use stdx::iterator::IteratorExt;
+use stdx::Iterable;
+use stdx::Sequence;
 use stdx_memory::MemoryAllocator;
 use stdx_memory::heap::SharedBox;
-use stdx_memory::collections::double_linked_list::{DoubleLinkedListCell, DoubleLinkedList, DoubleLinkedListIterator};
+use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListIterator};
 use memory::allocator::bump::BumpAllocator;
+use memory::allocator::bump::ConstSizeBumpAllocator;
 use memory::allocator::free_list::FreeListAllocator;
 use std::mem;
+use alloc::heap;
 
+macro_rules! init_dlist {
+    ($l:expr) => {{
+        unsafe {
+            let size = DoubleLinkedList::<u8>::mem_size_for($l);
+            let cell_size = DoubleLinkedList::<u8>::cell_size();
+            let heap_addr = heap::allocate_zeroed(size, 2);             
+            let mut allocator = ConstSizeBumpAllocator::from_address(heap_addr as usize, size, cell_size);
+            let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new();
 
-fn heap() -> BumpAllocator {
-    let heap = [0;256];
-    let heap_addr = heap.as_ptr() as usize;
-    BumpAllocator::from_address_for_type::<DoubleLinkedListCell<u64>>(heap_addr, heap.len())
+            (list, allocator)
+        }
+    }}
 }
 
-macro_rules! heap_raw {
-    ($x:expr) => {{
-        let heap = [0;$x];    
-
-        (heap.as_ptr() as usize, 256)
-    }}    
-}
-
+/*
 #[test]
 pub fn new_should_create_a_new_cell() {    
     let mut bump_allocator = heap();
@@ -146,45 +150,37 @@ pub fn remove_should_properly_delete_end_element() {
         "DoubleLinkedList::remove() didn't properly removed end element. Element {} should be the end element but it wasn't",
         end.value());
 }
+*/
 
 #[test]
-pub fn new_should_create_an_empty_list() {
-    //let size = mem::size_of::<DoubleLinkedListCell<u8>>() * 2;
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);    
-
+pub fn new_should_create_an_empty_list() {    
+    let (mut list, mut allocator) = init_dlist!(0);
+    
     assert!(list.is_nil(), 
         "DoubleLinkedList::new didn't properly create an empty list. Head or tail wasn't nil");    
 }
 
 #[test]
 pub fn add_to_tail_should_properly_add_one_cell_to_empty_list() {    
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
+    let (mut list, mut allocator) = init_dlist!(1);
+    
     list.add_to_tail(1, &mut allocator);    
 
     let head = list.head();
     let tail = list.tail();
 
-    assert!(head.is_cell(), "DoubleLinkedList::add wasn't able to add cell to empty list. Head was Nil, but should be Cell");
-    assert!(tail.is_cell(), "DoubleLinkedList::add wasn't to add cell to empty list. Tail was Nil, but should be Cell");
-    assert!(head.value() == tail.value(), 
+    assert!(head.is_some(), "DoubleLinkedList::add wasn't able to add cell to empty list. Head was Nil, but should be Cell");
+    assert!(tail.is_some(), "DoubleLinkedList::add wasn't to add cell to empty list. Tail was Nil, but should be Cell");
+    assert!(head.unwrap() == tail.unwrap(), 
         "DoubleLinkedList::add wasn't able to add cell to empty list. 
         Tail and Head values are different.add_to_tail_should_properly_add_one_cell. Head has value {}, but tail has {}",
-        head.value(),
-        tail.value());
+        head.unwrap(),
+        tail.unwrap());
 }
 
 #[test]
-pub fn add_to_tail_should_properly_cell_to_non_empty_list() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
+pub fn add_to_tail_should_properly_add_cells_to_non_empty_list() {
+    let (mut list, mut allocator) = init_dlist!(3);
     let values : [u8;3] = [1, 2, 3];
     let values_len = values.len();
 
@@ -194,29 +190,26 @@ pub fn add_to_tail_should_properly_cell_to_non_empty_list() {
 
     assert!(list.is_one_cell() == false, "DoubleLinkedList::add wasn't able to add cell to non empty list. DoubleLinkedList::is_one_cell() returned true");
     
-    let count = DoubleLinkedListIterator::new(list.tail()).count();
+    let count = list.iterator().count();
 
     assert!(count == values_len, "DoubleLinkedList::add wasn't able to add cell to non empty list. Iterator.count() returned {}, but should be {}",
         count,
         values_len);
 
-    let mut iter = DoubleLinkedListIterator::new(list.tail()).index_items();
+    let mut iter = list.iterator().index_items();
     
     // todo : make a reverse indexing iterator
     while let Some((result, index)) = iter.next() {
-        assert!(result == values[values_len - index - 1], "DoubleLinkedList::add wasn't able to add cell to non empty list. Value returned from iterator and reference differ. Was {}, but should be {}",
+        assert!(result == values[index], "DoubleLinkedList::add wasn't able to add cell to non empty list. Value returned from iterator and reference differ. Was {}, but should be {}",
         result,
-        values[values_len - index - 1]);        
+        values[index]);        
     };
 }
 
 #[test]
 pub fn remove_tail_should_not_do_anything_if_list_is_nil() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-        
+    let (mut list, mut allocator) = init_dlist!(0);
+
     list.remove_tail(&mut allocator);
     
     assert!(list.is_nil(), "DoubleLinkedList::remove_tail on empty list removed Nil value");        
@@ -224,11 +217,8 @@ pub fn remove_tail_should_not_do_anything_if_list_is_nil() {
 
 #[test]
 pub fn remove_head_should_not_do_anything_if_list_is_nil() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-        
+    let (mut list, mut allocator) = init_dlist!(0);
+
     list.remove_head(&mut allocator);
     
     assert!(list.is_nil(), "DoubleLinkedList::remove_tail on empty list removed Nil value");        
@@ -236,11 +226,8 @@ pub fn remove_head_should_not_do_anything_if_list_is_nil() {
 
 #[test]
 pub fn remove_tail_should_properly_remove_tail_element() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-        
+    let (mut list, mut allocator) = init_dlist!(3);
+
     let values : [u8;3] = [1, 2, 3];
     let values_len = values.len();
 
@@ -250,29 +237,26 @@ pub fn remove_tail_should_properly_remove_tail_element() {
 
     list.remove_tail(&mut allocator);
     
-    let count = DoubleLinkedListIterator::new(list.tail()).count();
+    let count = list.iterator().count();
 
     assert!(count == values_len - 1, "DoubleLinkedList::remove_tail didn't remove the last element. Iterator count returned {}, but should be {}",
         count,
         values_len - 1);
 
-    let mut iter = DoubleLinkedListIterator::new(list.tail()).index_items();
+    let mut iter = list.iterator().index_items();
     
     // todo : make a reverse indexing iterator
     while let Some((result, index)) = iter.next() {
-        assert!(result == values[values_len - index - 2], "DoubleLinkedList::remove_tail didn't remove the last element. Value returned from iterator and reference differ. Was {}, but should be {}",
+        assert!(result == values[index], "DoubleLinkedList::remove_tail didn't remove the last element. Value returned from iterator and reference differ. Was {}, but should be {}",
         result,
-        values[values_len - index - 2]);        
+        values[index]);        
     };      
 }
 
 #[test]
 pub fn remove_head_should_properly_remove_head_element() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-        
+    let (mut list, mut allocator) = init_dlist!(3);
+
     let values : [u8;3] = [1, 2, 3];
     let values_len = values.len();
 
@@ -282,59 +266,48 @@ pub fn remove_head_should_properly_remove_head_element() {
 
     list.remove_head(&mut allocator);
     
-    let count = DoubleLinkedListIterator::new(list.tail()).count();
+    let count = list.iterator().count();
 
     assert!(count == values_len - 1, "DoubleLinkedList::remove_tail didn't remove the last element. Iterator count returned {}, but should be {}",
         count,
         values_len - 1);
 
-    let mut iter = DoubleLinkedListIterator::new(list.tail()).index_items();
-    
-    // todo : make a reverse indexing iterator
+    let mut iter = list.iterator().index_items();
+        
     while let Some((result, index)) = iter.next() {
-        assert!(result == values[values_len - index - 1], "DoubleLinkedList::remove_tail didn't remove the last element. Value returned from iterator and reference differ. Was {}, but should be {}",
+        assert!(result == values[index + 1], "DoubleLinkedList::remove_tail didn't remove the last element. Value returned from iterator and reference differ. Was {}, but should be {}",
         result,
-        values[values_len - index - 1]);
+        values[index + 1]);
     };      
 }
 
 #[test]
 pub fn remove_head_should_properly_remove_head_element_when_list_has_exactly_one_cell() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-            
+    let (mut list, mut allocator) = init_dlist!(1);
+
     list.add_to_tail(1, &mut allocator);
     list.remove_head(&mut allocator);
     
-    let count = DoubleLinkedListIterator::new(list.tail()).count();
+    let count = list.iterator().count();
 
     assert!(list.is_nil(), "DoubleLinkedList::remove_head didn't remove one existing cell. Is_Nil() returned false but should be true");
 }
 
 #[test]
 pub fn remove_tail_should_properly_remove_head_element_when_list_has_exactly_one_cell() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-            
+    let (mut list, mut allocator) = init_dlist!(1);
+
     list.add_to_tail(1, &mut allocator);
     list.remove_tail(&mut allocator);
     
-    let count = DoubleLinkedListIterator::new(list.tail()).count();
+    let count = list.iterator().count();
 
     assert!(list.is_nil(), "DoubleLinkedList::remove_tail didn't remove one existing cell. Is_Nil() returned false but should be true");
 }
 
 #[test]
 pub fn take_head_should_return_nothing_if_list_is_nil() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-            
+    let (mut list, mut allocator) = init_dlist!(0);
     let result = list.take_head(&mut allocator);    
 
     assert!(list.is_nil(), "DoubleLinkedList::take_head returned result from unknown source. Result should be nil because the list is nil");
@@ -342,12 +315,10 @@ pub fn take_head_should_return_nothing_if_list_is_nil() {
 
 #[test]
 pub fn take_head_should_return_one_element_if_list_consists_of_exactly_one_element() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
+    let (mut list, mut allocator) = init_dlist!(1);
             
     list.add_to_tail(1, &mut allocator);
+
     let result = list.take_head(&mut allocator);
 
     assert!(result.is_some(), "DoubleLinkedList::take_head returned no result, why list had exactly one value {}.",
@@ -362,34 +333,17 @@ pub fn take_head_should_return_one_element_if_list_consists_of_exactly_one_eleme
 
 #[test]
 pub fn take_head_should_properly_return_and_then_delete_head_element() {
-    let (heap_start, heap_size) = heap_raw!(200); //todo rework to size computation
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-        
-    let values : [u8;3] = [1, 2, 3];
-    let values_len = values.len();
+    
+    let (mut list, mut allocator) = init_dlist!(3);
+    let values : [u8;3] = [1, 2, 3];    
 
     list.add_to_tail(values[0], &mut allocator);
     list.add_to_tail(values[1], &mut allocator); 
     list.add_to_tail(values[2], &mut allocator);
 
-    let result = list.take_head(&mut allocator);
-    
-    let count = DoubleLinkedListIterator::new(list.tail()).count();
-
-    assert!(count == values_len - 1, "DoubleLinkedList::take_head didn't remove the last element. Iterator count returned {}, but should be {}",
-        count,
-        values_len - 1);
-
-    let mut iter = DoubleLinkedListIterator::new(list.tail()).index_items();
-    
-    // todo : make a reverse indexing iterator
-    while let Some((result, index)) = iter.next() {
-        assert!(result == values[values_len - index - 1], "DoubleLinkedList::take_head didn't remove the last element. Value returned from iterator and reference differ. Was {}, but should be {}",
-        result,
-        values[values_len - index - 1]);
-    };
+    let result     = list.take_head(&mut allocator);    
+    let count      = list.iterator().count();
+    let values_len = values.len();
 
     assert!(result.is_some(), "DoubleLinkedList::take_head returned no result, but should return {}",
         values[0]);
@@ -398,4 +352,15 @@ pub fn take_head_should_properly_return_and_then_delete_head_element() {
         values[0],
         result.unwrap());
 
+    assert!(count == values_len - 1, "DoubleLinkedList::take_head didn't remove the last element. Iterator count returned {}, but should be {}",
+        count,
+        values_len - 1);
+
+    let mut iter = list.iterator().index_items();
+        
+    while let Some((result, index)) = iter.next() {
+        assert!(result == values[index + 1], "DoubleLinkedList::take_head didn't remove the last element. Value returned from iterator and reference differ. Was {}, but should be {}",
+        result,
+        values[index + 1]);
+    };
 }

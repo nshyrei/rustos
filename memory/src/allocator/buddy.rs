@@ -11,6 +11,7 @@ use stdx::math;
 use stdx::Sequence;
 use core::iter;
 use core::mem;
+use core::ops;
 
 pub struct BuddyAllocator {
     allocation_sizes     : Array<usize>,    
@@ -31,20 +32,27 @@ impl BuddyAllocator {
         1
     }
 
-    pub unsafe fn new(start_address1 : usize, end_address1 : usize) -> BuddyAllocator {
+    pub fn new(start_address1 : usize, end_address1 : usize) -> BuddyAllocator {
         let start_address      = Frame::address_align_up(start_address1);
-        let end_address        = Frame::address_align(end_address1);
+        let end_address        = end_address1;
+
+        assert!(end_address > start_address, "Cannot create allocator when end address <= start address");
+
         let total_memory       = end_address - start_address + 1;
+
+        let total_frames_count = Frame::from_address(total_memory).number();
+
+        assert!(end_address > start_address, "Cannot create allocator total memory size < FRAME_SIZE (4096) ");
+
+        let total_buddy_levels = BuddyAllocator::total_buddy_levels(total_memory);
         
-        let total_frames_count = Frame::from_address(total_memory).number();        
-        let total_buddy_levels = BuddyAllocator::index_from_size(total_memory);
-        
-        let sizes_array_size      = Array::<usize>::mem_size_for(total_frames_count);
+        let sizes_array_size           = Array::<usize>::mem_size_for(total_frames_count);
+        let buddy_free_list_array_size = Array::<BuddyFreeList>::mem_size_for(total_buddy_levels);
         let (buddy_array_size, buddy_free_lists_size) = BuddyAllocator::buddy_free_list_size(
             total_buddy_levels,
             total_memory);
         
-        let array_sizes = sizes_array_size + buddy_array_size;
+        let array_sizes = sizes_array_size + buddy_array_size + buddy_free_list_array_size;
 
         let mut array_allocator     = bump::BumpAllocator::from_address(start_address, array_sizes);
         let mut free_list_allocator = free_list::FreeListAllocator::from_address(
@@ -63,7 +71,8 @@ impl BuddyAllocator {
             total_buddy_levels);
 
         // set initial block that covers all memory as free
-        buddy_free_lists_array[total_buddy_levels - 1].0.set_free(0, &mut free_list_allocator);
+        let idx = if total_buddy_levels > 0 { total_buddy_levels - 1} else { 0 };
+        buddy_free_lists_array[idx].0.set_free(0, &mut free_list_allocator);
                 
         BuddyAllocator {
             allocation_sizes            : allocation_sizes,            
@@ -72,6 +81,17 @@ impl BuddyAllocator {
             array_allocator             : array_allocator,
             free_list_allocator         : free_list_allocator,
             start_address               : start_address
+        }
+    }
+
+    fn total_buddy_levels(total_memory : usize) -> usize {
+        let idx = BuddyAllocator::index_from_size(total_memory);
+
+        if idx > 0 {
+            idx
+        }
+        else {
+            1
         }
     }
 
@@ -125,7 +145,13 @@ impl BuddyAllocator {
     }
 
     fn index_from_size(block_size : usize) -> usize {
-        math::log2(block_size) - 12 // 2 ^ 12 = 4096 = FRAME_SIZE
+        let log = math::log2(block_size);
+        if log < 12 {
+            0
+        }
+        else {
+            log - 12 // 2 ^ 12 = 4096 = FRAME_SIZE
+        }        
     }    
 
     fn split_down(&mut self, allocation_size : usize, start_index : usize) -> Option<usize> {
@@ -232,18 +258,16 @@ impl MemoryAllocator for BuddyAllocator {
 }
 
 struct BlockCountIterator {
-    total_buddy_levels : usize,
-    block_size         : usize,
-    i                  : usize,
+    buddy_levels_range : ops::Range<usize>,
+    block_size         : usize,    
     total_memory       : usize    
 }
 
 impl BlockCountIterator {
     fn new(total_memory : usize, total_buddy_levels : usize, starting_block_size : usize) -> Self {
         BlockCountIterator {
-            total_buddy_levels : total_buddy_levels,
-            block_size         : starting_block_size,
-            i                  : 0,
+            buddy_levels_range : (0..total_buddy_levels),            
+            block_size         : starting_block_size,            
             total_memory       : total_memory
         }
     }
@@ -252,8 +276,9 @@ impl BlockCountIterator {
 impl iter::Iterator for BlockCountIterator {
     type Item = usize;
 
-    fn next(&mut self) -> Option<usize> {
-        if self.i < self.total_buddy_levels {
+    fn next(&mut self) -> Option<usize> {        
+
+        if self.buddy_levels_range.next().is_some() {
             let result = self.total_memory / self.block_size;
             self.block_size *= 2;
 
