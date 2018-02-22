@@ -8,8 +8,8 @@ use stdx::Sequence;
 use core::iter;
 use core::mem;
 use core::any::Any;
+use core::fmt;
 
-/*
 pub struct DoubleLinkedList<T> {
     head : heap::SharedBox<DoubleLinkedListCell<T>>,
     tail : heap::SharedBox<DoubleLinkedListCell<T>>,    
@@ -189,7 +189,14 @@ impl<T> Sequence for DoubleLinkedList<T> where T : Copy {
         cell_size * length + 2 * cell_size // 2 cells are for DoubleLinkedList::Nil
     }
 }
-*/
+
+impl<T> fmt::Display for DoubleLinkedList<T> where T : fmt::Display + Copy {    
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.iterator().fold(write!(f, ""), |_base, e| write!(f, "entry: {} ", e))        
+    }    
+}
+
+/*
 pub struct DoubleLinkedList<T> {
     head : Option<heap::SharedBox<DoubleLinkedListCell<T>>>,
     tail : Option<heap::SharedBox<DoubleLinkedListCell<T>>>,    
@@ -219,7 +226,9 @@ impl<T> DoubleLinkedList<T> {
     /// * `memory_allocator` - memory allocator    
     fn add_to_tail_inner<A>(&mut self, value : T, memory_allocator : &mut A) -> heap::SharedBox<DoubleLinkedListCell<T>> where A : MemoryAllocator{
         if self.tail.is_none() {
-            self.tail = Some(DoubleLinkedListCell::new(value, memory_allocator));
+            self.tail = Some(DoubleLinkedListCell::new(value, memory_allocator));            
+            let rr = self.tail.unwrap().read();
+            let rr2 = 1;
         }
         else {
             self.tail = self.tail.map(|mut e| e.add(value, memory_allocator));
@@ -343,7 +352,13 @@ impl<T> DoubleLinkedList<T> where T : Copy {
         else {
             None
         }        
-    } 
+    }
+}
+
+impl<T> fmt::Display for DoubleLinkedList<T> where T : fmt::Display + Copy {    
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.iterator().fold(write!(f, ""), |_base, e| write!(f, "entry: {} ", e))        
+    }    
 }
 
 impl<T> Iterable for DoubleLinkedList<T> where T : Copy {
@@ -373,7 +388,7 @@ impl<T> Sequence for DoubleLinkedList<T> where T : Copy {
     }
 }
 
-#[repr(C)]
+#[repr(C, packed)]
 struct DoubleLinkedListCell<T> {
     value : T,
     prev : Option<heap::SharedBox<DoubleLinkedListCell<T>>>,
@@ -466,6 +481,11 @@ impl<T> DoubleLinkedListCell<T> {
 }
 
 impl<T> DoubleLinkedListCell<T> where T : Copy {
+
+    pub fn value(&self) -> T {
+        self.value
+    }
+
     /// Returns copy of the cell data if `self` is DoubleLinkedList::Cell then removes this from linked list,
     /// returns None if `self` is DoubleLinkedList::Cell.
     /// # Arguments
@@ -509,8 +529,10 @@ impl<T> DoubleLinkedListCell<T> where T : Copy {
         (value, next)    
     }
 }
+*/
 
-/*
+
+
 /// A type that represents double linked list of cells in memory
 #[repr(C)]
 enum DoubleLinkedListCell<T> {
@@ -542,7 +564,14 @@ impl<T> DoubleLinkedListCell<T> {
     /// * `value` - value to put into cell
     /// * `memory_allocator` - memory allocator
     pub fn add<A>(&mut self, value: T, memory_allocator : &mut A) -> heap::SharedBox<Self> where A : MemoryAllocator {
-        let nil      = heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator);
+        // reuse nil from previous cell
+        let prev_has_nil = self.next().map(|e| e.is_nil()).unwrap_or(false); 
+        let nil          = if prev_has_nil {
+            self.next().unwrap()
+        }
+        else {
+            heap::SharedBox::new(DoubleLinkedListCell::Nil, memory_allocator)
+        };
         let new_cell = DoubleLinkedListCell::Cell {
                 value : value,
                 next  : nil,
@@ -551,7 +580,7 @@ impl<T> DoubleLinkedListCell<T> {
 
         let result = heap::SharedBox::new(new_cell, memory_allocator);
 
-        self.set_next(result);
+        self.set_next(result, memory_allocator);
         result
     }
 
@@ -584,13 +613,22 @@ impl<T> DoubleLinkedListCell<T> {
         !self.is_cell()
     }
 
+    pub fn next(&self) -> Option<heap::SharedBox<DoubleLinkedListCell<T>>> {
+        match *self {
+            DoubleLinkedListCell::Cell { next, .. } => Some(next),
+            _ => None
+        }
+    }
+
     /// Sets `next` to `new_next` if this type is DoubleLinkedList::Cell.
     /// Does nothing otherwise.
     /// # Arguments
     /// * `new_next` - new pointer to next DoubleLinkedList    
-    fn set_next(&mut self, new_next : heap::SharedBox<Self>) {
+    fn set_next<A>(&mut self, new_next : heap::SharedBox<Self>, memory_allocator : &mut A) where A : MemoryAllocator {
         if let DoubleLinkedListCell::Cell { ref mut next, .. } = *self {
-
+            if next.is_nil() {
+                next.free(memory_allocator);
+            }
             *next = new_next
         }
     }
@@ -599,8 +637,13 @@ impl<T> DoubleLinkedListCell<T> {
     /// Does nothing otherwise.
     /// # Arguments
     /// * `new_prev` - new pointer to previous DoubleLinkedList
-    fn set_prev(&mut self, new_prev : heap::SharedBox<Self>) {
+    fn set_prev<A>(&mut self, new_prev : heap::SharedBox<Self>, memory_allocator : &mut A) where A : MemoryAllocator {
         if let DoubleLinkedListCell::Cell { ref mut prev, .. } = *self {
+
+            if prev.is_nil() {
+                prev.free(memory_allocator);
+            }
+
             *prev = new_prev
         }    
     }
@@ -614,8 +657,8 @@ impl<T> DoubleLinkedListCell<T> {
     where A : MemoryAllocator {
         let result = match *self {
             DoubleLinkedListCell::Cell { mut prev, mut next, .. } => {
-                prev.set_next(next);
-                next.set_prev(prev);
+                prev.set_next(next, memory_allocator);
+                next.set_prev(prev, memory_allocator);
                 Some((prev, next))
             },
             _ => None
@@ -684,8 +727,8 @@ impl <T> DoubleLinkedListCell<T> where T : Copy {
     pub fn take<A>(&self, memory_allocator : &mut A) -> Option<(T, heap::SharedBox<Self>, heap::SharedBox<Self>)> where A : MemoryAllocator {        
         let result = match *self {
             DoubleLinkedListCell::Cell { value, mut prev, mut next } => {
-                next.set_prev(prev);
-                prev.set_next(next);
+                next.set_prev(prev, memory_allocator);
+                prev.set_next(next, memory_allocator);
                 
                 Some((value, prev, next))
             },
@@ -751,8 +794,8 @@ impl<T> iter::Iterator for DoubleLinkedListIterator<T> where T : Copy {
 }
 
 impl<T> iterator::IteratorExt for DoubleLinkedListIterator<T> where T : Copy { }
-*/
 
+/*
 pub struct DoubleLinkedListIterator<T> {
     current : Option<heap::SharedBox<DoubleLinkedListCell<T>>>
 }
@@ -781,7 +824,7 @@ impl<T> iter::Iterator for DoubleLinkedListIterator<T> where T : Copy {
 }
 
 impl<T> iterator::IteratorExt for DoubleLinkedListIterator<T> where T : Copy { }
-
+*/
 
 pub struct BuddyMap {
     frame_to_free_buddy : Array<Option<heap::SharedBox<DoubleLinkedListCell<usize>>>>,
@@ -798,7 +841,7 @@ impl BuddyMap {
 
         BuddyMap {
             frame_to_free_buddy : array,
-            free_blocks         : DoubleLinkedList::new(),            
+            free_blocks         : DoubleLinkedList::new(list_allocator),            
         }
     }
 
@@ -837,7 +880,7 @@ impl BuddyMap {
     }
 
     /// Sets the block as free to use
-    /// # Arguments    
+    /// # Arguments
     /// * `block_start_address` - start address of memory block
     /// * `memory_allocator` - memory allocator
     pub fn set_free<A>(&mut self, index : usize, memory_allocator : &mut A) 
@@ -881,6 +924,12 @@ impl BuddyMap {
             cell.pointer_mut().remove(memory_allocator);
         }
     }
+}
+
+impl fmt::Display for BuddyMap {    
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "--- Dlinked List in buddy map--- {}", self.free_blocks)
+    }    
 }
 
 impl Iterable for BuddyMap {
