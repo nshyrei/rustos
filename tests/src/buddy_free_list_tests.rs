@@ -43,8 +43,23 @@ pub fn free_list_should_properly_set_in_use() {
 
 #[test]
 pub fn free_list_should_properly_set_free() {
-    let (mut buddy_free_list, mut allocator) = init_buddy_map!(2);
 
+
+        unsafe {            
+            let li : [u8;128] = [0;128];
+            let ar : [u8;10000] = [0;10000];
+            let cell_size        = BuddyMap::cell_size();
+            let array_size       = BuddyMap::mem_size_for_array(2);
+            let linked_list_size = BuddyMap::mem_size_for_linked_list(2);
+            
+            let array_addr = ar.as_ptr() as usize;//heap::allocate_zeroed(array_size, 2);
+            let list_addr  = li.as_ptr() as usize;
+
+            let mut array_allocator = BumpAllocator::from_address(array_addr as usize, array_size);
+            let mut allocator       = FreeListAllocator::from_address(list_addr as usize, linked_list_size, cell_size);
+            let mut buddy_free_list = BuddyMap::new(2, &mut array_allocator, &mut allocator);
+
+         
     buddy_free_list.set_in_use(0, &mut allocator);
     buddy_free_list.set_in_use(1, &mut allocator);
 
@@ -56,6 +71,7 @@ pub fn free_list_should_properly_set_free() {
 
     assert!(buddy_free_list.is_free(0), "Failed to free block with start address {}", 0);
     assert!(buddy_free_list.is_free(1), "Failed to free block with start address {}", 2);
+        }
 }
 
 #[test]
@@ -114,7 +130,7 @@ pub fn set_free_should_properly_remove_elem_at_the_start_of_the_list() {
         thrd_free.unwrap());
 }
 
-#[test]
+//#[test]
 pub fn set_free_should_properly_remove_elem_at_the_end_of_the_list() {        
     let (mut buddy_free_list, mut allocator) = init_buddy_map!(3);
         

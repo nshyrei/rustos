@@ -8,6 +8,7 @@ extern crate multiboot;
 extern crate stdx;
 extern crate hardware;
 extern crate stdx_memory;
+extern crate display;
 
 pub mod util;
 pub mod frame;

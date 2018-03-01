@@ -61,3 +61,80 @@ pub fn should_return_none_if_requested_more_then_available_memory() {
         , 100000000
         , result.unwrap());    
 }
+
+#[test]
+pub fn should_complete_request_for_all_available_memory() {
+    should_complete_request_for_all_available_memory0();
+}
+
+fn should_complete_request_for_all_available_memory0() -> (BuddyAllocator, usize, usize, usize, usize) {
+    let size = 4096 * 16;
+    
+    let heap = unsafe { heap::allocate_zeroed(size, 4096) as usize } ;
+    let heap_end_address = heap + size - 1;
+    let mut allocator = BuddyAllocator::new(heap, heap_end_address);
+    
+    let result = allocator.allocate(size);
+
+    check_allocation_result(result, heap, heap, heap_end_address, size);
+
+    (allocator, result.unwrap(), heap, heap_end_address, size)
+}
+
+fn check_allocation_result(result : Option<usize>, reference : usize, heap : usize, heap_end_address : usize, size : usize){
+    assert!(result.is_some(), "Buddy allocator for heap with address: start {}, end {} failed to complete request for size {} (Returned none instead of value)",
+        heap,
+        heap_end_address,
+        size);
+    
+    assert!(result.unwrap() == reference, 
+        "Buddy allocator for heap with address: start {}, end {} Returned block with invalid starting address. Should be {}, but was {}"
+        , heap
+        , heap_end_address
+        , heap
+        , result.unwrap());
+}
+
+#[test]
+pub fn should_return_same_block_after_free_for_all_available_memory() {
+    let (mut allocator, result, heap, heap_end_address, size) = should_complete_request_for_all_available_memory0();
+    allocator.free(result);
+
+    let result = allocator.allocate(size);
+
+    check_allocation_result(result, heap, heap, heap_end_address, size);
+}
+
+#[test]
+pub fn should_return_buddy() {
+    let size = 4096 * 16;
+    
+    let heap = unsafe { heap::allocate_zeroed(size, 4096) as usize } ;
+    let heap_end_address = heap + size - 1;
+    let mut allocator = BuddyAllocator::new(heap, heap_end_address);
+    
+    allocator.allocate(size / 2);
+    let result = allocator.allocate(size / 2);
+
+    check_allocation_result(result, heap + size / 2, heap, heap_end_address, size / 2);    
+}
+
+
+#[test]
+pub fn should_merge_buddy_if_possible() {
+    let size = 4096 * 16;
+    
+    let heap = unsafe { heap::allocate_zeroed(size, 4096) as usize } ;
+    let heap_end_address = heap + size - 1;
+    let mut allocator = BuddyAllocator::new(heap, heap_end_address);
+    
+    let left = allocator.allocate(size / 2);
+    let right = allocator.allocate(size / 2);
+
+    allocator.free(left.unwrap());
+    allocator.free(right.unwrap());
+
+    let result = allocator.allocate(size);
+
+    check_allocation_result(result, heap, heap, heap_end_address, size);    
+}

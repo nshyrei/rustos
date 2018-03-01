@@ -145,7 +145,8 @@ impl FrameAllocator {
 
         let empty_frame_list_size = FrameAllocator::get_empty_frame_list_size(&memory_areas);
         let kernel_end_frame = Frame::from_address(kernel_end_address);        
-        let mut bump_allocator = ConstSizeBumpAllocator::from_address_for_type::<LinkedList<Frame>>(kernel_end_frame.next().address(), empty_frame_list_size);
+        // move it to some proper place!
+        let mut bump_allocator = ConstSizeBumpAllocator::from_address_for_type::<LinkedList<Frame>>(multiboot_header.end_address() + 1, empty_frame_list_size);
 
         FrameAllocator {
             multiboot_start_frame: Frame::from_address(multiboot_header.start_address()),
@@ -194,7 +195,7 @@ impl FrameAllocator {
                     None => None
                 }
             }
-        }        
+        }
     }
 
     /*
@@ -269,13 +270,13 @@ impl FrameAllocator {
     */
     fn next_fitting_memory_area(memory_areas : AvailableMemorySectionsIterator, last_frame_number : Frame) -> Option<&'static MemoryMapEntry> {        
         memory_areas
-            .clone()            
-            .filter(|e| { 
+            .clone()       
+            .filter(|e| {
                 let frame = FrameAllocator::frame_for_base_address(e.base_address() as usize);
                 // frame must be fully inside memory area
                 frame.end_address() <= e.end_address() as usize && frame >= last_frame_number
              })
-            .min_by_key(|e| e.base_address())            
+            .min_by_key(|e| e.base_address())
     }
 
     pub fn deallocate(&mut self, frame : Frame) {   

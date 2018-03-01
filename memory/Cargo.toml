@@ -17,3 +17,6 @@ path = "../hardware"
 
 [dependencies.stdx_memory]
 path = "../stdx_memory"
+
+[dependencies.display]
+path = "../display"

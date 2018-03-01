@@ -1,6 +1,6 @@
 use smart_ptr;
 use MemoryAllocator;
-use core::ptr::write_unaligned;
+use core::ptr;
 use core::ops;
 
 pub struct Box<T>{
@@ -12,7 +12,7 @@ impl <T> Box<T> {
     pub fn new<A>(value : T, memory_allocator : &mut A) -> Box<T>  where A : MemoryAllocator {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
 
-        unsafe { write_unaligned(pointer as *mut T, value); }
+        unsafe { ptr::write_unaligned(pointer as *mut T, value); }
 
         Box {
             unique : smart_ptr::Unique::new(pointer as *const T)
@@ -61,12 +61,12 @@ pub struct SharedBox<T>{
 }
 
 impl <T> SharedBox<T> {
-    
+        
     pub fn new<A>(value : T, memory_allocator : &mut A) -> Self  where A : MemoryAllocator {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
-
-        unsafe { write_unaligned(pointer as *mut T, value); }
-
+        unsafe { ptr::read_unaligned(pointer as *const T); }
+        unsafe { ptr::write_unaligned(pointer as *mut T, value); }
+        
         SharedBox {
             unique : smart_ptr::Shared::new(pointer as *const T)
         }
@@ -82,6 +82,12 @@ impl <T> SharedBox<T> {
         }
     }
 
+    pub fn from_usize(pointer : usize) -> Self {
+        SharedBox {
+            unique : smart_ptr::Shared::from_usize(pointer)
+        }
+    }
+
     pub fn pointer(&self) -> &T {
         self.unique.pointer()
     }
@@ -92,6 +98,11 @@ impl <T> SharedBox<T> {
 
     pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
         memory_allocator.free(self.pointer() as *const _ as usize)
+    }
+
+    pub fn read(&self) -> T {
+        use core::ptr;
+        unsafe { ptr::read_unaligned(self.pointer() as *const T) }
     }
 }
 

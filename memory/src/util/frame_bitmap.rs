@@ -18,7 +18,7 @@ impl FrameBitMap {
         FrameBitMap::new(frames_count, memory_allocator)
     }
 
-    pub fn cell_size(frames_count : usize) -> usize {
+    pub fn mem_size_for(frames_count : usize) -> usize {
         let bitmap_size_help = frames_count % BITMAP_ENTRY_SIZE;
 
         if bitmap_size_help > 0 {
@@ -61,6 +61,10 @@ impl FrameBitMap {
 
     pub fn is_in_use(&self, frame_number: usize) -> bool {
         self.index(frame_number).is_in_use(frame_number)
+    }
+
+    pub fn is_free(&self, frame_number : usize) -> bool {
+        !self.is_in_use(frame_number)
     }
 
     pub fn set_in_use(&mut self, frame_number: usize) {

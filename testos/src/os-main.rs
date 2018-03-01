@@ -1,6 +1,7 @@
 #![feature(lang_items)]
 #![feature(asm)]
 #![feature(alloc)]
+#![feature(discriminant_value)]
 #![no_std]
 
 
@@ -16,6 +17,7 @@ extern crate stdx;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
+use multiboot::multiboot_header::tags::memory_map::*;
 use display::vga::writer::Writer;
 use memory::allocator::bump::BumpAllocator;
 use memory::frame::frame_allocator::*;
@@ -29,15 +31,18 @@ use hardware::x86_64::registers;
 
 use core::fmt::Write;
 
+static mut vga_writerg : Option<Writer> = None;
+
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
-    unsafe {
+    unsafe {        
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
         let mut vga_writer = Writer::new();
-
+        //vga_writerg = Some(vga_writer);
+        
         print_multiboot_data(multiboot_header, &mut vga_writer);
-        remove_tail_should_properly_remove_tail_element();
+        
         let mut frame_allocator = FrameAllocator::new(multiboot_header);
         //free_list_should_properly_set_free();
         //let mut buddy_allocator = BuddyAllocator::new(frame_allocator.end_address() + 1, 104857600);
@@ -50,8 +55,9 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         let p4_table = paging::p4_table();
         
 
-        print_multiboot_data(multiboot_header, &mut vga_writer);
+        print_multiboot_data(multiboot_header, &mut vga_writer);                    
 
+        free_list_should_properly_set_free(&mut vga_writer, 0);
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
@@ -63,77 +69,39 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     loop {}
 }
 
-#[test]
-pub fn take_first_free_block_should_properly_work() {    
-    use stdx_memory::collections::double_linked_list::DoubleLinkedList;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListCell;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListIterator;
-    use stdx::iterator::IteratorExt;
-    use memory::allocator::free_list::FreeListAllocator;
-    use memory::allocator::buddy::BuddyFreeList;
-    
-    let heap = [0;400];    
-    
-    let (heap_start, heap_size) =          (heap.as_ptr() as usize, 400);
-    
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = FreeListAllocator::from_address(heap_start, 400, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut buddy_free_list = BuddyFreeList::new(2, 2, &mut allocator);
+pub fn free_list_should_properly_set_free( writer : &mut Writer, adr: usize) {
 
-    // order is important, take first should return 2 not 0
-    buddy_free_list.set_free(2, &mut allocator);
-    buddy_free_list.set_free(0, &mut allocator);
+use memory::frame::Frame;
+use memory::frame::FRAME_SIZE;
+use stdx::iterator::IteratorExt;
+use stdx::Sequence;
+use stdx::Iterable;
+use stdx_memory::MemoryAllocator;
+use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListIterator, BuddyMap};
+use memory::allocator::bump::BumpAllocator;
+use memory::allocator::buddy::BuddyAllocator;
+use memory::allocator::free_list::FreeListAllocator;
+use core::mem;    
+use core::ptr;    
 
-    let result = buddy_free_list.first_free_block(&mut allocator);
+    let size = 65536;
+    let heap : [u8;80000] = [0;80000];
+    let heap_addr = heap.as_ptr() as usize;    
 
-    assert!(buddy_free_list.is_in_use(2), "Failed to set in use for first freed block. Should set in use for block starting at address {}",
-        2);
-    assert!(result.is_some(), "Failed to return first free block. List had blocks 2-0");
-    assert!(result.unwrap() == 2, "Returned invalid first free block. Returned {}, but should be {}",
-        result.unwrap(),
-        2);
+    use stdx_memory::heap;
+    let heap_a = Frame::address_align_up(heap_addr);
+    let heap_end_address = heap_a + size - 1;
+    let mut allocator = BuddyAllocator::new(heap_a, heap_a + size);
+    
+    let left = allocator.allocate(size / 2);
+    let right = allocator.allocate(size / 2);
+
+    allocator.free(left.unwrap());
+    allocator.free(right.unwrap());
+
+    let result = allocator.allocate(size);
+    let exit = 0;
 }
-
-pub fn remove_tail_should_properly_remove_tail_element() {
-    use core::mem;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedList;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListCell;
-    use stdx_memory::collections::double_linked_list::DoubleLinkedListIterator;
-    use stdx::iterator::IteratorExt;
-    let heap = [0;200];    
-    
-    let (heap_start, heap_size) =          (heap.as_ptr() as usize, 200);
-        
-
-    let size = mem::size_of::<DoubleLinkedListCell<u8>>();
-    let mut allocator = BumpAllocator::from_address(heap_start, 200, mem::size_of::<DoubleLinkedListCell<u8>>());
-    let mut list : DoubleLinkedList<u8> = DoubleLinkedList::new(&mut allocator);
-        
-    let values : [u8;3] = [1, 2, 3];
-    let values_len = values.len();
-
-    list.add_to_tail(values[0], &mut allocator);
-    list.add_to_tail(values[1], &mut allocator); 
-    list.add_to_tail(values[2], &mut allocator);
-
-    list.remove_tail(&mut allocator);
-    
-    let count = DoubleLinkedListIterator::new(list.tail()).count();
-
-    assert!(count == values_len - 1, "DoubleLinkedList::remove_tail didn't remove the last element. Iterator count returned {}, but should be {}",
-        count,
-        values_len - 1);
-
-    let mut iter = DoubleLinkedListIterator::new(list.tail()).index_items();
-    
-    // todo : make a reverse indexing iterator
-    while let Some((result, index)) = iter.next() {
-        assert!(result == values[values_len - index - 2], "DoubleLinkedList::remove_tail didn't remove the last element. Value returned from iterator and reference differ. Was {}, but should be {}",
-        result,
-        values[values_len - index - 2]);        
-    };      
-}
-
 
 #[lang = "eh_personality"]
 extern "C" fn eh_personality() {}

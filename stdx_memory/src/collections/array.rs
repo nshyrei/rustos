@@ -81,12 +81,12 @@ impl <T> Array<T> {
     }
 
     pub fn elem_ref_i(&self, index : isize) -> &T {
-        assert!(index < self.length as isize && index > 0);
+        assert!(index < self.length as isize && index > -1);
         unsafe { &*(self.index_to_address_i(index) as *const T) }
     }
 
     pub fn elem_ref_mut_i(&self, index : isize) -> &mut T {
-        assert!(index < self.length as isize && index > 0);
+        assert!(index < self.length as isize && index > -1);
         unsafe { &mut *(self.index_to_address_i(index) as *mut T) }
     }
 

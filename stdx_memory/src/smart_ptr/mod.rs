@@ -65,13 +65,22 @@ pub struct Shared<T: Sized> {
 
 impl<T> Shared<T> where T : Sized {
     
-    pub fn new(ptr: *const T) -> Self {
+    pub fn new(ptr: *const T) -> Self {        
         unsafe {
             Shared { 
                 pointer : NonZero::new(ptr as *mut _),
                 phantom : PhantomData
             }
-        }        
+        }
+    }
+
+    pub fn from_usize(ptr: usize) -> Self {        
+        unsafe {
+            Shared { 
+                pointer : NonZero::new(ptr as *mut _),
+                phantom : PhantomData
+            }
+        }
     }
 
     /// Dereferences the content.    

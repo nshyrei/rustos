@@ -74,7 +74,7 @@ impl <T> LinkedList<T> where T : Copy {
         match *self {
             LinkedList::Cell { value, prev } => { 
                 let result = Some((value, prev));
-                memory_allocator.free(&self as *const _ as usize);
+                memory_allocator.free(self as *const _ as usize);
                 result        
             },
             _ => None
