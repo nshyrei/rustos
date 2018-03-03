@@ -1,7 +1,6 @@
-use stdx_memory::MemoryAllocator;
+use MemoryAllocator;
 use core::ptr;
 use core::fmt;
-use core::marker;
 
 const BITMAP_ENTRY_SIZE: usize = 8; //number of bits in byte
 

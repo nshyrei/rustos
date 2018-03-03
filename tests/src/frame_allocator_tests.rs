@@ -3,7 +3,7 @@ use multiboot::multiboot_header::MultibootHeader;
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
 use memory::allocator::bump::*;
-use memory::util::frame_bitmap::*;
+use stdx_memory::collections::frame_bitmap::FrameBitMap;
 use std::mem;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
 

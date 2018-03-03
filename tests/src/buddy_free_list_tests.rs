@@ -3,7 +3,7 @@ use memory::frame::FRAME_SIZE;
 use stdx::iterator::IteratorExt;
 use stdx::Sequence;
 use stdx_memory::MemoryAllocator;
-use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListIterator, BuddyMap};
+use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListIterator, UsizeLinkedMap, BuddyMap};
 use memory::allocator::bump::BumpAllocator;
 use memory::allocator::free_list::FreeListAllocator;
 use std::mem;
@@ -23,7 +23,8 @@ macro_rules! init_buddy_map {
 
             let mut array_allocator = BumpAllocator::from_address(array_addr as usize, array_size);
             let mut allocator       = FreeListAllocator::from_address(list_addr as usize, linked_list_size, cell_size);
-            let mut buddy_free_list = BuddyMap::new($l, &mut array_allocator, &mut allocator);
+            let map                 = UsizeLinkedMap::new($l, &mut array_allocator);
+            let mut buddy_free_list = BuddyMap(map);
 
             (buddy_free_list, allocator)
         }
@@ -34,55 +35,39 @@ macro_rules! init_buddy_map {
 pub fn free_list_should_properly_set_in_use() {
     let (mut buddy_free_list, mut allocator) = init_buddy_map!(2);
     
-    buddy_free_list.set_in_use(0, &mut allocator);
-    buddy_free_list.set_in_use(1, &mut allocator);
+    buddy_free_list.add_if_no_key(0, &mut allocator);
+    buddy_free_list.add_if_no_key(1, &mut allocator);
 
-    assert!(buddy_free_list.is_in_use(0), "Failed to set in use for block with start address {}", 0);
-    assert!(buddy_free_list.is_in_use(1), "Failed to set in use for block with start address {}", 2);
+    assert!(buddy_free_list.0.has_key(0), "Failed to set in use for block with start address {}", 0);
+    assert!(buddy_free_list.0.has_key(1), "Failed to set in use for block with start address {}", 2);
 }
 
 #[test]
 pub fn free_list_should_properly_set_free() {
-
-
-        unsafe {            
-            let li : [u8;128] = [0;128];
-            let ar : [u8;10000] = [0;10000];
-            let cell_size        = BuddyMap::cell_size();
-            let array_size       = BuddyMap::mem_size_for_array(2);
-            let linked_list_size = BuddyMap::mem_size_for_linked_list(2);
-            
-            let array_addr = ar.as_ptr() as usize;//heap::allocate_zeroed(array_size, 2);
-            let list_addr  = li.as_ptr() as usize;
-
-            let mut array_allocator = BumpAllocator::from_address(array_addr as usize, array_size);
-            let mut allocator       = FreeListAllocator::from_address(list_addr as usize, linked_list_size, cell_size);
-            let mut buddy_free_list = BuddyMap::new(2, &mut array_allocator, &mut allocator);
-
+    let (mut buddy_free_list, mut allocator) = init_buddy_map!(2);
          
-    buddy_free_list.set_in_use(0, &mut allocator);
-    buddy_free_list.set_in_use(1, &mut allocator);
+    buddy_free_list.add_if_no_key(0, &mut allocator);
+    buddy_free_list.add_if_no_key(1, &mut allocator);
 
-    assert!(buddy_free_list.is_in_use(0), "Failed to set in use for block with start address {}", 0);
-    assert!(buddy_free_list.is_in_use(1), "Failed to set in use for block with start address {}", 2);
+    assert!(buddy_free_list.0.has_key(0), "Failed to set in use for block with start address {}", 0);
+    assert!(buddy_free_list.0.has_key(1), "Failed to set in use for block with start address {}", 2);
 
-    buddy_free_list.set_free(0, &mut allocator);
-    buddy_free_list.set_free(1, &mut allocator);    
+    buddy_free_list.0.remove(0, &mut allocator);
+    buddy_free_list.0.remove(1, &mut allocator);    
 
-    assert!(buddy_free_list.is_free(0), "Failed to free block with start address {}", 0);
-    assert!(buddy_free_list.is_free(1), "Failed to free block with start address {}", 2);
-        }
+    assert!(buddy_free_list.0.has_key(0), "Failed to free block with start address {}", 0);
+    assert!(buddy_free_list.0.has_key(1), "Failed to free block with start address {}", 2);        
 }
 
 #[test]
 pub fn set_free_should_properly_remove_elem_in_the_middle_of_the_list() {    
     let (mut buddy_free_list, mut allocator) = init_buddy_map!(3);
         
-    buddy_free_list.set_free(0, &mut allocator);
-    buddy_free_list.set_free(1, &mut allocator);
-    buddy_free_list.set_free(2, &mut allocator);
+    buddy_free_list.add_if_no_key(0, &mut allocator);
+    buddy_free_list.add_if_no_key(1, &mut allocator);
+    buddy_free_list.add_if_no_key(2, &mut allocator);
 
-    buddy_free_list.set_in_use(1, &mut allocator);
+    buddy_free_list.0.remove(1, &mut allocator);
 
     let fst_free = buddy_free_list.first_free_block(&mut allocator);
     let snd_free = buddy_free_list.first_free_block(&mut allocator);
@@ -106,11 +91,11 @@ pub fn set_free_should_properly_remove_elem_in_the_middle_of_the_list() {
 pub fn set_free_should_properly_remove_elem_at_the_start_of_the_list() {    
     let (mut buddy_free_list, mut allocator) = init_buddy_map!(3);
         
-    buddy_free_list.set_free(0, &mut allocator);
-    buddy_free_list.set_free(1, &mut allocator);
-    buddy_free_list.set_free(2, &mut allocator);
+    buddy_free_list.add_if_no_key(0, &mut allocator);
+    buddy_free_list.add_if_no_key(1, &mut allocator);
+    buddy_free_list.add_if_no_key(2, &mut allocator);
 
-    buddy_free_list.set_in_use(0, &mut allocator);
+    buddy_free_list.0.remove(0, &mut allocator);
 
     let fst_free = buddy_free_list.first_free_block(&mut allocator);
     let snd_free = buddy_free_list.first_free_block(&mut allocator);    
@@ -130,15 +115,15 @@ pub fn set_free_should_properly_remove_elem_at_the_start_of_the_list() {
         thrd_free.unwrap());
 }
 
-//#[test]
+#[test]
 pub fn set_free_should_properly_remove_elem_at_the_end_of_the_list() {        
     let (mut buddy_free_list, mut allocator) = init_buddy_map!(3);
         
-    buddy_free_list.set_free(0, &mut allocator);
-    buddy_free_list.set_free(1, &mut allocator);
-    buddy_free_list.set_free(2, &mut allocator);
+    buddy_free_list.add_if_no_key(0, &mut allocator);
+    buddy_free_list.add_if_no_key(1, &mut allocator);
+    buddy_free_list.add_if_no_key(2, &mut allocator);
 
-    buddy_free_list.set_in_use(2, &mut allocator);
+    buddy_free_list.0.remove(2, &mut allocator);
 
     let fst_free = buddy_free_list.first_free_block(&mut allocator);
     let snd_free = buddy_free_list.first_free_block(&mut allocator);    

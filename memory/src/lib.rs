@@ -10,7 +10,6 @@ extern crate hardware;
 extern crate stdx_memory;
 extern crate display;
 
-pub mod util;
 pub mod frame;
 pub mod paging;
 pub mod allocator;

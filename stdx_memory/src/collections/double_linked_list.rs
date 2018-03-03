@@ -1,5 +1,4 @@
 use MemoryAllocator;
-use ConstantSizeMemoryAllocator;
 use collections::array::Array;
 use heap;
 use stdx::iterator;
@@ -7,7 +6,6 @@ use stdx::Iterable;
 use stdx::Sequence;
 use core::iter;
 use core::mem;
-use core::any::Any;
 use core::fmt;
 /*
 pub struct DoubleLinkedList<T> {
@@ -226,8 +224,6 @@ impl<T> DoubleLinkedList<T> {
     fn add_to_tail_inner<A>(&mut self, value : T, memory_allocator : &mut A) -> heap::SharedBox<DoubleLinkedListCell<T>> where A : MemoryAllocator{
         if self.tail.is_none() {
             self.tail = Some(DoubleLinkedListCell::new(value, memory_allocator));            
-            let rr = self.tail.unwrap().read();
-            let rr2 = 1;
         }
         else {
             self.tail = self.tail.map(|mut e| e.add(value, memory_allocator));
@@ -815,53 +811,46 @@ impl<T> iter::Iterator for DoubleLinkedListIterator<T> where T : Copy {
 
 impl<T> iterator::IteratorExt for DoubleLinkedListIterator<T> where T : Copy { }
 
-
-pub struct BuddyMap {
-    frame_to_free_buddy : Array<Option<heap::SharedBox<DoubleLinkedListCell<usize>>>>,
-    free_blocks         : DoubleLinkedList<usize>,
+pub struct UsizeLinkedMap<T> {
+    frame_to_free_buddy : Array<Option<heap::SharedBox<DoubleLinkedListCell<T>>>>,
+    free_blocks         : DoubleLinkedList<T>,
 }
 
-impl BuddyMap {
-    pub fn new<A, B>(length : usize, memory_allocator : &mut A, list_allocator : &mut B) -> Self 
-    where A : MemoryAllocator, B : ConstantSizeMemoryAllocator {
+impl<T> UsizeLinkedMap<T> where T : Copy {
+    pub fn new<A>(length : usize, memory_allocator : &mut A) -> Self 
+    where A : MemoryAllocator {
         let mut array = Array::new(length, memory_allocator);
 
         // set list as fully occupied
         array.fill_value(None);
 
-        BuddyMap {
+        UsizeLinkedMap {
             frame_to_free_buddy : array,
             free_blocks         : DoubleLinkedList::new(),            
         }
     }
 
     pub fn mem_size_for_array(length : usize) -> usize {
-        Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(length)
+        Array::<heap::SharedBox<DoubleLinkedListCell<T>>>::mem_size_for(length)
     }
 
     pub fn mem_size_for_linked_list(length : usize) -> usize {
-        DoubleLinkedList::<usize>::mem_size_for(length)
+        DoubleLinkedList::<T>::mem_size_for(length)
     }    
 
-    /// Determines if block is free to use
-    /// # Arguments
-    /// * `block_start_address` - start address of memory block
-    pub fn is_free(&self, index : usize) -> bool {
-        !self.is_in_use(index)
+    pub fn has_key(&self, index : usize) -> bool {
+        self.frame_to_free_buddy[index].is_some()
     }
 
-    /// Determines if block is occupied
-    /// # Arguments
-    /// * `block_start_address` - start address of memory
-    pub fn is_in_use(&self, index : usize) -> bool {
-        self.frame_to_free_buddy[index].is_none()
+    pub fn has_value(&self) -> bool {
+        self.free_blocks.is_cell()
     }
 
     /// Sets the block as occupied
-    /// # Arguments    
+    /// # Arguments
     /// * `block_start_address` - start address of memory block
     /// * `memory_allocator` - memory allocator
-    pub fn set_in_use<A>(&mut self, index : usize, memory_allocator : &mut A)
+    pub fn remove<A>(&mut self, index : usize, memory_allocator : &mut A)
     where A : MemoryAllocator {        
         if let Some(cell) = self.frame_to_free_buddy.value(index) {            
             self.remove_free_block(cell, memory_allocator);
@@ -873,33 +862,15 @@ impl BuddyMap {
     /// # Arguments
     /// * `block_start_address` - start address of memory block
     /// * `memory_allocator` - memory allocator
-    pub fn set_free<A>(&mut self, index : usize, memory_allocator : &mut A) 
-    where A : MemoryAllocator {        
-        if self.is_in_use(index) {
-            let cell = self.free_blocks.add_to_tail_inner(index, memory_allocator);            
-            self.frame_to_free_buddy.update(index, Some(cell));        
+    pub fn add_if_no_key<A>(&mut self, index : usize, value : T, memory_allocator : &mut A) 
+    where A : MemoryAllocator {
+        if !self.has_key(index) {
+            let cell = self.free_blocks.add_to_tail_inner(value, memory_allocator);            
+            self.frame_to_free_buddy.update(index, Some(cell));
         }
     }
 
-    /// Returns first unused memory block if any.
-    /// # Arguments
-    /// * `memory_allocator` - memory allocator
-    pub fn first_free_block<A>(&mut self, memory_allocator : &mut A) -> Option<usize> 
-    where A : MemoryAllocator{
-        let result = self.free_blocks.take_head(memory_allocator);
-
-        if let Some(index) = result {            
-            self.frame_to_free_buddy.update(index, None);
-        }
-
-        result
-    }
-
-    pub fn has_free_block(&self) -> bool {
-        self.free_blocks.is_cell()
-    }    
-
-    fn remove_free_block<A>(&mut self, cell : heap::SharedBox<DoubleLinkedListCell<usize>>, memory_allocator : &mut A)
+    fn remove_free_block<A>(&mut self, cell : heap::SharedBox<DoubleLinkedListCell<T>>, memory_allocator : &mut A)
     where A : MemoryAllocator {
         if self.free_blocks.head_equals_tail() && cell.is_start() {
             self.free_blocks.remove_head(memory_allocator);            
@@ -916,10 +887,58 @@ impl BuddyMap {
     }
 }
 
-impl fmt::Display for BuddyMap {    
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "--- Dlinked List in buddy map--- {}", self.free_blocks)
-    }    
+impl<T> Iterable for UsizeLinkedMap<T> where T : Copy {
+    
+    type Item = T;
+
+    type IntoIter = DoubleLinkedListIterator<T>;
+
+    fn iterator(&self) -> DoubleLinkedListIterator<T> {
+         unimplemented!();
+    }
+}
+
+impl<T> Sequence for UsizeLinkedMap<T> where T : Copy {
+    
+    fn length(&self) -> usize {
+        self.frame_to_free_buddy.length()
+    }
+
+    fn cell_size() -> usize {
+        DoubleLinkedList::<T>::cell_size()
+    }
+}
+
+pub struct BuddyMap(pub UsizeLinkedMap<usize>);
+
+impl BuddyMap {
+    
+    /// Returns first unused memory block if any.
+    /// # Arguments
+    /// * `memory_allocator` - memory allocator
+    pub fn first_free_block<A>(&mut self, memory_allocator : &mut A) -> Option<usize> 
+    where A : MemoryAllocator{
+        let result = self.0.free_blocks.take_head(memory_allocator);
+
+        if let Some(index) = result {            
+            self.0.frame_to_free_buddy.update(index, None);
+        }
+
+        result
+    }
+    
+    pub fn add_if_no_key<A>(&mut self, index : usize, memory_allocator : &mut A) 
+    where A : MemoryAllocator {
+        self.0.add_if_no_key(index, index, memory_allocator);        
+    }
+
+    pub fn mem_size_for_array(length : usize) -> usize {
+        Array::<heap::SharedBox<DoubleLinkedListCell<usize>>>::mem_size_for(length)
+    }
+
+    pub fn mem_size_for_linked_list(length : usize) -> usize {
+        DoubleLinkedList::<usize>::mem_size_for(length)
+    }
 }
 
 impl Iterable for BuddyMap {
@@ -929,14 +948,14 @@ impl Iterable for BuddyMap {
     type IntoIter = DoubleLinkedListIterator<usize>;
 
     fn iterator(&self) -> DoubleLinkedListIterator<usize> {
-        self.free_blocks.iterator()
+         unimplemented!();
     }
 }
 
 impl Sequence for BuddyMap {
     
     fn length(&self) -> usize {
-        self.frame_to_free_buddy.length()
+        self.0.length()
     }
 
     fn cell_size() -> usize {

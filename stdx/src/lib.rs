@@ -32,23 +32,3 @@ pub trait Sequence : Iterable {
         mem::size_of::<Self::Item>()
     }
 }
-
-pub trait Map {
-
-    type Key;
-
-    type Value;
-
-    fn contains_key(&self, key : Self::Key) -> bool;
-
-    fn misses_key(&self, key : Self::Key) -> bool {
-        !self.contains_key(key)
-    }
-
-    fn get_value(&self, key : Self::Key) -> Option<Self::Value>;
-}
-
-pub trait BiMap : Map {
-
-    
-}

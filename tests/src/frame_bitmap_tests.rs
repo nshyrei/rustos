@@ -1,4 +1,4 @@
-use memory::util::frame_bitmap::FrameBitMap;
+use stdx_memory::collections::frame_bitmap::FrameBitMap;
 use memory::allocator::bump::ConstSizeBumpAllocator;
 use std::mem;
 use std::u8;
@@ -15,8 +15,8 @@ fn bitmap_new_should_create_empty_bitmap_of_size_zero_if_frame_count_is_inside_b
 
     for test_frame_size in 3..17 {
         let frames_count = 16 / test_frame_size;
-        let bitmap_cell_size = FrameBitMap::cell_size(frames_count);
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, bitmap_cell_size);
+        let bitmap_mem_size_for = FrameBitMap::mem_size_for(frames_count);
+        let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, bitmap_mem_size_for);
         let mut bitmap = FrameBitMap::new_from_available_memory(16, test_frame_size, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
         assert!(bytes[0] == 0,
@@ -49,8 +49,8 @@ fn bitmap_new_should_create_empty_bitmap_of_size_2_if_frame_count_is_outside_bit
 
     for test_frame_size in 1..3 {
         let frames_count = 16 / test_frame_size;
-        let bitmap_cell_size = FrameBitMap::cell_size(frames_count);
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, bitmap_cell_size);        
+        let bitmap_mem_size_for = FrameBitMap::mem_size_for(frames_count);
+        let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, bitmap_mem_size_for);        
         let mut bitmap = FrameBitMap::new_from_available_memory(16, test_frame_size, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
         assert!(bytes[0] == 0 && bytes[1] == 0,
