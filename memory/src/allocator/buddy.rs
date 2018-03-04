@@ -296,7 +296,7 @@ impl MemoryAllocator for BuddyAllocator {
             // Split bigger block (if any) and propagate split results downwards,
             // until block of required size is created.
             let result = self.search_free_list_up(allocation_size_rounded)
-                             .and_then(|index| self.split_down(allocation_size_rounded, index));
+                             .and_then(|index| self.split_down(index, allocation_size_rounded));
             
             if let Some((new_buddy_index, result_address)) = result {
                 let frame_number = Frame::number_for_address(result_address);

@@ -55,8 +55,8 @@ pub fn free_list_should_properly_set_free() {
     buddy_free_list.0.remove(0, &mut allocator);
     buddy_free_list.0.remove(1, &mut allocator);    
 
-    assert!(buddy_free_list.0.has_key(0), "Failed to free block with start address {}", 0);
-    assert!(buddy_free_list.0.has_key(1), "Failed to free block with start address {}", 2);        
+    assert!(buddy_free_list.0.has_key(0) == false, "Failed to free block with start address {}", 0);
+    assert!(buddy_free_list.0.has_key(1) == false, "Failed to free block with start address {}", 2);        
 }
 
 #[test]
