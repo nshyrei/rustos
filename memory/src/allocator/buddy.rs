@@ -202,18 +202,15 @@ impl BuddyAllocator {
                 return Some((i, block_index * current_level_size))
             }
             else {
-                // compute lower level buddy index
-                let block_start_address    = block_index * current_level_size;
-                let lower_level_size       = current_level_size / 2;
-                let right_start_address    = block_start_address + lower_level_size;
-                let buddy_index            = right_start_address / lower_level_size;       
-
+                
+                let lower_level_block_index = block_index * 2;
+                
                 // important to set left before right to in use, for it to appear
                 // on top of the free blocks stack. The reason for this is that
                 // because of allocator convention, e.g. picking left blocks first.
                 
-                self.buddy_free_lists[i - 1].set_free(block_index, &mut self.free_list_allocator);
-                self.buddy_free_lists[i - 1].set_free(buddy_index, &mut self.free_list_allocator);
+                self.buddy_free_lists[i - 1].set_free(lower_level_block_index, &mut self.free_list_allocator);
+                self.buddy_free_lists[i - 1].set_free(lower_level_block_index + 1, &mut self.free_list_allocator);
                 
                 i -= 1;
                 current_level_size /= 2;
@@ -264,7 +261,7 @@ impl BuddyAllocator {
 
                 // in case we are freeing right block and found its left buddy we must set
                 // pointer to left buddy address to have proper index in next level buddy list
-                block_index = if block_index < buddy_index { block_index } else { buddy_index };
+                block_index /= 2;
                 buddy_list_index += 1;
             }
 

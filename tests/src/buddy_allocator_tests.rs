@@ -91,7 +91,7 @@ fn check_allocation_result(result : Option<usize>, reference : usize, heap : usi
         "Buddy allocator for heap with address: start {}, end {} Returned block with invalid starting address. Should be {}, but was {}"
         , heap
         , heap_end_address
-        , heap
+        , reference
         , result.unwrap());
 }
 
@@ -119,7 +119,6 @@ pub fn should_return_buddy() {
     check_allocation_result(result, heap + size / 2, heap, heap_end_address, size / 2);    
 }
 
-
 #[test]
 pub fn should_merge_buddy_if_possible() {
     let size = 4096 * 16;
@@ -137,4 +136,67 @@ pub fn should_merge_buddy_if_possible() {
     let result = allocator.allocate(size);
 
     check_allocation_result(result, heap, heap, heap_end_address, size);    
+}
+
+#[test]
+pub fn should_return_distinct_addresses() {
+    let size = 4096 * 16;
+    
+    let heap = unsafe { heap::allocate_zeroed(size, 4096) as usize } ;
+    let heap_end_address = heap + size - 1;
+    let mut allocator = BuddyAllocator::new(heap, heap_end_address);
+    let mut vec : Vec<usize> = Vec::new();
+
+    for i in 0..16 {
+        vec.push(allocator.allocate(4096).unwrap())
+    }
+
+    let mut sorted = vec.clone();
+    sorted.sort();
+    sorted.dedup();
+
+    let result = sorted.len();
+
+    assert!(result == 16, "Allocator failed to allocate 16 distinct blocks of size 4096, returned : {:?}", vec);
+}
+
+
+#[test]
+pub fn should_merge_all_buddies_to_the_upper_level() {
+    let size = 4096 * 16;
+    
+    let heap = unsafe { heap::allocate_zeroed(size, 4096) as usize } ;
+    let heap_end_address = heap + size - 1;
+    let mut allocator = BuddyAllocator::new(heap, heap_end_address);
+    let mut allocated : [usize;16] = [0;16];
+
+    for i in 0..16 {
+        allocated[i] = allocator.allocate(4096).unwrap();
+    }
+
+    for i in 0..16 {
+        allocator.free(allocated[i])
+    }    
+
+    let result = allocator.allocate(size);
+
+    check_allocation_result(result, heap, heap, heap_end_address, size);    
+}
+
+#[test]
+pub fn should_satisfy_buddy_request_when_left_block_is_taken() {
+    let size = 4096 * 16;
+    
+    let heap = unsafe { heap::allocate_zeroed(size, 4096) as usize } ;
+    let heap_end_address = heap + size - 1;
+    let mut allocator = BuddyAllocator::new(heap, heap_end_address);
+    let mut allocated : [usize;16] = [0;16];
+
+    for i in 0..8 {
+        allocated[i] = allocator.allocate(4096).unwrap();
+    }    
+
+    let result = allocator.allocate(size / 2);
+
+    check_allocation_result(result, heap + 4096 * 8, heap, heap_end_address, size / 2);
 }
