@@ -1,7 +1,6 @@
 use core::fmt;
 use core::option;
 
-#[derive(Copy, Clone)]
 pub struct Option<T>(pub option::Option<T>);
 
 impl<T> fmt::Display for Option<T> where T : fmt::Display {    

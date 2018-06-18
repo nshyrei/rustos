@@ -1,6 +1,7 @@
-pub mod heap_allocator;
+#![no_std]
+#![feature(allocator)]
+#![allocator]
 
-/*
 #[no_mangle]
 pub extern fn __rust_allocate(size: usize, _align: usize) -> *mut u8 {
     &mut 1
@@ -27,4 +28,3 @@ pub extern fn __rust_reallocate_inplace(_ptr: *mut u8, old_size: usize,
 pub extern fn __rust_usable_size(size: usize, _align: usize) -> usize {
     1
 }
-*/

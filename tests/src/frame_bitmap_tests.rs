@@ -1,5 +1,5 @@
-use memory::kernel::frame_bitmap::FrameBitMap;
-use memory::kernel::bump_allocator::BumpAllocator;
+use stdx_memory::collections::frame_bitmap::FrameBitMap;
+use memory::allocator::bump::ConstSizeBumpAllocator;
 use std::mem;
 use std::u8;
 
@@ -14,8 +14,10 @@ fn bitmap_new_should_create_empty_bitmap_of_size_zero_if_frame_count_is_inside_b
     let addr = bytes.as_ptr() as usize;
 
     for test_frame_size in 3..17 {
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 16);
-        let bitmap = FrameBitMap::new(16, test_frame_size, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+        let frames_count = 16 / test_frame_size;
+        let bitmap_mem_size_for = FrameBitMap::mem_size_for(frames_count);
+        let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, bitmap_mem_size_for);
+        let mut bitmap = FrameBitMap::new_from_available_memory(16, test_frame_size, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
         assert!(bytes[0] == 0,
                 "Bitmap entry wasn't created. Memory value at index zero is {} but should be zero, frame size is {}, memory dump {:?}",
@@ -46,8 +48,10 @@ fn bitmap_new_should_create_empty_bitmap_of_size_2_if_frame_count_is_outside_bit
     let addr = bytes.as_ptr() as usize;
 
     for test_frame_size in 1..3 {
-        let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 16);
-        let bitmap = FrameBitMap::new(16, test_frame_size, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+        let frames_count = 16 / test_frame_size;
+        let bitmap_mem_size_for = FrameBitMap::mem_size_for(frames_count);
+        let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, bitmap_mem_size_for);        
+        let mut bitmap = FrameBitMap::new_from_available_memory(16, test_frame_size, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
         assert!(bytes[0] == 0 && bytes[1] == 0,
                 "Bitmap entries weren't created. The first 2 entries should be zero, frame size is {}, first two entries {}, {}, memory dump {:?}",
@@ -74,12 +78,12 @@ fn bitmap_indexer_should_properly_set_in_use() {
     let bytes: [u8; 16] = [default_memory_value; 16];
     let addr = bytes.as_ptr() as usize;
 
-    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 16);
+    let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, 1);
     // frame size = 1 byte
     // available memory = 16 byte
     // bitmap entry holds 8 frame entries
     // 2 bitmap entries should be created
-    let bitmap = FrameBitMap::new(16, 1 , &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let mut bitmap = FrameBitMap::new_from_available_memory(16, 1 , &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
     for i in 0..16 {
         bitmap.set_in_use(i);
@@ -99,12 +103,12 @@ fn bitmap_indexer_should_properly_clear_in_use() {
     let mut bytes: [u8; 16] = [default_memory_value; 16];
     let addr = bytes.as_ptr() as usize;
 
-    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 16);
+    let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, 1);
     // frame size = 1 byte
     // available memory = 16 byte
     // bitmap entry holds 8 frame entries
     // 2 bitmap entries should be created
-    let bitmap = FrameBitMap::new(16, 1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let mut bitmap = FrameBitMap::new_from_available_memory(16, 1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
     //all 1s
     bytes[0] = u8::MAX;
@@ -127,12 +131,12 @@ fn bitmap_indexer_should_properly_test_in_use() {
     let mut bytes: [u8; 16] = [default_memory_value; 16];
     let addr = bytes.as_ptr() as usize;
 
-    let mut KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(addr, 16);
+    let mut KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(addr, 16, 1);
     // frame size = 1 byte
     // available memory = 16 byte
     // bitmap entry holds 8 frame entries
     // 2 bitmap entries should be created
-    let bitmap = FrameBitMap::new(16, 1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
+    let mut bitmap = FrameBitMap::new_from_available_memory(16, 1, &mut KERNEL_BASIC_HEAP_ALLOCATOR);
 
     for i in 0..16 {
         bitmap.set_in_use(i);

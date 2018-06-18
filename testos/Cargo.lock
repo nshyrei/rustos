@@ -3,9 +3,13 @@ name = "os-main"
 version = "0.1.0"
 dependencies = [
  "display 0.1.0",
+ "hardware 0.1.0",
+ "malloc 0.1.0",
  "memory 0.1.0",
  "multiboot 0.1.0",
  "rlibc 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "stdx 0.1.0",
+ "stdx_memory 0.1.0",
 ]
 
 [[package]]
@@ -22,13 +26,19 @@ name = "hardware"
 version = "0.1.0"
 
 [[package]]
+name = "malloc"
+version = "0.1.0"
+
+[[package]]
 name = "memory"
 version = "0.1.0"
 dependencies = [
  "bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "display 0.1.0",
  "hardware 0.1.0",
  "multiboot 0.1.0",
  "stdx 0.1.0",
+ "stdx_memory 0.1.0",
 ]
 
 [[package]]
@@ -47,6 +57,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "stdx"
 version = "0.1.0"
+
+[[package]]
+name = "stdx_memory"
+version = "0.1.0"
+dependencies = [
+ "stdx 0.1.0",
+]
 
 [metadata]
 "checksum bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4efd02e230a02e18f92fc2735f44597385ed02ad8f831e7c1c1156ee5e1ab3a5"

@@ -2,8 +2,8 @@ use memory::frame::frame_allocator::FrameAllocator;
 use multiboot::multiboot_header::MultibootHeader;
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
-use memory::kernel::bump_allocator::*;
-use memory::kernel::frame_bitmap::*;
+use memory::allocator::bump::*;
+use stdx_memory::collections::frame_bitmap::FrameBitMap;
 use std::mem;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
 
@@ -77,7 +77,7 @@ fn should_properly_determine_first_memory_area() {
     let addr = bytes.as_ptr() as usize;
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
-    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+    let KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(kernel_heap_addr, 256, 20);
 
     let frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
 
@@ -195,7 +195,7 @@ fn should_properly_determine_kernel_start_and_end_address() {
     let addr = bytes.as_ptr() as usize;
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
-    let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+    let KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(kernel_heap_addr, 256, 20);
 
     let frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
     let kernel_start_valid_result = Frame::from_address(0);
@@ -278,7 +278,7 @@ fn should_make_allocation_in_current_memory_area() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(kernel_heap_addr, 256, 20);
         let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);
         let allocation_result1 = frame_allocator.allocate();
         let allocation_result2 = frame_allocator.allocate();
@@ -373,7 +373,7 @@ fn should_move_to_next_memory_area() {
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(kernel_heap_addr, 256, 20);
         
         let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);        
 
@@ -414,7 +414,7 @@ fn should_return_last_freed_frame() {
 
         0,  // [ memory map entry base addr
         0, // ]
-        10000,  // [ memory map entry length
+        100000,  // [ memory map entry length
         0, // ]
         1,  // memory map entry type
         1, // memory map entry reserved
@@ -454,32 +454,41 @@ fn should_return_last_freed_frame() {
         
         ];
         
-    let kernel_heap = [0;256];
+    let kernel_heap = [0;1024];
     let addr = bytes.as_ptr() as usize;
     let kernel_heap_addr = kernel_heap.as_ptr() as usize;
     let multiboot_header1 = MultibootHeader::load(addr);
     unsafe { 
-        let KERNEL_BASIC_HEAP_ALLOCATOR = BumpAllocator::from_address(kernel_heap_addr, 256);
+        let KERNEL_BASIC_HEAP_ALLOCATOR = ConstSizeBumpAllocator::from_address(kernel_heap_addr, 1024, 20);
         
         let mut frame_allocator = FrameAllocator::new_test(multiboot_header1, KERNEL_BASIC_HEAP_ALLOCATOR);        
+        let mut allocated_frames = Vec::<Option<Frame>>::new();
+        let frame_count = 100000 / FRAME_SIZE;
 
-        let result = frame_allocator.allocate(); //frame at 00000 - 04905
-        
-        assert!(result.is_some(),
-            "Failed first allocation at address 0. Frame allocator fields {}",
-            frame_allocator);
+        for i in 0..frame_count {
+            allocated_frames.push(frame_allocator.allocate());
+        }
 
-        frame_allocator.deallocate(result.unwrap());
-        let result_again = frame_allocator.allocate();
-        
-        assert!(result_again.is_some(),
-            "Failed allocating previously freed frame number 0. Frame allocator fields {}",
-            frame_allocator);          
+        assert!(allocated_frames.len() == frame_count,
+            "Allocated frame count differs from reference. Should be {}, but was {}",
+            frame_count,
+            allocated_frames.len());
 
-        assert!(result.unwrap() == result_again.unwrap(),
-            "Allocated frame doesn't match with latest available free frame. Returned frame {}, but should be {} .Frame allocator fields {}",
-            result_again.unwrap(),
-            result.unwrap(),
-            frame_allocator);
+        for i in 0..frame_count {
+            frame_allocator.deallocate(allocated_frames[i].unwrap());
+        }
+
+        let mut allocated_frames1 = Vec::<Option<Frame>>::new();
+
+        for i in 0..frame_count {
+            allocated_frames1.push(frame_allocator.allocate());
+
+            let allocated_from_free_list = allocated_frames1[i].unwrap();
+            let previously_freed_frame = allocated_frames[allocated_frames.len() - 1 - i].unwrap();
+            assert!(allocated_from_free_list == previously_freed_frame, 
+                "Allocation from free list differs from previously free frame. Should be frame {}, but was {}",
+                previously_freed_frame,
+                allocated_from_free_list);
+        }
     };    
 }

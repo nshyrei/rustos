@@ -37,9 +37,71 @@ impl Frame {
         address % FRAME_SIZE == 0
     }
 
+    fn address_to_frame_number(address : usize) -> usize {
+        address / FRAME_SIZE
+    }
+
+    pub fn address_align_up(address : usize) -> usize {
+        if Frame::is_frame_aligned(address) {
+            address
+        }
+        else {
+            (Frame::address_to_frame_number(address) + 1) * FRAME_SIZE
+        }
+    }
+
+    pub fn address_align_down(address : usize) -> usize {
+        if Frame::is_frame_aligned(address) {
+            address
+        }
+        else {
+            (Frame::address_to_frame_number(address) - 1) * FRAME_SIZE
+        }
+    }
+
+    pub fn address_align(address : usize) -> usize {
+        if Frame::is_frame_aligned(address) {
+            address
+        }
+        else {
+            Frame::address_to_frame_number(address) * FRAME_SIZE
+        }
+    }
+
+    pub fn number_for_address(address : usize) -> usize {
+        address / FRAME_SIZE
+    }
+
+    pub fn number_to_address(number : usize) -> usize {
+        number * FRAME_SIZE
+    }
+
+    pub fn aligned_up(address : usize) -> Frame {
+        if Frame::is_frame_aligned(address) {
+            Frame::from_address(address)
+        }
+        else {
+            Frame::from_address(address).next()
+        }
+    }
+
+    pub fn aligned_down(address : usize) -> Frame {
+        if Frame::is_frame_aligned(address) {
+            Frame::from_address(address)
+        }
+        else {
+            Frame::from_address(address).previous()
+        }
+    }
+
     // creates new frame with number = self.number + 1
     fn next(&self) -> Frame {
         Frame { number : self.number + 1}
+    }
+
+    fn previous(&self) -> Frame {
+        let number = if self.number == 0 { 0 } else { self.number - 1 };
+        Frame { number : number }
     }
 
     pub fn zero_frame(frame : &Frame) {

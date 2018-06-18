@@ -2,22 +2,20 @@
 #![feature(const_fn)]
 #![no_std]
 
-//#![feature(allocator)]
-//#![allocator]
-
 #[macro_use]
 extern crate bitflags;
 extern crate multiboot;
 extern crate stdx;
 extern crate hardware;
+extern crate stdx_memory;
+extern crate display;
 
-pub mod kernel;
 pub mod frame;
 pub mod paging;
-pub mod heap;
+pub mod allocator;
 
 /*
-    kernel memory layout
+    kernel memory layout. All physical addressess are equal to virtual here.
 
-    *---kernel code + stack---**--- frame allocator data structures---**---kernel heap---*
+    *---kernel code + stack---**--- frame allocator data structures---**---heap data structures---*
 */

@@ -27,14 +27,14 @@ impl ElfSections {
 
     pub fn entries_start_address(&self) -> Option<u64> {
         self.entries()
-            .next()
-            .map(|e| e.start_address())
+            .min_by_key(|e| e.start_address())
+            .map(|e| e.start_address())            
     }
 
     pub fn entries_end_address(&self) -> Option<u64> {
         self.entries()
-            .last()
-            .map(|e| e.end_address())
+            .max_by_key(|e| e.end_address())
+            .map(|e| e.end_address()) 
     }
 }
 

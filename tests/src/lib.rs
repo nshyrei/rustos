@@ -1,7 +1,16 @@
+#![feature(alloc)] 
+#![feature(heap_api)]
 extern crate memory;
 extern crate multiboot;
+extern crate stdx_memory;
+extern crate stdx;
+extern crate alloc;
 
 #[cfg(test)]
 mod frame_bitmap_tests;
-mod empty_frame_list_tests;
 mod frame_allocator_tests;
+mod linked_list_tests;
+mod double_linked_list_tests;
+mod free_list_allocator_tests;
+mod buddy_free_list_tests;
+mod buddy_allocator_tests;
