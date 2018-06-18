@@ -185,8 +185,8 @@ impl BuddyAllocator {
         let mut current_level_size = BuddyAllocator::block_size_from_index(start_index);
 
         loop {
-            
-            if i < 0 {
+            // if size < current_level_size at index 0 the algorithm will crash!
+            if i == 0 {
                 return None
             }
 
@@ -282,29 +282,39 @@ impl MemoryAllocator for BuddyAllocator {
 
     fn allocate(&mut self, size : usize) -> Option<usize> {
 
-        let allocation_size_rounded = (2 as usize).pow(math::log2_align_up(size) as u32);
-
-        if allocation_size_rounded > self.total_memory {
+        if size == 0 {
             None
         }
-        else {            
-            // Search buddy tree for free blocks on current level denoted by 'buddy_list_index',
-            // if nothing found search buddy tree upwards for bigger block that can be splitted.
-            // Split bigger block (if any) and propagate split results downwards,
-            // until block of required size is created.
-            let result = self.search_free_list_up(allocation_size_rounded)
-                             .and_then(|index| self.split_down(index, allocation_size_rounded));
-            
-            if let Some((new_buddy_index, result_address)) = result {
-                let frame_number = Frame::number_for_address(result_address);
-                self.allocation_sizes[frame_number] = new_buddy_index as usize;                
+        else {
+            let allocation_size_rounded0 = (2 as usize).pow(math::log2_align_up(size) as u32);
+            let allocation_size_rounded = if allocation_size_rounded0 < FRAME_SIZE { 
+                FRAME_SIZE
+            } else {
+                allocation_size_rounded0
+            };
 
-                Some(result_address + self.start_address)
-            }
-            else {
+            if allocation_size_rounded > self.total_memory {
                 None
             }
-        }
+            else {            
+                // Search buddy tree for free blocks on current level denoted by 'buddy_list_index',
+                // if nothing found search buddy tree upwards for bigger block that can be splitted.
+                // Split bigger block (if any) and propagate split results downwards,
+                // until block of required size is created.
+                let result = self.search_free_list_up(allocation_size_rounded)
+                                .and_then(|index| self.split_down(index, allocation_size_rounded));
+                
+                if let Some((new_buddy_index, result_address)) = result {
+                    let frame_number = Frame::number_for_address(result_address);
+                    self.allocation_sizes[frame_number] = new_buddy_index as usize;                
+
+                    Some(result_address + self.start_address)
+                }
+                else {
+                    None
+                }
+            }
+        }        
     }
 
     fn free(&mut self, pointer : usize) {

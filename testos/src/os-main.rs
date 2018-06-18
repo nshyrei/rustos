@@ -92,12 +92,10 @@ use core::ptr;
     let heap_a = Frame::address_align_up(heap_addr);
     let heap_end_address = heap_a + size - 1;
     let mut allocator = BuddyAllocator::new(heap_a, heap_a + size);
-    
-    let left = allocator.allocate(size / 2);
-    let right = allocator.allocate(size / 2);
+    let mut allocated : [usize;16] = [0;16];    
 
-    allocator.free(left.unwrap());
-    allocator.free(right.unwrap());
+    let result = allocator.allocate(2);
+
 
     let result = allocator.allocate(size);
     let exit = 0;
