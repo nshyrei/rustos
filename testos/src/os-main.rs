@@ -30,13 +30,19 @@ use stdx_memory::MemoryAllocator;
 use hardware::x86_64::registers;
 
 use core::fmt::Write;
-
+use alloc::boxed::Box;
 static mut vga_writerg : Option<Writer> = None;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
     unsafe {        
+        {
+            let us : usize = 128;
+            let sz = core::mem::size_of::<usize>();
+            let boxin = Box::new(us);
+            let bb = boxin;
+        }
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
         let mut vga_writer = Writer::new();
         //vga_writerg = Some(vga_writer);

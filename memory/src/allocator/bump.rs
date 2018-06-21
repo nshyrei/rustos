@@ -54,6 +54,10 @@ impl ConstSizeBumpAllocator {
         let elem_size = mem::size_of::<T>();
         Self::from_address(address, elem_size * elems_count, elem_size)
     }
+
+    pub fn increase_size(&mut self, size : usize) {
+        self.pointer_end_address += size;
+    }
 }
 
 impl ConstantSizeMemoryAllocator for ConstSizeBumpAllocator {

@@ -8,7 +8,8 @@ pub struct FreeListAllocator {
     bump_allocator        : ConstSizeBumpAllocator,
     block_size            : usize,
     free_blocks           : heap::SharedBox<LinkedList<usize>>,
-    free_blocks_allocator : ConstSizeBumpAllocator
+    free_blocks_allocator : ConstSizeBumpAllocator,
+    free_blocks_count     : usize
 }
 
 impl FreeListAllocator {
@@ -25,8 +26,13 @@ impl FreeListAllocator {
             bump_allocator        : bump_allocator,
             block_size            : block_size,
             free_blocks           : free_blocks,
-            free_blocks_allocator : free_blocks_allocator
+            free_blocks_allocator : free_blocks_allocator,
+            free_blocks_count     : 0
         }
+    }
+
+    pub fn fully_free(&self) -> bool {
+        self.free_blocks_count == self.bump_allocator.total_blocks_count()
     }
 
     pub fn start_address(&self) -> usize {
@@ -36,12 +42,20 @@ impl FreeListAllocator {
     pub fn end_address(&self) -> usize {
         1
     }    
+
+    pub fn increase_size(&mut self, size : usize) {
+        let free_list_blocks_increase = size / self.block_size;
+        self.bump_allocator.increase_size(size);
+        self.free_blocks_allocator.increase_size(free_list_blocks_increase);
+    }
 }
 
 impl ConstantSizeMemoryAllocator for FreeListAllocator {    
     fn allocate_size(&mut self) -> Option<usize> {
         if let Some((value, previous)) = self.free_blocks.take(&mut self.free_blocks_allocator) {
-            self.free_blocks = previous;            
+            self.free_blocks = previous;
+            self.free_blocks_count -= 1;
+
             Some(value)
         }
         else {
@@ -50,6 +64,7 @@ impl ConstantSizeMemoryAllocator for FreeListAllocator {
     }
 
     fn free_size(&mut self, pointer : usize) {
+        self.free_blocks_count += 1;
         self.free_blocks = self.free_blocks.add(pointer, &mut self.free_blocks_allocator);
     }
 

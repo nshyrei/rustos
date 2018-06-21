@@ -41,6 +41,10 @@ impl Frame {
         address / FRAME_SIZE
     }
 
+    /// Aligns address upwards by FRAME_SIZE constant (returns first aligned address that is bigger then current) address.
+    /// Does nothing if address already aligned by FRAME_SIZE. 
+    /// # Arguments
+    /// * `address` - address to align
     pub fn address_align_up(address : usize) -> usize {
         if Frame::is_frame_aligned(address) {
             address
@@ -50,16 +54,11 @@ impl Frame {
         }
     }
 
+    /// Aligns address downwards by FRAME_SIZE constant (returns first aligned address that is lower then current) address.
+    /// Does nothing if address already aligned by FRAME_SIZE. 
+    /// # Arguments
+    /// * `address` - address to align
     pub fn address_align_down(address : usize) -> usize {
-        if Frame::is_frame_aligned(address) {
-            address
-        }
-        else {
-            (Frame::address_to_frame_number(address) - 1) * FRAME_SIZE
-        }
-    }
-
-    pub fn address_align(address : usize) -> usize {
         if Frame::is_frame_aligned(address) {
             address
         }

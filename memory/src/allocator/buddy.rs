@@ -54,7 +54,7 @@ impl BuddyAllocator {
         1
     }
 
-    pub fn new(start_address1 : usize, end_address1 : usize) -> BuddyAllocator {
+    pub fn new(start_address1 : usize, end_address1 : usize) -> Self {
         let start_address      = Frame::address_align_up(start_address1);
         let end_address        = end_address1;
 

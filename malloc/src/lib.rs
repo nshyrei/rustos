@@ -9,7 +9,8 @@ pub extern fn __rust_allocate(size: usize, _align: usize) -> *mut u8 {
 
 #[no_mangle]
 pub extern fn __rust_deallocate(ptr: *mut u8, _old_size: usize, _align: usize) {
-    
+    let x = 10;
+    let a = x;
 }
 
 #[no_mangle]
