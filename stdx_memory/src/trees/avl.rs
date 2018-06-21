@@ -11,7 +11,9 @@ use smart_ptr;
 use stdx::Sequence;
 use stdx::Iterable;
 
-type NodeRef<T> = Option<heap::SharedBox<AVLNode<T>>>;
+type NodeRef<T> = Option<heap::Box<AVLNode<T>>>;
+
+
 
 pub struct AVLTree<T> where T : cmp::Ord {
     root : NodeRef<T>
@@ -19,31 +21,51 @@ pub struct AVLTree<T> where T : cmp::Ord {
 
 impl<T> AVLTree<T> where T : cmp::Ord + Copy {
     pub fn find(&self, x : T) -> Option<T> {
-        AVLTree::find0(self.root, x)
+        AVLTree::find0(&self.root, x)
     }
 
-    fn find0(node : NodeRef<T>, x : T) -> Option<T> {
-        node.and_then(|n| match n.value().cmp(&x) {
-                Ordering::Less    => AVLTree::find0(n.left, x),
-                Ordering::Greater => AVLTree::find0(n.right, x),
+    fn find0(node : &NodeRef<T>, x : T) -> Option<T> {
+        node.as_ref().and_then(|n| match n.value().cmp(&x) {
+                Ordering::Less    => AVLTree::find0(&n.left, x),
+                Ordering::Greater => AVLTree::find0(&n.right, x),
                 _                 => Some(n.value)
         })
     }
 
     pub fn height(&self) -> i64 {
-        AVLTree::height0(self.root)
+        AVLTree::height0(&self.root)
     }
 
-    fn height0(node : NodeRef<T>) -> i64 {
-        node.map(|n| n.height).unwrap_or(-1)
+    fn height0(node : &NodeRef<T>) -> i64 {
+        node.as_ref()
+            .map(|n| n.height)
+            .unwrap_or(-1)
     }
 
     pub fn insert<M>(&mut self, value : T, memory_allocator : &mut M) where M : MemoryAllocator {
-
+        self.root = Some(AVLTree::insert0(self.root.take(), value, memory_allocator))
     }
 
-    fn insert0<M>(node : NodeRef<T>, value : T, memory_allocator : &mut M) -> heap::SharedBox<AVLNode<T>> where M : MemoryAllocator  {
-        node.map_or(AVLNode::new(value, 0, memory_allocator), |mut n| {
+    fn insert0<M>(mut node : NodeRef<T>, value : T, memory_allocator : &mut M) -> heap::Box<AVLNode<T>> where M : MemoryAllocator  {
+        if let None = node {
+            AVLNode::new(value, 0, memory_allocator)
+        }
+        else {
+            let mut n = node.unwrap();
+            let cmp_result = n.value().cmp(&value);
+            
+            match cmp_result {
+                Ordering::Less    => {
+                    n.left = Some(AVLTree::insert0(n.left.take(), value, memory_allocator))                
+                },
+                Ordering::Greater => {
+                    n.right = Some(AVLTree::insert0(n.right.take(), value, memory_allocator))
+                },
+                _ => ()
+            }
+            AVLNode::new(value, 0, memory_allocator)
+        }
+        /*node.as_mut().map_or(AVLNode::new(value, 0, memory_allocator), |mut n| {
             match n.value().cmp(&value) {
                 Ordering::Less    => {
                     n.left = Some(AVLTree::insert0(n.left, value, memory_allocator))                
@@ -54,22 +76,24 @@ impl<T> AVLTree<T> where T : cmp::Ord + Copy {
                 _ => ()
             }
             
-            n.height = 1 + cmp::max(AVLTree::height0(n.left), AVLTree::height0(n.right));
+            n.height = 1 + cmp::max(AVLTree::height0(&n.left), AVLTree::height0(&n.right));
             AVLNode::new(value, 0, memory_allocator)
         })
+        */
     }
 
-    fn rotate_right(x : &mut AVLNode<T>) -> heap::SharedBox<AVLNode<T>> {
+    /*
+    fn rotate_right(x : heap::Box<AVLNode<T>>) -> heap::Box<AVLNode<T>> {
         let mut y = x.left.take().expect("invalid avl");
         x.left = y.right;
-        y.right = Some(heap::SharedBox::from_pointer(x));
+        y.right = Some(x);
         x.height = 1 + cmp::max(AVLTree::height0(x.left), AVLTree::height0(x.right));
         y.height = 1 + cmp::max(AVLTree::height0(y.left), AVLTree::height0(y.right));
 
         y 
     }
 
-    fn rotate_left(x : &mut AVLNode<T>) -> heap::SharedBox<AVLNode<T>> {
+    fn rotate_left(x : &mut AVLNode<T>) -> heap::Box<AVLNode<T>> {
         let mut y = x.right.take().expect("invalid avl");
         x.right = y.left;
         y.left = Some(heap::SharedBox::from_pointer(x));
@@ -78,6 +102,7 @@ impl<T> AVLTree<T> where T : cmp::Ord + Copy {
 
         y
     }
+    */
 }
     /*
     fn balance(node : NodeRef<T>) -> heap::SharedBox<AVLNode<T>> {
@@ -147,7 +172,11 @@ impl<T> AVLNode<T> where T : cmp::Ord + Copy {
         self.value
     }
 
-    pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::SharedBox<Self> where M : MemoryAllocator {
+    fn left(&mut self) -> &mut NodeRef<T> {
+        &mut self.left
+    }
+
+    pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::Box<Self> where M : MemoryAllocator {
         let result = AVLNode {
             value  : value,
             height : height,
@@ -155,7 +184,7 @@ impl<T> AVLNode<T> where T : cmp::Ord + Copy {
             right  : None
         };
 
-        heap::SharedBox::new(result, memory_allocator)
+        heap::Box::new(result, memory_allocator)
     }
 
 

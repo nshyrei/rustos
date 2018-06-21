@@ -28,7 +28,7 @@ pub struct FrameAllocator {
     current_memory_area : smart_ptr::Unique<MemoryMapEntry>,
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,
-    empty_frame_list: heap::SharedBox<LinkedList<Frame>>,
+    empty_frame_list: heap::Box<LinkedList<Frame>>,
     frame_list_allocator : ConstSizeBumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
@@ -80,7 +80,7 @@ impl FrameAllocator {
         self.buddy_allocator_end_frame = f
     }
 
-    fn empty_frame_list(&self) -> &heap::SharedBox<LinkedList<Frame>> {
+    fn empty_frame_list(&self) -> &heap::Box<LinkedList<Frame>> {
         &self.empty_frame_list
     }
 
@@ -120,7 +120,7 @@ impl FrameAllocator {
             current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: heap::SharedBox::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::Box::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -156,7 +156,7 @@ impl FrameAllocator {
             current_memory_area : smart_ptr::Unique::new(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: heap::SharedBox::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::Box::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -173,12 +173,11 @@ impl FrameAllocator {
     pub fn allocate(&mut self) -> Option<Frame> {
                         
         // check empty frame list first, if nothing perform bump allocation
-        match *self.empty_frame_list {
-            LinkedList::Cell { value, prev } => {
+        match self.empty_frame_list.take() {
+            Some((value, prev)) => {
                 
                 // pick first result from empty frame list                
-                self.empty_frame_list = prev;
-                prev.free(&mut self.frame_list_allocator);
+                self.empty_frame_list = prev;                
                 
                 Some(value)
             },

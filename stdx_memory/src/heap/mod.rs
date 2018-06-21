@@ -2,6 +2,7 @@ use smart_ptr;
 use MemoryAllocator;
 use core::ptr;
 use core::ops;
+use core::ops::Deref;
 
 pub struct Box<T>{
     unique : smart_ptr::Unique<T>
@@ -20,22 +21,20 @@ impl <T> Box<T> {
     }    
 
     pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
-        memory_allocator.free(self.pointer() as *const _ as usize)
-    }    
-
-    pub fn pointer(&self) -> &T {
-        self.unique.pointer()
+        memory_allocator.free(self.deref() as *const _ as usize)
     }
 
-    pub fn pointer_mut(&self) -> &mut T {
-        self.unique.pointer_mut()
-    }        
+    pub fn from_pointer(pointer : &T) -> Self {
+        Box {
+            unique : smart_ptr::Unique::new(pointer)
+        }
+    }
 }
 
 impl<T> Box<T> where T : Clone {
 
     pub fn unbox<A>(self, memory_allocator : &mut A) -> T where A : MemoryAllocator {
-        let result = self.pointer().clone();
+        let result = self.deref().clone();
         self.free(memory_allocator);
 
         result
