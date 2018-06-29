@@ -102,6 +102,24 @@ impl <T> Array<T> {
         }
     }    
 
+    /*
+    pub fn fill_value1(&mut self, value : T) {
+        let addresses = self.indices().map(|i| self.index_to_address(i));
+
+        
+
+        for address in addresses {
+            unsafe { ptr::write_unaligned(address as *mut T, value); }
+        }
+    }
+    */
+
+    pub fn replace(&mut self, index : usize, value : T) -> T {
+        unsafe {
+            mem::replace(&mut *(self.index_to_address(index) as *mut T), value)
+        }
+    }
+
     fn index_to_address(&self, index : usize) -> usize {
         self.start_address + (mem::size_of::<T>() * index)
     }

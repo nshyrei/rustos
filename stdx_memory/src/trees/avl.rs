@@ -10,170 +10,401 @@ use heap;
 use smart_ptr;
 use stdx::Sequence;
 use stdx::Iterable;
+use core::ops::Deref;
+use core::ops::DerefMut;
 
-type NodeRef<T> = Option<heap::Box<AVLNode<T>>>;
+type OptNodeBox<T> = Option<heap::Box<AVLNode<T>>>;
+type NodeBox<T> = heap::Box<AVLNode<T>>;
 
+
+fn height<T>(node : &OptNodeBox<T>) -> i64 where T : cmp::Ord {
+    node.as_ref()
+        .map(|n| n.height())
+        .unwrap_or(-1)
+}
+
+fn insert0<T, M>(mut node : NodeBox<T>, value : T, memory_allocator : &mut M) -> NodeBox<T> where T : cmp::Ord + Copy, M : MemoryAllocator  {
+    let cmp_result = node.value().cmp(&value);
+            
+    match cmp_result {
+        Ordering::Less    => {
+            if node.left.is_some() {
+                let new_left = insert0(node.take_left_unwrap(), value, memory_allocator);
+                node.set_left(Some(new_left));
+                
+            }
+            else {
+                node.set_left(Some(AVLNode::new(value, 0, memory_allocator)));
+            }
+        },
+        Ordering::Greater => {
+            if node.right.is_some() {
+                let new_right = insert0(node.take_right_unwrap(), value, memory_allocator);
+                node.set_right(Some(new_right));
+                
+            }
+            else {
+                node.set_right(Some(AVLNode::new(value, 0, memory_allocator)));
+            }
+        },
+        _ => return node
+    }
+        
+    node.update_height();
+
+    balance(node)
+}
+
+
+fn find0<T>(node : &OptNodeBox<T>, x : T) -> Option<T> where T : cmp::Ord + Copy {
+    node.as_ref().and_then(|n| match n.value().cmp(&x) {
+            Ordering::Less    => find0(&n.left, x),
+            Ordering::Greater => find0(&n.right, x),
+            _                 => Some(n.value)
+    })
+}
+
+fn rotate_right<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+    let mut y = x.take_left().expect("invalid avl");
+
+    x.set_left(y.take_right());
+    x.update_height();
+        
+    y.set_right(Some(heap::Box::from_pointer(&x)));
+    y.update_height();
+
+    y
+}
+
+fn rotate_left<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+    let mut y = x.take_right().expect("invalid avl");
+
+    x.set_right(y.take_left());
+    y.set_left(Some(heap::Box::from_pointer(&x)));
+
+    x.update_height();
+    y.update_height();
+
+    y
+}
+
+fn balance_factor_opt<T>(node : &OptNodeBox<T>) -> i64 where T : cmp::Ord {
+    node.as_ref()
+        .map(|n| balance_factor(n))
+        .unwrap_or(0)
+}
+
+fn balance_factor<T>(node : &AVLNode<T>) -> i64 where T : cmp::Ord {
+    height(&node.left) - height(&node.right)
+}
+
+fn balance<T>(mut node : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+    let balance_factor = balance_factor(&node);
+    if balance_factor < -1 {
+        if balance_factor_opt(&node.right) > 0 && node.has_right() {
+            let r = node.take_right_unwrap();
+
+            node.set_right(Some(rotate_right(r)));            
+        }
+
+        node = rotate_left(node);
+    }
+    else if balance_factor > 1 {
+        if balance_factor_opt(&node.left) < 0 && node.has_left() {
+            let l = node.take_left_unwrap();
+
+            node.set_left(Some(rotate_left(l)));
+        }
+
+        node = rotate_right(node);
+    }
+
+    node
+}
+
+fn min<T>(node : &NodeBox<T>) -> &NodeBox<T> where T : cmp::Ord {
+    node.left()
+        .as_ref()
+        .map(|l| min(l))
+        .unwrap_or(node)
+}
+
+fn delete_min<T>(mut node : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+    match node.take_left() {
+        Some(left) => {
+            node.set_left(Some(delete_min(left)));
+            node.update_height();
+
+            balance(node)
+        },
+        _ => node.take_right().expect("Invalid avl (no right node) in delete min"),
+    }
+}
+
+fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord + Copy {
+    let cmp_result = node.value().cmp(&value);
+            
+    match cmp_result {
+        Ordering::Less if node.left().is_some() => {
+            let new_left = delete(node.take_left_unwrap(), value);
+            node.set_left(Some(new_left));
+        },
+        Ordering::Greater if node.right().is_some() => {
+            let new_right = delete(node.take_right_unwrap(), value);
+            node.set_right(Some(new_right));                
+        },
+        _ => {
+            if node.left().is_none() && node.right().is_some() {
+                return node.take_right_unwrap()
+            }
+            else if node.right().is_none() && node.left().is_some() {
+                return node.take_left_unwrap()
+            }
+            else {
+                let node_copy = heap::Box::from_pointer(node.deref());
+
+                {
+                    let new_node = min(node_copy.right().as_ref().unwrap());
+
+                    node = heap::Box::from_pointer(new_node);
+                }
+
+                let right_copy = heap::Box::from_pointer(node_copy.right().as_ref().unwrap().deref());
+                //let left_copy = heap::Box::from_pointer(node_copy.left().as_ref().unwrap().deref());
+                let new_right = delete_min(right_copy);                
+                node.set_right(Some(new_right));
+                //node.set_left(Some(left_copy));
+
+
+                /*
+                Node y = x;
+                x = min(y.right);
+                x.right = deleteMin(y.right);
+                x.left = y.left;
+                */
+            }
+        }
+    }
+        
+    node.update_height();
+    balance(node)
+}
+
+fn isBST<T>(node : &OptNodeBox<T>, min : Option<T>, max : Option<T>) -> bool where T : cmp::Ord + Copy {
+    node.as_ref()
+        .map(|n| {
+            let value = n.value();
+            let min_check = min.is_none() || value <= min.unwrap();
+            let max_check = max.is_none() || value >= max.unwrap();
+            
+            
+            min_check && 
+            max_check && 
+            isBST(n.left(), min, Some(value)) && 
+            isBST(n.right(), Some(value), max)
+        })
+        .unwrap_or(true)
+}
+
+fn isAVL<T>(node : &OptNodeBox<T>) -> bool where T : cmp::Ord + Copy {
+    node.as_ref()
+        .map(|n| {
+            let balance_factor = balance_factor(n);
+            let balance_factor_check = balance_factor >= -1 && balance_factor <= 1;
+
+            balance_factor_check &&
+            isAVL(n.left()) &&
+            isAVL(n.right())
+        })
+        .unwrap_or(true)
+}
+
+/*
+if (x == null) return true;
+        if (min != null && x.key.compareTo(min) <= 0) return false;
+        if (max != null && x.key.compareTo(max) >= 0) return false;
+        return isBST(x.left, min, x.key) && isBST(x.right, x.key, max);
+*/
+/*  private boolean check() {
+        if (!isBST()) StdOut.println("Symmetric order not consistent");
+        if (!isAVL()) StdOut.println("AVL property not consistent");
+        if (!isSizeConsistent()) StdOut.println("Subtree counts not consistent");
+        if (!isRankConsistent()) StdOut.println("Ranks not consistent");
+        return isBST() && isAVL() && isSizeConsistent() && isRankConsistent();
+    }
+
+    /**
+     * Checks if AVL property is consistent.
+     * 
+     * @return {@code true} if AVL property is consistent.
+     */
+    private boolean isAVL() {
+        return isAVL(root);
+    }
+
+    /**
+     * Checks if AVL property is consistent in the subtree.
+     * 
+     * @param x the subtree
+     * @return {@code true} if AVL property is consistent in the subtree
+     */
+    private boolean isAVL(Node x) {
+        if (x == null) return true;
+        int bf = balanceFactor(x);
+        if (bf > 1 || bf < -1) return false;
+        return isAVL(x.left) && isAVL(x.right);
+    }
+
+    /**
+     * Checks if the symmetric order is consistent.
+     * 
+     * @return {@code true} if the symmetric order is consistent
+     */
+    private boolean isBST() {
+        return isBST(root, null, null);
+    }
+
+    /**
+     * Checks if the tree rooted at x is a BST with all keys strictly between
+     * min and max (if min or max is null, treat as empty constraint) Credit:
+     * Bob Dondero's elegant solution
+     * 
+     * @param x the subtree
+     * @param min the minimum key in subtree
+     * @param max the maximum key in subtree
+     * @return {@code true} if if the symmetric order is consistent
+     */
+    private boolean isBST(Node x, Key min, Key max) {
+        if (x == null) return true;
+        if (min != null && x.key.compareTo(min) <= 0) return false;
+        if (max != null && x.key.compareTo(max) >= 0) return false;
+        return isBST(x.left, min, x.key) && isBST(x.right, x.key, max);
+    }
+
+    /**
+     * Checks if size is consistent.
+     * 
+     * @return {@code true} if size is consistent
+     */
+    private boolean isSizeConsistent() {
+        return isSizeConsistent(root);
+    }
+
+    /**
+     * Checks if the size of the subtree is consistent.
+     * 
+     * @return {@code true} if the size of the subtree is consistent
+     */
+    private boolean isSizeConsistent(Node x) {
+        if (x == null) return true;
+        if (x.size != size(x.left) + size(x.right) + 1) return false;
+        return isSizeConsistent(x.left) && isSizeConsistent(x.right);
+    }
+
+    /**
+     * Checks if rank is consistent.
+     * 
+     * @return {@code true} if rank is consistent
+     */
+    private boolean isRankConsistent() {
+        for (int i = 0; i < size(); i++)
+            if (i != rank(select(i))) return false;
+        for (Key key : keys())
+            if (key.compareTo(select(rank(key))) != 0) return false;
+        return true;
+    }
+*/
 
 
 pub struct AVLTree<T> where T : cmp::Ord {
-    root : NodeRef<T>
+    root : OptNodeBox<T>
 }
 
 impl<T> AVLTree<T> where T : cmp::Ord + Copy {
     pub fn find(&self, x : T) -> Option<T> {
-        AVLTree::find0(&self.root, x)
-    }
-
-    fn find0(node : &NodeRef<T>, x : T) -> Option<T> {
-        node.as_ref().and_then(|n| match n.value().cmp(&x) {
-                Ordering::Less    => AVLTree::find0(&n.left, x),
-                Ordering::Greater => AVLTree::find0(&n.right, x),
-                _                 => Some(n.value)
-        })
+        find0(&self.root, x)
     }
 
     pub fn height(&self) -> i64 {
-        AVLTree::height0(&self.root)
-    }
-
-    fn height0(node : &NodeRef<T>) -> i64 {
-        node.as_ref()
-            .map(|n| n.height)
-            .unwrap_or(-1)
+        height(&self.root)
     }
 
     pub fn insert<M>(&mut self, value : T, memory_allocator : &mut M) where M : MemoryAllocator {
-        self.root = Some(AVLTree::insert0(self.root.take(), value, memory_allocator))
-    }
-
-    fn insert0<M>(mut node : NodeRef<T>, value : T, memory_allocator : &mut M) -> heap::Box<AVLNode<T>> where M : MemoryAllocator  {
-        if let None = node {
-            AVLNode::new(value, 0, memory_allocator)
+        match self.root.take() {
+            Some(node) => self.root = Some(insert0(node, value, memory_allocator)),
+            _ => self.root = Some(AVLNode::new(value, 0, memory_allocator)) 
         }
-        else {
-            let mut n = node.unwrap();
-            let cmp_result = n.value().cmp(&value);
-            
-            match cmp_result {
-                Ordering::Less    => {
-                    n.left = Some(AVLTree::insert0(n.left.take(), value, memory_allocator))                
-                },
-                Ordering::Greater => {
-                    n.right = Some(AVLTree::insert0(n.right.take(), value, memory_allocator))
-                },
-                _ => ()
-            }
-            AVLNode::new(value, 0, memory_allocator)
+    }
+
+    pub fn delete(&mut self, key : T) {
+        match self.root.take() {
+            Some(node) => self.root = Some(delete(node, key)),
+            _ => self.root = None
         }
-        /*node.as_mut().map_or(AVLNode::new(value, 0, memory_allocator), |mut n| {
-            match n.value().cmp(&value) {
-                Ordering::Less    => {
-                    n.left = Some(AVLTree::insert0(n.left, value, memory_allocator))                
-                },
-                Ordering::Greater => {
-                    n.right = Some(AVLTree::insert0(n.right, value, memory_allocator))
-                },
-                _ => ()
-            }
-            
-            n.height = 1 + cmp::max(AVLTree::height0(&n.left), AVLTree::height0(&n.right));
-            AVLNode::new(value, 0, memory_allocator)
-        })
-        */
     }
-
-    /*
-    fn rotate_right(x : heap::Box<AVLNode<T>>) -> heap::Box<AVLNode<T>> {
-        let mut y = x.left.take().expect("invalid avl");
-        x.left = y.right;
-        y.right = Some(x);
-        x.height = 1 + cmp::max(AVLTree::height0(x.left), AVLTree::height0(x.right));
-        y.height = 1 + cmp::max(AVLTree::height0(y.left), AVLTree::height0(y.right));
-
-        y 
-    }
-
-    fn rotate_left(x : &mut AVLNode<T>) -> heap::Box<AVLNode<T>> {
-        let mut y = x.right.take().expect("invalid avl");
-        x.right = y.left;
-        y.left = Some(heap::SharedBox::from_pointer(x));
-        x.height = 1 + cmp::max(AVLTree::height0(x.left), AVLTree::height0(x.right));
-        y.height = 1 + cmp::max(AVLTree::height0(y.left), AVLTree::height0(y.right));
-
-        y
-    }
-    */
 }
-    /*
-    fn balance(node : NodeRef<T>) -> heap::SharedBox<AVLNode<T>> {
-        if AVLTree::balance_factor(node) < -1 {
-            if balance_factor(node.right) > 0 {
-                node.right = AVLTree::rotate_right(node.right);
-            }
-
-
-        }
-    }
-
-    fn balance_factor(node : NodeRef<T>) -> i64 {
-        node.map(|n| AVLTree::height0(n.left) - AVLTree::height0(n.right))
-            .unwrap_or(0)
-    }
-    */
-
-    
-
-    /**
-     
-    private Node rotateLeft(Node x) {
-        Node y = x.right;
-        x.right = y.left;
-        y.left = x;
-        y.size = x.size;
-        x.size = 1 + size(x.left) + size(x.right);
-        x.height = 1 + Math.max(height(x.left), height(x.right));
-        y.height = 1 + Math.max(height(y.left), height(y.right));
-        return y;
-    }
-    */
-/*
-    private Node balance(Node x) {
-        if (balanceFactor(x) < -1) {
-            if (balanceFactor(x.right) > 0) {
-                x.right = rotateRight(x.right);
-            }
-            x = rotateLeft(x);
-        }
-        else if (balanceFactor(x) > 1) {
-            if (balanceFactor(x.left) < 0) {
-                x.left = rotateLeft(x.left);
-            }
-            x = rotateRight(x);
-        }
-        return x;
-    }
-    }
-*/
 
 struct AVLNode<T> where T : cmp::Ord {
     value  : T,
     height : i64,
-    left   : NodeRef<T>,
-    right  : NodeRef<T>
+    left   : OptNodeBox<T>,
+    right  : OptNodeBox<T>
 }
 
-impl<T> AVLNode<T> where T : cmp::Ord + Copy {
-
+impl<T> AVLNode<T> where T : cmp::Ord {
     pub fn height(&self) -> i64 {
         self.height
     }
 
-    pub fn value(&self) -> T {
-        self.value
+    pub fn left(&self) -> &OptNodeBox<T> {
+        &self.left
     }
 
-    fn left(&mut self) -> &mut NodeRef<T> {
-        &mut self.left
+    pub fn right(&self) -> &OptNodeBox<T> {
+        &self.right
+    }
+
+    pub fn set_right(&mut self, v : OptNodeBox<T>) {
+        self.right = v
+    }
+
+    pub fn set_left(&mut self, v : OptNodeBox<T>) {
+        self.left = v
+    }
+
+    pub fn update_height(&mut self) {
+        self.height = 1 + cmp::max(height(self.left()), height(self.right()))
+    }
+
+    pub fn take_left(&mut self) -> OptNodeBox<T> {
+        self.left.take()
+    }
+
+    pub fn take_right(&mut self) -> OptNodeBox<T> {
+        self.right.take()
+    }
+
+    pub fn take_left_unwrap(&mut self) -> NodeBox<T> {
+        self.take_left().unwrap()
+    }
+
+    pub fn take_right_unwrap(&mut self) -> NodeBox<T> {
+        self.take_right().unwrap()
+    }
+
+    pub fn has_right(&self) -> bool {
+        self.right.is_some()
+    }
+
+    pub fn has_left(&self) -> bool {
+        self.left.is_some()
+    }
+}
+
+impl<T> AVLNode<T> where T : cmp::Ord + Copy {
+    
+    pub fn value(&self) -> T {
+        self.value
     }
 
     pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::Box<Self> where M : MemoryAllocator {
@@ -186,8 +417,6 @@ impl<T> AVLNode<T> where T : cmp::Ord + Copy {
 
         heap::Box::new(result, memory_allocator)
     }
-
-
 }
 /*
 public class AVLTreeST<Key extends Comparable<Key>, Value> {
