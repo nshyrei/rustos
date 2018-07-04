@@ -3,6 +3,7 @@ use MemoryAllocator;
 use core::ptr;
 use core::ops;
 use core::ops::Deref;
+use core::cell;
 
 pub struct Box<T>{
     unique : smart_ptr::Unique<T>
@@ -45,13 +46,13 @@ impl<T> ops::Deref for Box<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.unique.pointer()
+        self.unique.deref()
     }
 }
 
 impl<T> ops::DerefMut for Box<T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.unique.pointer_mut()
+        self.unique.deref_mut()
     }
 }
 
@@ -126,3 +127,55 @@ impl<T> Clone for SharedBox<T> where T : Sized {
 }
 
 impl<T> Copy for SharedBox<T> where T : Sized  { }
+
+pub struct RC<T> {
+    rc_box : cell::RefCell<smart_ptr::Unique<RCBox<T>>>
+}
+
+impl <T> RC<T> {
+    pub fn new<A>(value : T, memory_allocator : &mut A) -> Self where A : MemoryAllocator {
+        let pointer = memory_allocator.allocate_for::<RCBox<T>>().expect("No memory for RC box value");
+        let rc_box = RCBox::new(value);
+
+        unsafe { ptr::write_unaligned(pointer as *mut RCBox<T>, rc_box); }
+
+        RC {
+            rc_box : cell::RefCell::from(smart_ptr::Unique::new(pointer as *const RCBox<T>))
+        }
+    }
+
+    pub fn set(&mut self) {
+        **self.rc_box.borrow_mut() += 1;
+    }
+}
+
+struct RCBox<T> {
+    value           : T,
+    reference_count : usize
+}
+
+impl<T> RCBox<T> {
+
+    fn new(value : T) -> Self {
+        RCBox {
+            value           : value,
+            reference_count : 1
+        }
+    }
+
+    fn inc_reference_count(&mut self) {
+        self.reference_count += 1
+    }
+}
+
+impl<T> ops::AddAssign<usize> for RCBox<T> {
+    fn add_assign(&mut self, other: usize) {
+        self.reference_count += other;
+    }
+}
+
+impl<T> ops::SubAssign<usize> for RCBox<T> {
+    fn sub_assign(&mut self, other: usize) {
+        self.reference_count -= other;
+    }
+}

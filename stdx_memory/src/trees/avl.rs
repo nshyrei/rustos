@@ -190,7 +190,7 @@ fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord 
     balance(node)
 }
 
-fn isBST<T>(node : &OptNodeBox<T>, min : Option<T>, max : Option<T>) -> bool where T : cmp::Ord + Copy {
+fn is_BST<T>(node : &OptNodeBox<T>, min : Option<T>, max : Option<T>) -> bool where T : cmp::Ord + Copy {
     node.as_ref()
         .map(|n| {
             let value = n.value();
@@ -200,121 +200,24 @@ fn isBST<T>(node : &OptNodeBox<T>, min : Option<T>, max : Option<T>) -> bool whe
             
             min_check && 
             max_check && 
-            isBST(n.left(), min, Some(value)) && 
-            isBST(n.right(), Some(value), max)
+            is_BST(n.left(), min, Some(value)) && 
+            is_BST(n.right(), Some(value), max)
         })
         .unwrap_or(true)
 }
 
-fn isAVL<T>(node : &OptNodeBox<T>) -> bool where T : cmp::Ord + Copy {
+fn is_AVL<T>(node : &OptNodeBox<T>) -> bool where T : cmp::Ord + Copy {
     node.as_ref()
         .map(|n| {
             let balance_factor = balance_factor(n);
             let balance_factor_check = balance_factor >= -1 && balance_factor <= 1;
 
             balance_factor_check &&
-            isAVL(n.left()) &&
-            isAVL(n.right())
+            is_AVL(n.left()) &&
+            is_AVL(n.right())
         })
         .unwrap_or(true)
 }
-
-/*
-if (x == null) return true;
-        if (min != null && x.key.compareTo(min) <= 0) return false;
-        if (max != null && x.key.compareTo(max) >= 0) return false;
-        return isBST(x.left, min, x.key) && isBST(x.right, x.key, max);
-*/
-/*  private boolean check() {
-        if (!isBST()) StdOut.println("Symmetric order not consistent");
-        if (!isAVL()) StdOut.println("AVL property not consistent");
-        if (!isSizeConsistent()) StdOut.println("Subtree counts not consistent");
-        if (!isRankConsistent()) StdOut.println("Ranks not consistent");
-        return isBST() && isAVL() && isSizeConsistent() && isRankConsistent();
-    }
-
-    /**
-     * Checks if AVL property is consistent.
-     * 
-     * @return {@code true} if AVL property is consistent.
-     */
-    private boolean isAVL() {
-        return isAVL(root);
-    }
-
-    /**
-     * Checks if AVL property is consistent in the subtree.
-     * 
-     * @param x the subtree
-     * @return {@code true} if AVL property is consistent in the subtree
-     */
-    private boolean isAVL(Node x) {
-        if (x == null) return true;
-        int bf = balanceFactor(x);
-        if (bf > 1 || bf < -1) return false;
-        return isAVL(x.left) && isAVL(x.right);
-    }
-
-    /**
-     * Checks if the symmetric order is consistent.
-     * 
-     * @return {@code true} if the symmetric order is consistent
-     */
-    private boolean isBST() {
-        return isBST(root, null, null);
-    }
-
-    /**
-     * Checks if the tree rooted at x is a BST with all keys strictly between
-     * min and max (if min or max is null, treat as empty constraint) Credit:
-     * Bob Dondero's elegant solution
-     * 
-     * @param x the subtree
-     * @param min the minimum key in subtree
-     * @param max the maximum key in subtree
-     * @return {@code true} if if the symmetric order is consistent
-     */
-    private boolean isBST(Node x, Key min, Key max) {
-        if (x == null) return true;
-        if (min != null && x.key.compareTo(min) <= 0) return false;
-        if (max != null && x.key.compareTo(max) >= 0) return false;
-        return isBST(x.left, min, x.key) && isBST(x.right, x.key, max);
-    }
-
-    /**
-     * Checks if size is consistent.
-     * 
-     * @return {@code true} if size is consistent
-     */
-    private boolean isSizeConsistent() {
-        return isSizeConsistent(root);
-    }
-
-    /**
-     * Checks if the size of the subtree is consistent.
-     * 
-     * @return {@code true} if the size of the subtree is consistent
-     */
-    private boolean isSizeConsistent(Node x) {
-        if (x == null) return true;
-        if (x.size != size(x.left) + size(x.right) + 1) return false;
-        return isSizeConsistent(x.left) && isSizeConsistent(x.right);
-    }
-
-    /**
-     * Checks if rank is consistent.
-     * 
-     * @return {@code true} if rank is consistent
-     */
-    private boolean isRankConsistent() {
-        for (int i = 0; i < size(); i++)
-            if (i != rank(select(i))) return false;
-        for (Key key : keys())
-            if (key.compareTo(select(rank(key))) != 0) return false;
-        return true;
-    }
-*/
-
 
 pub struct AVLTree<T> where T : cmp::Ord {
     root : OptNodeBox<T>
@@ -341,6 +244,16 @@ impl<T> AVLTree<T> where T : cmp::Ord + Copy {
             Some(node) => self.root = Some(delete(node, key)),
             _ => self.root = None
         }
+    }
+
+    pub fn check(&self) -> bool {
+        is_BST(&self.root, None, None) && is_AVL(&self.root)
+    }
+}
+
+impl<T> AVLTree<T> where T : cmp::Ord {
+    pub fn cell_size() -> usize {
+        mem::size_of::<AVLNode<T>>()
     }
 }
 

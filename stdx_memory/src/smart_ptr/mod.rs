@@ -21,15 +21,6 @@ impl<T> Unique<T> where T : Sized {
             }
         }        
     }
-
-    /// Dereferences the content.    
-    pub fn pointer(&self) -> &T {
-        unsafe { &*self.pointer.get() }
-    }
-
-    pub fn pointer_mut(&self) -> &mut T {
-        unsafe { &mut *self.pointer.get() }
-    }
 }
 
 impl<T> ops::Deref for Unique<T> {
@@ -46,15 +37,10 @@ impl<T> ops::DerefMut for Unique<T> {
     }
 }
 
-impl <T> Unique<T> where T : Copy {
-    pub fn value(&self) -> T {
-        unsafe { *self.pointer.get() } 
-    }
-}
 
 impl<T> fmt::Display for Unique<T> where T : Sized + fmt::Display {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.pointer().fmt(f)
+        self.fmt(f)
     }
 }
 

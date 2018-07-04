@@ -59,6 +59,17 @@ impl<T> LinkedList<T> {
             _ => false
         }
     }
+
+    /// Returns copy of the cell data if `self` is cell then clears memory associated with that cell,
+    /// does nothing if `self` is LinkedList::Nil
+    /// # Arguments    
+    /// * `memory_allocator` - memory allocator
+    pub fn take(&mut self) -> Option<(T, Box<LinkedList<T>>)> {        
+        match mem::replace(self, LinkedList::Nil) {
+            LinkedList::Cell { value, prev } => Some((value, prev)),
+            _ => None
+        }        
+    }
 }
 
 impl <T> LinkedList<T> where T : Copy {
@@ -69,18 +80,7 @@ impl <T> LinkedList<T> where T : Copy {
             LinkedList::Cell { value, .. } => Some(value),
             _ => None
         }
-    }
-        
-    /// Returns copy of the cell data if `self` is cell then clears memory associated with that cell,
-    /// does nothing if `self` is LinkedList::Nil
-    /// # Arguments    
-    /// * `memory_allocator` - memory allocator
-    pub fn take(&mut self) -> Option<(T, Box<LinkedList<T>>)> {        
-        match mem::replace(self, LinkedList::Nil) {
-            LinkedList::Cell { value, prev } => Some((value, prev)),
-            _ => None
-        }        
-    }    
+    }            
 }
 
 impl<T> Default for LinkedList<T> {
