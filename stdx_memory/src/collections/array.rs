@@ -140,7 +140,7 @@ impl<T> Iterable for Array<T> {
     type IntoIter = ArrayIterator<T>;
 
     fn iterator(&self) -> ArrayIterator<T> {
-        ArrayIterator::new(smart_ptr::Shared::new(self))
+        ArrayIterator::new()
     }
 }
 
@@ -256,15 +256,15 @@ impl iter::Iterator for IndicesIterator {
 
 pub struct ArrayIterator<T> {
     i : usize,
-    array : smart_ptr::Shared<Array<T>>,    
+    p : marker::PhantomData<T>//array : smart_ptr::Shared<Array<T>>,    
 }
 
 impl<T> ArrayIterator <T> {
 
-    pub fn new(array : smart_ptr::Shared<Array<T>>) -> Self {
+    pub fn new() -> Self {
         ArrayIterator {
             i  : 0,
-            array : array,      
+            p: marker::PhantomData
         }
     }
 }
@@ -273,6 +273,7 @@ impl<T> iter::Iterator for ArrayIterator<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
+        /*
         if self.i >= self.array.length() {
             None
         }
@@ -282,6 +283,8 @@ impl<T> iter::Iterator for ArrayIterator<T> {
 
             Some(result)
         }
+        */
+        None
     }
 }
 

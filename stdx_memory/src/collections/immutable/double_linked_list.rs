@@ -4,7 +4,7 @@ use stdx::iterator;
 use core::ops;
 use core::ops::Deref;
 use core::iter;
-
+/*
 #[repr(C, packed)]
 pub struct DoubleLinkedList<T> {
     value : T,
@@ -166,3 +166,4 @@ impl<T> iter::Iterator for DoubleLinkedListIterator<T> {
 }
 
 impl<T> iterator::IteratorExt for DoubleLinkedListIterator<T>{ }
+*/

@@ -13,9 +13,9 @@ use stdx::Sequence;
 use stdx_memory::trees::avl;
 use core::cmp;
 use core::mem;
-use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedListCell;
+//use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedListCell;
 
-
+/*
 macro_rules! block_sizes {
     ($total_buddy_levels:expr, $starting_block_size:expr) => {{
         (0 .. $total_buddy_levels).scan($starting_block_size, |block_size, _| {
@@ -153,3 +153,4 @@ impl SlabAllocator {
         }        
     }
 }
+*/

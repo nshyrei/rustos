@@ -7,8 +7,10 @@ use stdx::Sequence;
 use core::iter;
 use core::mem;
 use core::fmt;
+use core::marker;
 
 pub struct DoubleLinkedList<T> {
+    p : marker::PhantomData<T>,
     head : Option<heap::SharedBox<DoubleLinkedListCell<T>>>,
     tail : Option<heap::SharedBox<DoubleLinkedListCell<T>>>,    
 }
@@ -21,6 +23,7 @@ impl<T> DoubleLinkedList<T> {
     pub fn new() -> Self
     {        
         DoubleLinkedList {
+            p : marker::PhantomData,
             head : None,
             tail : None
         }
@@ -340,13 +343,15 @@ impl<T> DoubleLinkedListCell<T> where T : Copy {
 }
 
 pub struct DoubleLinkedListIterator<T> {
-    current : Option<heap::SharedBox<DoubleLinkedListCell<T>>>
+    current : Option<heap::SharedBox<DoubleLinkedListCell<T>>>,
+    p : marker::PhantomData<T>
 }
 
 impl<T> DoubleLinkedListIterator<T> {
     fn new(head: Option<heap::SharedBox<DoubleLinkedListCell<T>>>) -> DoubleLinkedListIterator<T> {
         DoubleLinkedListIterator { 
             current : head,
+            p : marker::PhantomData
         }
     }
 }
@@ -427,7 +432,7 @@ impl<T> UsizeLinkedMap<T> where T : Copy {
         }
     }
 
-    fn remove_free_block<A>(&mut self, cell : heap::SharedBox<DoubleLinkedListCell<T>>, memory_allocator : &mut A)
+    fn remove_free_block<A>(&mut self, mut cell : heap::SharedBox<DoubleLinkedListCell<T>>, memory_allocator : &mut A)
     where A : MemoryAllocator {
         if self.free_blocks.head_equals_tail() && cell.is_start() {
             self.free_blocks.remove_head(memory_allocator);            
@@ -439,7 +444,8 @@ impl<T> UsizeLinkedMap<T> where T : Copy {
             self.free_blocks.remove_tail(memory_allocator);            
         }
         else {
-            cell.pointer_mut().remove(memory_allocator);
+            let c : &mut DoubleLinkedListCell<T> = cell.pointer_mut();
+            c.remove(memory_allocator);
         }
     }
 }

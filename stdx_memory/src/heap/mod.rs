@@ -6,7 +6,7 @@ use core::ops::Deref;
 use core::cell;
 
 pub struct Box<T>{
-    unique : smart_ptr::Unique<T>
+    unique : ptr::NonNull<T>
 }
 
 impl <T> Box<T> {
@@ -15,30 +15,16 @@ impl <T> Box<T> {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
 
         unsafe { ptr::write_unaligned(pointer as *mut T, value); }
-
+unsafe {
         Box {
-            unique : smart_ptr::Unique::new(pointer as *const T)
-        }
-    }    
-
-    pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
-        memory_allocator.free(self.deref() as *const _ as usize)
+            unique : ptr::NonNull::new_unchecked(pointer as *mut T)
+        }}
     }
 
     pub fn from_pointer(pointer : &T) -> Self {
         Box {
-            unique : smart_ptr::Unique::new(pointer)
+            unique : ptr::NonNull::from(pointer)
         }
-    }
-}
-
-impl<T> Box<T> where T : Clone {
-
-    pub fn unbox<A>(self, memory_allocator : &mut A) -> T where A : MemoryAllocator {
-        let result = self.deref().clone();
-        self.free(memory_allocator);
-
-        result
     }
 }
 
@@ -46,18 +32,18 @@ impl<T> ops::Deref for Box<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.unique.deref()
+        unsafe { self.unique.as_ref() }
     }
 }
 
 impl<T> ops::DerefMut for Box<T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.unique.deref_mut()
+        unsafe { self.unique.as_mut() }
     }
 }
 
 pub struct SharedBox<T>{
-    unique : smart_ptr::Shared<T>
+    unique : ptr::NonNull<T>
 }
 
 impl <T> SharedBox<T> {
@@ -66,10 +52,10 @@ impl <T> SharedBox<T> {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
         unsafe { ptr::read_unaligned(pointer as *const T); }
         unsafe { ptr::write_unaligned(pointer as *mut T, value); }
-        
+        unsafe { 
         SharedBox {
-            unique : smart_ptr::Shared::new(pointer as *const T)
-        }
+            unique : ptr::NonNull::new_unchecked(pointer as *mut T) 
+        }}
     }
 
     pub fn pointer_equal(&self, other : &SharedBox<T>) -> bool {
@@ -78,45 +64,39 @@ impl <T> SharedBox<T> {
 
     pub fn from_pointer(pointer : &T) -> Self {
         SharedBox {
-            unique : smart_ptr::Shared::new(pointer)
+            unique : ptr::NonNull::from(pointer)
         }
     }
 
     pub fn from_usize(pointer : usize) -> Self {
+        unsafe { 
         SharedBox {
-            unique : smart_ptr::Shared::from_usize(pointer)
-        }
+            unique : ptr::NonNull::new_unchecked(pointer as *mut T) 
+        }}
     }
 
     pub fn pointer(&self) -> &T {
-        self.unique.pointer()
+        unsafe { self.unique.as_ref() }
     }
 
-    pub fn pointer_mut(&self) -> &mut T {
-        self.unique.pointer_mut()
+    pub fn pointer_mut(&mut self) -> &mut T {
+        unsafe { self.unique.as_mut() }
     }
 
-    pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
-        memory_allocator.free(self.pointer() as *const _ as usize)
-    }
-
-    pub fn read(&self) -> T {
-        use core::ptr;
-        unsafe { ptr::read_unaligned(self.pointer() as *const T) }
-    }
+    
 }
 
 impl<T> ops::Deref for SharedBox<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.unique.pointer()
+        unsafe { self.unique.as_ref() }
     }
 }
 
 impl<T> ops::DerefMut for SharedBox<T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.unique.pointer_mut()
+       unsafe { self.unique.as_mut() }
     }
 }
 
@@ -127,7 +107,7 @@ impl<T> Clone for SharedBox<T> where T : Sized {
 }
 
 impl<T> Copy for SharedBox<T> where T : Sized  { }
-
+/*
 pub struct RC<T> {
     rc_box : cell::RefCell<smart_ptr::Unique<RCBox<T>>>
 }
@@ -179,3 +159,4 @@ impl<T> ops::SubAssign<usize> for RCBox<T> {
         self.reference_count -= other;
     }
 }
+*/

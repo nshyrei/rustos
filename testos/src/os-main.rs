@@ -32,6 +32,10 @@ use hardware::x86_64::registers;
 use core::fmt::Write;
 use alloc::boxed::Box;
 static mut vga_writerg : Option<Writer> = None;
+use malloc::TestAllocator;
+
+#[global_allocator]
+static HEAP_ALLOCATOR: TestAllocator = TestAllocator::new() ;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -106,12 +110,18 @@ use core::ptr;
     let result = allocator.allocate(size);
     let exit = 0;
 }
+use core::panic::PanicInfo;
 
 #[lang = "eh_personality"]
 extern "C" fn eh_personality() {}
-#[lang = "panic_fmt"]
+#[lang = "panic_impl"]
 #[no_mangle]
-pub extern "C" fn panic_fmt() -> ! {
+pub extern "C" fn panic_impl(pi: &PanicInfo) -> ! {
+    loop {}
+}
+#[lang = "oom"]
+#[no_mangle]
+pub extern "C" fn oom() -> ! {
     loop {}
 }
 
