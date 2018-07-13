@@ -5,6 +5,7 @@ use core::ops;
 use core::ops::Deref;
 use core::iter;
 use core::ptr;
+use core::cmp;
 
 type ListPointer<T, A> = heap::RC<heap::Box<DoubleLinkedList<T, A>>, A>; 
 
@@ -17,8 +18,8 @@ pub struct DoubleLinkedList<T, A> where A : MemoryAllocator {
 
 impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
 
-    pub fn value(self) -> T {
-        self.value
+    pub fn value(&self) -> &T {
+        &self.value
     }
 
     pub fn new(value: T, memory_allocator : &mut A) -> ListPointer<T, A>  {
@@ -104,12 +105,23 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
     pub fn take(mut self) -> (T, Option<ListPointer<T, A>>, Option<ListPointer<T, A>>)  {
 
         if let Some(mut next) = self.next.as_mut() {
-            next.prev.take();
+            // next.prev RC points to self (method caller),
+            // so after taking it from option it will decrease the counter
+            // and the last RC (which is self (a method caller)) will delete the cell
+
+            let b = next.prev.take(); 
+            let bv = b;               
+                                    
             next.prev = Some(heap::RC::clone(&self.prev.take().unwrap()));
         }
 
         if let Some(mut prev) = self.prev.as_mut() {
-            prev.next.take();
+            // prev.next RC points to self (method caller),
+            // so after taking it from option it will decrease the counter
+            // and the last RC (which is self (a method caller)) will delete the cell
+
+            let b = prev.next.take();
+            let bv = b;
             prev.next = Some(heap::RC::clone(&self.next.take().unwrap()));
         }
 
@@ -141,6 +153,29 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
     }
     
 }
+
+impl<T, A> cmp::Ord for DoubleLinkedList<T, A> where T : cmp::Ord, A : MemoryAllocator {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.value().cmp(other.value())
+    }
+}
+
+impl<T, A> cmp::PartialOrd for DoubleLinkedList<T, A> where T : cmp::PartialOrd, A : MemoryAllocator {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.value().partial_cmp(other.value())
+    }
+}
+
+impl<T, A> cmp::Eq for DoubleLinkedList<T, A> where T : cmp::Eq, A : MemoryAllocator {
+
+}
+
+impl<T, A> cmp::PartialEq for DoubleLinkedList<T, A> where T : cmp::PartialEq, A : MemoryAllocator {
+    fn eq(&self, other: &Self) -> bool {
+        self.value().eq(other.value())
+    }
+}
+
 /*
 impl<T> ops::Deref for DoubleLinkedList<T> {
     type Target = T;

@@ -45,8 +45,8 @@ impl <T> Array<T> {
         let start_address = memory_allocator.allocate(size).expect("No memory for Array");
 
         Array { 
-            length : length,
-            start_address : start_address,
+            length,
+            start_address,
             phantom : marker::PhantomData
         }
     }    

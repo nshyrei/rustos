@@ -52,6 +52,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
             let bb = boxin;
             */
         }
+
         let mut tst_aloc = memory::allocator::bump::BumpAllocator::from_address(10000, 512);
         {
             let mut li = DoubleLinkedList::new(1, &mut tst_aloc);

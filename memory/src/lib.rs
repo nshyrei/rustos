@@ -1,5 +1,6 @@
 #![feature(asm)]
 #![feature(const_fn)]
+#![feature(allocator_api)]
 #![no_std]
 
 #[macro_use]

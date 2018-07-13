@@ -3,6 +3,7 @@ use core::ptr;
 use core::ops;
 use core::ops::Deref;
 use core::cell;
+use core::cmp;
 
 pub struct Box<T>{
     unique : ptr::NonNull<T>
@@ -41,6 +42,90 @@ impl<T> ops::DerefMut for Box<T> {
         unsafe { self.unique.as_mut() }
     }
 }
+
+impl<T> cmp::Ord for Box<T> where T : cmp::Ord {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.deref().cmp(other.deref())
+    }
+}
+
+impl<T> cmp::PartialOrd for Box<T> where T : cmp::PartialOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.deref().partial_cmp(other.deref())
+    }
+}
+
+impl<T> cmp::Eq for Box<T> where T : cmp::Eq {
+
+}
+
+impl<T> cmp::PartialEq for Box<T> where T : cmp::PartialEq {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref().eq(other.deref())
+    }
+}
+
+pub struct WeakBox<T>{
+    unique : ptr::NonNull<T>
+}
+
+impl <T> WeakBox<T> {
+
+    pub fn new<A>(value : T, memory_allocator : &mut A) -> Box<T>  where A : MemoryAllocator {
+        let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
+
+        unsafe {
+            ptr::write_unaligned(pointer as *mut T, value);
+            WeakBox {
+                unique : ptr::NonNull::new_unchecked(pointer as *mut T)
+            }
+        }
+    }
+
+    pub fn from_pointer(pointer : &T) -> Self {
+        WeakBox {
+            unique : ptr::NonNull::from(pointer)
+        }
+    }
+}
+
+impl<T> ops::Deref for Box<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { self.unique.as_ref() }
+    }
+}
+
+impl<T> ops::DerefMut for Box<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { self.unique.as_mut() }
+    }
+}
+
+impl<T> cmp::Ord for WeakBox<T> where T : cmp::Ord {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.deref().cmp(other.deref())
+    }
+}
+
+impl<T> cmp::PartialOrd for WeakBox<T> where T : cmp::PartialOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.deref().partial_cmp(other.deref())
+    }
+}
+
+impl<T> cmp::Eq for WeakBox<T> where T : cmp::Eq {
+
+}
+
+impl<T> cmp::PartialEq for WeakBox<T> where T : cmp::PartialEq {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref().eq(other.deref())
+    }
+}
+
+
 
 pub struct SharedBox<T>{
     unique : ptr::NonNull<T>
@@ -144,6 +229,10 @@ impl<T, A> RC<T, A> where A : MemoryAllocator {
         }
         }
     }
+
+    fn rc_box(&self) -> &RCBox<T> {
+        unsafe { self.rc_box.as_ref() }
+    }
 }
 
 impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
@@ -151,7 +240,7 @@ impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
         unsafe {
             self.rc_box.as_ref().inc_ref_count();
 
-            let rc_box           = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
+            let rc_box     = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
             let memory_allocator = ptr::NonNull::new_unchecked(self.memory_allocator.as_ptr());
 
             RC {
@@ -190,6 +279,28 @@ impl<T, A> ops::DerefMut for RC<T, A> where A : MemoryAllocator {
     }
 }
 
+impl<T, A> cmp::Ord for RC<T, A> where T : cmp::Ord, A : MemoryAllocator {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.rc_box().cmp(other.rc_box())
+    }
+}
+
+impl<T, A> cmp::PartialOrd for RC<T, A> where T : cmp::PartialOrd, A : MemoryAllocator {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.rc_box().partial_cmp(other.rc_box())
+    }
+}
+
+impl<T, A> cmp::Eq for RC<T, A> where T : cmp::Eq, A : MemoryAllocator {
+
+}
+
+impl<T, A> cmp::PartialEq for RC<T, A> where T : cmp::PartialEq, A : MemoryAllocator {
+    fn eq(&self, other: &Self) -> bool {
+        self.rc_box().eq(other.rc_box())
+    }
+}
+
 #[repr(C)]
 struct RCBox<T> {
     value           : T,
@@ -225,5 +336,27 @@ impl<T> RCBox<T> {
     fn inc_ref_count(&self) {
         let old = self.reference_count.get();
         self.reference_count.set(old + 1);
+    }
+}
+
+impl<T> cmp::Ord for RCBox<T> where T : cmp::Ord {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.value().cmp(other.value())
+    }
+}
+
+impl<T> cmp::PartialOrd for RCBox<T> where T : cmp::PartialOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.value().partial_cmp(other.value())
+    }
+}
+
+impl<T> cmp::Eq for RCBox<T> where T : cmp::Eq {
+
+}
+
+impl<T> cmp::PartialEq for RCBox<T> where T : cmp::PartialEq {
+    fn eq(&self, other: &Self) -> bool {
+        self.value().eq(other.value())
     }
 }

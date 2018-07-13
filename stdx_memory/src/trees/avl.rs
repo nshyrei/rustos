@@ -22,7 +22,7 @@ fn height<T>(node : &OptNodeBox<T>) -> i64 where T : cmp::Ord {
         .unwrap_or(-1)
 }
 
-fn insert0<T, M>(mut node : NodeBox<T>, value : T, memory_allocator : &mut M) -> NodeBox<T> where T : cmp::Ord + Copy, M : MemoryAllocator  {
+fn insert0<T, M>(mut node : NodeBox<T>, value : T, memory_allocator : &mut M) -> NodeBox<T> where T : cmp::Ord, M : MemoryAllocator  {
     let cmp_result = node.value().cmp(&value);
             
     match cmp_result {
@@ -55,11 +55,11 @@ fn insert0<T, M>(mut node : NodeBox<T>, value : T, memory_allocator : &mut M) ->
 }
 
 
-fn find0<T>(node : &OptNodeBox<T>, x : T) -> Option<T> where T : cmp::Ord + Copy {
-    node.as_ref().and_then(|n| match n.value().cmp(&x) {
+fn find0<'a, T>(node : &'a OptNodeBox<T>, x : &T) -> Option<&'a T> where T : cmp::Ord {
+    node.as_ref().and_then(|n| match n.value().cmp(x) {
             Ordering::Less    => find0(&n.left, x),
             Ordering::Greater => find0(&n.right, x),
-            _                 => Some(n.value)
+            _                 => Some(&n.value)
     })
 }
 
@@ -140,7 +140,7 @@ fn delete_min<T>(mut node : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
     }
 }
 
-fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord + Copy {
+fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord {
     let cmp_result = node.value().cmp(&value);
             
     match cmp_result {
@@ -189,7 +189,7 @@ fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord 
     balance(node)
 }
 
-fn is_BST<T>(node : &OptNodeBox<T>, min : Option<T>, max : Option<T>) -> bool where T : cmp::Ord + Copy {
+fn is_BST<T>(node : &OptNodeBox<T>, min : Option<&T>, max : Option<&T>) -> bool where T : cmp::Ord {
     node.as_ref()
         .map(|n| {
             let value = n.value();
@@ -199,13 +199,13 @@ fn is_BST<T>(node : &OptNodeBox<T>, min : Option<T>, max : Option<T>) -> bool wh
             
             min_check && 
             max_check && 
-            is_BST(n.left(), min, Some(value)) && 
+            is_BST(n.left(), min, Some(value)) &&
             is_BST(n.right(), Some(value), max)
         })
         .unwrap_or(true)
 }
 
-fn is_AVL<T>(node : &OptNodeBox<T>) -> bool where T : cmp::Ord + Copy {
+fn is_AVL<T>(node : &OptNodeBox<T>) -> bool where T : cmp::Ord {
     node.as_ref()
         .map(|n| {
             let balance_factor = balance_factor(n);
@@ -222,8 +222,15 @@ pub struct AVLTree<T> where T : cmp::Ord {
     root : OptNodeBox<T>
 }
 
-impl<T> AVLTree<T> where T : cmp::Ord + Copy {
-    pub fn find(&self, x : T) -> Option<T> {
+impl<T> AVLTree<T> where T : cmp::Ord {
+
+    pub fn new() -> Self {
+        AVLTree {
+            root : None
+        }
+    }
+
+    pub fn find(&self, x : &T) -> Option<&T> {
         find0(&self.root, x)
     }
 
@@ -313,10 +320,10 @@ impl<T> AVLNode<T> where T : cmp::Ord {
     }
 }
 
-impl<T> AVLNode<T> where T : cmp::Ord + Copy {
+impl<T> AVLNode<T> where T : cmp::Ord {
     
-    pub fn value(&self) -> T {
-        self.value
+    pub fn value(&self) -> &T {
+        &self.value
     }
 
     pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::Box<Self> where M : MemoryAllocator {

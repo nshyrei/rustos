@@ -13,9 +13,16 @@ use stdx::Sequence;
 use stdx_memory::trees::avl;
 use core::cmp;
 use core::mem;
-//use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedListCell;
+use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
+use stdx_memory::heap::RC;
+use stdx_memory::heap::Box;
+use core::alloc::Alloc;
+use core::alloc::Layout;
+use core::alloc::AllocErr;
+use core::ptr::NonNull;
+use self::free_list::FreeListAllocator;
 
-/*
+
 macro_rules! block_sizes {
     ($total_buddy_levels:expr, $starting_block_size:expr) => {{
         (0 .. $total_buddy_levels).scan($starting_block_size, |block_size, _| {
@@ -41,8 +48,8 @@ pub struct SlabAllocator {
     address_to_size      : avl::AVLTree<usize>,
     total_memory         : usize,
     start_address        : usize,
-    array_allocator : bump::BumpAllocator,
-    tree_allocator : free_list::FreeListAllocator,
+    array_allocator      : bump::BumpAllocator,
+    tree_allocator       : free_list::FreeListAllocator,
     linked_list_allocator : free_list::FreeListAllocator 
 }
 
@@ -70,7 +77,7 @@ impl cmp::PartialEq for free_list::FreeListAllocator {
 
 struct SlabKey {
     address : usize,
-    allocator : free_list::FreeListAllocator
+    allocator : PtrToListOfAllocators
 }
 
 impl SlabKey {
@@ -79,11 +86,25 @@ impl SlabKey {
     }
 }
 
+type ListOfAllocators = DoubleLinkedList<free_list::FreeListAllocator, free_list::FreeListAllocator>;
+type PtrToListOfAllocators = RC<ListOfAllocators, free_list::FreeListAllocator>;
+
+
 struct Slab {
     // free data structures
-    allocators : avl::AVLTree<DoubleLinkedListCell<free_list::FreeListAllocator>>,
+    allocators : avl::AVLTree<SlabKey>,
     // allocate data structures
-    non_full : DoubleLinkedListCell<free_list::FreeListAllocator>,
+    non_full : PtrToListOfAllocators
+}
+
+impl Slab {
+    pub fn new(allocator : free_list::FreeListAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> Self {
+        let list_cell = DoubleLinkedList::new(allocator, memory_allocator);
+        let rc = RC::new()
+        Slab {
+
+        }
+    }
 }
 
 impl SlabAllocator {
@@ -98,7 +119,7 @@ impl SlabAllocator {
             end_address);
 
         let total_slab_count = SlabAllocator::total_slab_count(total_memory);
-        let array_size = Array::<Option<Slab>>::mem_size_for_array(total_slab_count);
+        let array_size = Array::<Option<Slab>>::mem_size_for(total_slab_count);
         let (avl_tree_size, linked_list_size) = SlabAllocator::buddy_free_list_size(total_slab_count, total_memory);
         let avl_tree_cell_size = avl::AVLTree::<free_list::FreeListAllocator>::cell_size();
         let linked_list_cell_size = mem::size_of::<LinkedList<free_list::FreeListAllocator>>();
@@ -112,7 +133,24 @@ impl SlabAllocator {
             tree_allocator.end_address() + 1,
             linked_list_size,
             linked_list_cell_size);
+
+        let size_to_slab = Array::<Option<Slab>>::new(total_slab_count, &mut array_allocator);
+        let address_to_size = avl::AVLTree::<usize>::new();
+
+        SlabAllocator {
+            size_to_slab,
+            address_to_size,
+            total_memory,
+            start_address,
+            array_allocator,
+            tree_allocator,
+            linked_list_allocator
+        }
         
+    }
+
+    fn new_slab(&mut self) {
+
     }
 
     fn buddy_free_list_size(buddy_levels_count : usize, total_memory : usize) -> (usize, usize) {
@@ -153,4 +191,41 @@ impl SlabAllocator {
         }        
     }
 }
-*/
+
+impl MemoryAllocator for SlabAllocator {
+
+    fn allocate(&mut self, size: usize) -> Option<usize> {
+        unimplemented!()
+    }
+
+    fn free(&mut self, pointer: usize) {
+        unimplemented!()
+    }
+}
+
+unsafe impl Alloc for SlabAllocator {
+    unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
+        let size = layout.size();
+        if size == 0 {
+            Err(AllocErr {})
+        } else {
+            let allocation_size_rounded0 = (2 as usize).pow(math::log2_align_up(size) as u32);
+            let allocation_size_rounded = if allocation_size_rounded0 < MIN_ALLOCATION_SIZE {
+                MIN_ALLOCATION_SIZE
+            } else {
+                allocation_size_rounded0
+            };
+
+            if allocation_size_rounded > self.total_memory {
+                Err(AllocErr {})
+            } else {
+
+                unsafe { Ok(NonNull::new_unchecked(0 as *mut _)) }
+            }
+        }
+    }
+
+    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
+        unimplemented!()
+    }
+}
