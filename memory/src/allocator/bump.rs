@@ -1,8 +1,8 @@
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
-use stdx_memory::smart_ptr;
 use core::marker;
 use core::mem;
+use core::ptr;
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::memory_map::*;
 use multiboot::multiboot_header::tags::elf;
@@ -135,8 +135,8 @@ pub struct SafeBumpAllocator {
     current_pointer     : usize,
     start_address       : usize,
     pointer_end_address : usize,    
-    current_memory_area : smart_ptr::Unique<MemoryMapEntry>,
-    memory_map : smart_ptr::Unique<MemoryMap>
+    current_memory_area : ptr::NonNull<MemoryMapEntry>,
+    memory_map : ptr::NonNull<MemoryMap>
 }
 
 impl SafeBumpAllocator {
@@ -175,8 +175,8 @@ impl SafeBumpAllocator {
             current_pointer     : address, 
             start_address       : address, 
             pointer_end_address : address + size,
-            current_memory_area : smart_ptr::Unique::new(fitting_memory_area),
-            memory_map : smart_ptr::Unique::new(memory_areas)
+            current_memory_area : ptr::NonNull::from(fitting_memory_area),
+            memory_map : ptr::NonNull::from(memory_areas)
         }        
     }    
 
@@ -208,7 +208,7 @@ impl SafeBumpAllocator {
 impl MemoryAllocator for SafeBumpAllocator {
     
     fn allocate(&mut self, size: usize) -> Option<usize> {
-        
+        unsafe {
         if self.current_pointer + size > self.pointer_end_address {
             None
         }
@@ -216,11 +216,11 @@ impl MemoryAllocator for SafeBumpAllocator {
             let mut possible_result = self.step_over_reserved_memory_if_needed(self.current_pointer, size);
             let mut possible_end_address = possible_result + size;
 
-            if possible_end_address > self.current_memory_area.pointer().end_address() as usize {
-                if let Some(memory_area) = SafeBumpAllocator::next_fitting_memory_area(self.memory_map.pointer(), possible_end_address) {
+            if possible_end_address > self.current_memory_area.as_ref().end_address() as usize {
+                if let Some(memory_area) = SafeBumpAllocator::next_fitting_memory_area(self.memory_map.as_ref(), possible_end_address) {
 
-                    self.current_memory_area = smart_ptr::Unique::new(memory_area);
-                    possible_result          = self.current_memory_area.base_address() as usize;
+                    self.current_memory_area = ptr::NonNull::from(memory_area);
+                    possible_result          = self.current_memory_area.as_ref().base_address() as usize;
                     possible_end_address     = possible_result + size;
                 }
                 else {
@@ -235,6 +235,7 @@ impl MemoryAllocator for SafeBumpAllocator {
                 self.current_pointer = possible_end_address;
                 Some(possible_result)
             }     
+        }
         }
     }    
 

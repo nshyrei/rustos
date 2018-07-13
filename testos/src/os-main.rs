@@ -28,11 +28,13 @@ use memory::paging::page_table;
 use memory::paging::page_table::P4Table;
 use stdx_memory::MemoryAllocator;
 use hardware::x86_64::registers;
-
+use core::clone::Clone;
 use core::fmt::Write;
 use alloc::boxed::Box;
 static mut vga_writerg : Option<Writer> = None;
 use malloc::TestAllocator;
+use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
+use stdx_memory::heap::RC;
 
 #[global_allocator]
 static HEAP_ALLOCATOR: TestAllocator = TestAllocator::new() ;
@@ -42,11 +44,20 @@ static HEAP_ALLOCATOR: TestAllocator = TestAllocator::new() ;
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
     unsafe {        
         {
+            
+            /*
             let us : usize = 128;
             let sz = core::mem::size_of::<usize>();
             let boxin = Box::new(us);
             let bb = boxin;
+            */
         }
+        let mut tst_aloc = memory::allocator::bump::BumpAllocator::from_address(10000, 512);
+        {
+            let mut li = DoubleLinkedList::new(1, &mut tst_aloc);
+            let li2 = DoubleLinkedList::add(&mut li, 10, &mut tst_aloc);
+        }
+        
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
         let mut vga_writer = Writer::new();
         //vga_writerg = Some(vga_writer);

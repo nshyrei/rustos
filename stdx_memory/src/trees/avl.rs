@@ -7,7 +7,6 @@ use core::cmp;
 use core::cmp::Ordering;
 use MemoryAllocator;
 use heap;
-use smart_ptr;
 use stdx::Sequence;
 use stdx::Iterable;
 use core::ops::Deref;

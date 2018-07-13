@@ -1,4 +1,3 @@
-use smart_ptr;
 use MemoryAllocator;
 use core::ptr;
 use core::ops;
@@ -13,12 +12,13 @@ impl <T> Box<T> {
     
     pub fn new<A>(value : T, memory_allocator : &mut A) -> Box<T>  where A : MemoryAllocator {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
-
-        unsafe { ptr::write_unaligned(pointer as *mut T, value); }
-unsafe {
-        Box {
-            unique : ptr::NonNull::new_unchecked(pointer as *mut T)
-        }}
+        
+        unsafe {
+            ptr::write_unaligned(pointer as *mut T, value);
+            Box {
+                unique : ptr::NonNull::new_unchecked(pointer as *mut T)
+            }
+        }
     }
 
     pub fn from_pointer(pointer : &T) -> Self {
@@ -50,12 +50,13 @@ impl <T> SharedBox<T> {
         
     pub fn new<A>(value : T, memory_allocator : &mut A) -> Self  where A : MemoryAllocator {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
-        unsafe { ptr::read_unaligned(pointer as *const T); }
-        unsafe { ptr::write_unaligned(pointer as *mut T, value); }
-        unsafe { 
-        SharedBox {
-            unique : ptr::NonNull::new_unchecked(pointer as *mut T) 
-        }}
+                
+        unsafe {
+            ptr::write_unaligned(pointer as *mut T, value); 
+            SharedBox {
+                unique : ptr::NonNull::new_unchecked(pointer as *mut T) 
+            }
+        }
     }
 
     pub fn pointer_equal(&self, other : &SharedBox<T>) -> bool {
@@ -83,7 +84,6 @@ impl <T> SharedBox<T> {
         unsafe { self.unique.as_mut() }
     }
 
-    
 }
 
 impl<T> ops::Deref for SharedBox<T> {
@@ -107,56 +107,123 @@ impl<T> Clone for SharedBox<T> where T : Sized {
 }
 
 impl<T> Copy for SharedBox<T> where T : Sized  { }
-/*
-pub struct RC<T> {
-    rc_box : cell::RefCell<smart_ptr::Unique<RCBox<T>>>
+
+
+pub struct RC<T, A> where A : MemoryAllocator {
+    rc_box           : ptr::NonNull<RCBox<T>>,
+    memory_allocator : ptr::NonNull<A>
 }
 
-impl <T> RC<T> {
-    pub fn new<A>(value : T, memory_allocator : &mut A) -> Self where A : MemoryAllocator {
+impl<T, A> RC<T, A> where A : MemoryAllocator {
+    pub fn new(value : T, memory_allocator : &mut A) -> Self {
         let pointer = memory_allocator.allocate_for::<RCBox<T>>().expect("No memory for RC box value");
         let rc_box = RCBox::new(value);
 
-        unsafe { ptr::write_unaligned(pointer as *mut RCBox<T>, rc_box); }
+        unsafe { 
+            ptr::write_unaligned(pointer as *mut RCBox<T>, rc_box);
+            let rc_box = ptr::NonNull::new_unchecked(pointer as *mut RCBox<T>);
+            let memory_allocator = ptr::NonNull::from(memory_allocator);
 
-        RC {
-            rc_box : cell::RefCell::from(smart_ptr::Unique::new(pointer as *const RCBox<T>))
-        }
+            RC {
+                rc_box           : rc_box,
+                memory_allocator : memory_allocator
+            }
+        }        
     }
 
-    pub fn set(&mut self) {
-        **self.rc_box.borrow_mut() += 1;
+    pub fn from_pointer(pointer : &T, memory_allocator : &mut A) -> Self {
+        unsafe {
+        let pointer_u = pointer as *const _ as usize;
+        let rc_box = pointer_u as *mut RCBox<T>;
+
+        (&*rc_box).inc_ref_count();
+
+        RC {
+            rc_box           : ptr::NonNull::new_unchecked(rc_box),
+            memory_allocator : ptr::NonNull::from(memory_allocator)
+        }
+        }
     }
 }
 
+impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
+    fn clone(&self) -> Self {                
+        unsafe {
+            self.rc_box.as_ref().inc_ref_count();
+
+            let rc_box           = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
+            let memory_allocator = ptr::NonNull::new_unchecked(self.memory_allocator.as_ptr());
+
+            RC {
+                rc_box           : rc_box,
+                memory_allocator : memory_allocator
+            }
+        }                
+    }
+}
+
+impl<T, A> ops::Drop for RC<T, A> where A : MemoryAllocator {
+    fn drop(&mut self) {
+        unsafe {
+            if self.rc_box.as_ref().reference_count() == 1 {
+                let pointer = self.rc_box.as_ptr() as usize;
+                self.memory_allocator.as_mut().free(pointer);
+            }
+            else {
+                self.rc_box.as_ref().dec_ref_count();
+            }
+        }
+    }
+}
+
+impl<T, A> ops::Deref for RC<T, A> where A : MemoryAllocator {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { self.rc_box.as_ref().value() }
+    }
+}
+
+impl<T, A> ops::DerefMut for RC<T, A> where A : MemoryAllocator {
+    fn deref_mut(&mut self) -> &mut T {
+       unsafe { self.rc_box.as_mut().value_mut() }
+    }
+}
+
+#[repr(C)]
 struct RCBox<T> {
     value           : T,
-    reference_count : usize
+    reference_count : cell::Cell<usize>
 }
 
 impl<T> RCBox<T> {
 
+    fn value(&self) -> &T {
+        &self.value
+    }
+
+    fn value_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+
     fn new(value : T) -> Self {
         RCBox {
             value           : value,
-            reference_count : 1
+            reference_count : cell::Cell::from(1)
         }
     }
 
-    fn inc_reference_count(&mut self) {
-        self.reference_count += 1
+    fn reference_count(&self) -> usize {
+        self.reference_count.get()
     }
-}
 
-impl<T> ops::AddAssign<usize> for RCBox<T> {
-    fn add_assign(&mut self, other: usize) {
-        self.reference_count += other;
+    fn dec_ref_count(&self) {
+        let old = self.reference_count.get();
+        self.reference_count.set(old - 1);
     }
-}
 
-impl<T> ops::SubAssign<usize> for RCBox<T> {
-    fn sub_assign(&mut self, other: usize) {
-        self.reference_count -= other;
+    fn inc_ref_count(&self) {
+        let old = self.reference_count.get();
+        self.reference_count.set(old + 1);
     }
 }
-*/

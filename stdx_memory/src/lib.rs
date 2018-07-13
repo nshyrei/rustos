@@ -3,7 +3,6 @@
 
 extern crate stdx;
 
-pub mod smart_ptr;
 pub mod heap;
 pub mod collections;
 pub mod trees;

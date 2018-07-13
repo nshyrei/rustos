@@ -4,7 +4,6 @@ use core::ops;
 use core::iter;
 use core::ptr;
 use MemoryAllocator;
-use smart_ptr;
 use stdx::Sequence;
 use stdx::Iterable;
 
@@ -70,26 +69,6 @@ impl <T> Array<T> {
         unsafe { ptr::read(self.index_to_address(index) as *const T) }
     }
 
-    pub fn elem_ref(&self, index : usize) -> &T {
-        assert!(index < self.length);
-        unsafe { &*(self.index_to_address(index) as *const T) }
-    }
-
-    pub fn elem_ref_mut(&self, index : usize) -> &mut T {
-        assert!(index < self.length);
-        unsafe { &mut *(self.index_to_address(index) as *mut T) }
-    }
-
-    pub fn elem_ref_i(&self, index : isize) -> &T {
-        assert!(index < self.length as isize && index > -1);
-        unsafe { &*(self.index_to_address_i(index) as *const T) }
-    }
-
-    pub fn elem_ref_mut_i(&self, index : isize) -> &mut T {
-        assert!(index < self.length as isize && index > -1);
-        unsafe { &mut *(self.index_to_address_i(index) as *mut T) }
-    }
-
     pub fn indices(&self) -> IndicesIterator {
         IndicesIterator::new(self)
     }
@@ -100,19 +79,7 @@ impl <T> Array<T> {
         for address in addresses {
             unsafe { ptr::write_unaligned(address as *mut T, filler()); }
         }
-    }    
-
-    /*
-    pub fn fill_value1(&mut self, value : T) {
-        let addresses = self.indices().map(|i| self.index_to_address(i));
-
-        
-
-        for address in addresses {
-            unsafe { ptr::write_unaligned(address as *mut T, value); }
-        }
     }
-    */
 
     pub fn replace(&mut self, index : usize, value : T) -> T {
         unsafe {
@@ -197,32 +164,36 @@ impl<T> ops::Index<usize> for Array<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &T {        
-        self.elem_ref(index)
+        assert!(index < self.length);
+        unsafe { &*(self.index_to_address(index) as *const T) }
     }
 }
 
 impl<T> ops::IndexMut<usize> for Array<T> {
 
     fn index_mut(&mut self, index: usize) -> &mut T {
-        self.elem_ref_mut(index)
+        assert!(index < self.length);
+        unsafe { &mut *(self.index_to_address(index) as *mut T) }
     }
 }
+
 
 impl<T> ops::Index<isize> for Array<T> {
     type Output = T;
 
     fn index(&self, index: isize) -> &T {        
-        self.elem_ref_i(index)
+        assert!(index < self.length as isize && index > -1);
+        unsafe { &*(self.index_to_address_i(index) as *const T) }
     }
 }
 
 impl<T> ops::IndexMut<isize> for Array<T> {
 
     fn index_mut(&mut self, index: isize) -> &mut T {
-        self.elem_ref_mut_i(index)
+        assert!(index < self.length as isize && index > -1);
+        unsafe { &mut *(self.index_to_address_i(index) as *mut T) }
     }
 }
-
 
 pub struct IndicesIterator {
     i : usize,

@@ -7,9 +7,6 @@ use core::alloc::{Alloc, AllocErr, Layout, GlobalAlloc};
 use core::ptr::NonNull;
 use core::ptr::null_mut;
 
-#[global_allocator]
-static HEAP_ALLOCATOR: TestAllocator = TestAllocator::new() ;
-
 pub struct TestAllocator {
 
 }

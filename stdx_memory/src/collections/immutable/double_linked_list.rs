@@ -4,42 +4,53 @@ use stdx::iterator;
 use core::ops;
 use core::ops::Deref;
 use core::iter;
-/*
+use core::ptr;
+
+type ListPointer<T, A> = heap::RC<heap::Box<DoubleLinkedList<T, A>>, A>; 
+
 #[repr(C, packed)]
-pub struct DoubleLinkedList<T> {
+pub struct DoubleLinkedList<T, A> where A : MemoryAllocator {
     value : T,
-    prev : Option<heap::Box<DoubleLinkedList<T>>>,
-    next : Option<heap::Box<DoubleLinkedList<T>>>
+    prev : Option<ListPointer<T, A>>,
+    next : Option<ListPointer<T, A>>
 }
 
-impl<T> DoubleLinkedList<T> {
+impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
 
     pub fn value(self) -> T {
         self.value
     }
 
-    pub fn new<A>(value: T, memory_allocator : &mut A) -> heap::Box<Self> where A : MemoryAllocator  {
+    pub fn new(value: T, memory_allocator : &mut A) -> ListPointer<T, A>  {
         let new_cell = DoubleLinkedList {
                 value : value,
                 next  : None,
                 prev  : None
         };
 
-        heap::Box::new(new_cell, memory_allocator)
+        let result = heap::Box::new(new_cell, memory_allocator);
+        heap::RC::new(result, memory_allocator)
     }
 
-    pub fn add<A>(&mut self, value: T, memory_allocator : &mut A) -> heap::Box<Self>  where A : MemoryAllocator {
+    pub fn add(elem : &mut ListPointer<T, A>, value: T, memory_allocator : &mut A) -> ListPointer<T, A> {        
+        let prev_rc  = heap::RC::clone(&elem);
+
         let new_cell = DoubleLinkedList {
                 value : value,
                 next  : None,
-                prev  : Some(heap::Box::from_pointer(self))
+                prev  : Some(prev_rc)
         };
 
         let result = heap::Box::new(new_cell, memory_allocator);
-        let result_copy = heap::Box::from_pointer(result.deref());
+        let result_rc = heap::RC::new(result, memory_allocator);
 
-        self.next = Some(result_copy);
-        result
+        elem.next_mut().get_or_insert(heap::RC::clone(&result_rc));
+
+        result_rc
+    }
+    
+    pub fn next_mut(&mut self) -> &mut Option<ListPointer<T, A>> {
+        &mut self.next
     }
 
     /// Deletes this DoubleLinkedList from memory. Returns `prev` and `next` pointers if this was a
@@ -47,7 +58,7 @@ impl<T> DoubleLinkedList<T> {
     /// # Arguments
     /// * `memory_allocator` - memory allocator
     /// # Warning : modifies cells pointed by `self.next` and `self.prev`
-    pub fn remove(self) -> (Option<heap::Box<Self>>, Option<heap::Box<Self>>) {
+    pub fn remove(mut self) -> (Option<ListPointer<T, A>>, Option<ListPointer<T, A>>) {
         let result = self.take();
         (result.1, result.2)
     }
@@ -57,7 +68,7 @@ impl<T> DoubleLinkedList<T> {
     /// # Arguments
     /// * `memory_allocator` - memory allocator
     /// # Warning : modifies cells pointed by `self.next` and `self.prev`
-    pub fn remove_prev(self) -> Option<heap::Box<Self>> {
+    pub fn remove_prev(mut self) -> Option<ListPointer<T, A>> {
         self.remove().0
     }
 
@@ -66,7 +77,7 @@ impl<T> DoubleLinkedList<T> {
     /// # Arguments
     /// * `memory_allocator` - memory allocator
     /// # Warning : modifies cells pointed by `self.next` and `self.prev`
-    pub fn remove_next(self) -> Option<heap::Box<Self>>
+    pub fn remove_next(mut self) -> Option<ListPointer<T, A>>
      {
         self.remove().1
     }    
@@ -84,35 +95,36 @@ impl<T> DoubleLinkedList<T> {
     pub fn is_end(&self) -> bool {
         self.next.is_none()
     }
-
+    
     /// Returns copy of the cell data if `self` is DoubleLinkedList::Cell then removes this from linked list,
     /// returns None if `self` is DoubleLinkedList::Cell.
     /// # Arguments
     /// * `memory_allocator` - memory allocator
     /// # Warning : modifies cells pointed by `self.next` and `self.prev`
-    pub fn take(self) -> (T, Option<heap::Box<Self>>, Option<heap::Box<Self>>)  {
+    pub fn take(mut self) -> (T, Option<ListPointer<T, A>>, Option<ListPointer<T, A>>)  {
 
-        if let Some(mut next) = self.next {
-            //let prev_copy = heap::Box::from_pointer(self.prev.deref());
-            next.prev = self.prev;
+        if let Some(mut next) = self.next.as_mut() {
+            next.prev.take();
+            next.prev = Some(heap::RC::clone(&self.prev.take().unwrap()));
         }
 
-        if let Some(mut prev) = self.prev {
-            prev.next = self.next;
-        }                 
+        if let Some(mut prev) = self.prev.as_mut() {
+            prev.next.take();
+            prev.next = Some(heap::RC::clone(&self.next.take().unwrap()));
+        }
 
         let result = (self.value, self.prev, self.next);
 
         result
     }
-
+    
     /// Returns copy of the cell data and pointer to previous DoubleLinkedList
     /// if `self` is DoubleLinkedList::Cell then removes this from linked list,
     /// returns None if `self` is DoubleLinkedList::Cell.
     /// # Arguments
     /// * `memory_allocator` - memory allocator
     /// # Warning : modifies cells pointed by `self.next` and `self.prev`
-    pub fn take_prev(self) -> (T, Option<heap::Box<Self>>)  {
+    pub fn take_prev(mut self) -> (T, Option<ListPointer<T, A>>)  {
         let (value, prev, _) = self.take();
         (value, prev)
     }
@@ -123,12 +135,13 @@ impl<T> DoubleLinkedList<T> {
     /// # Arguments
     /// * `memory_allocator` - memory allocator
     /// # Warning : modifies cells pointed by `self.next` and `self.prev`
-    pub fn take_next(self) -> (T, Option<heap::Box<Self>>)  {
+    pub fn take_next(mut self) -> (T, Option<ListPointer<T, A>>)  {
         let (value, _, next) = self.take();
         (value, next)    
     }
+    
 }
-
+/*
 impl<T> ops::Deref for DoubleLinkedList<T> {
     type Target = T;
 
