@@ -12,8 +12,8 @@ use stdx::Iterable;
 use core::ops::Deref;
 use core::ops::DerefMut;
 
-type OptNodeBox<T> = Option<heap::Box<AVLNode<T>>>;
-type NodeBox<T> = heap::Box<AVLNode<T>>;
+type OptNodeBox<T> = Option<heap::WeakBox<AVLNode<T>>>;
+type NodeBox<T> = heap::WeakBox<AVLNode<T>>;
 
 
 fn height<T>(node : &OptNodeBox<T>) -> i64 where T : cmp::Ord {
@@ -69,7 +69,7 @@ fn rotate_right<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
     x.set_left(y.take_right());
     x.update_height();
         
-    y.set_right(Some(heap::Box::from_pointer(&x)));
+    y.set_right(Some(heap::WeakBox::from_pointer(&x)));
     y.update_height();
 
     y
@@ -79,7 +79,7 @@ fn rotate_left<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
     let mut y = x.take_right().expect("invalid avl");
 
     x.set_right(y.take_left());
-    y.set_left(Some(heap::Box::from_pointer(&x)));
+    y.set_left(Some(heap::WeakBox::from_pointer(&x)));
 
     x.update_height();
     y.update_height();
@@ -160,16 +160,16 @@ fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord 
                 return node.take_left_unwrap()
             }
             else {
-                let node_copy = heap::Box::from_pointer(node.deref());
+                let node_copy = heap::WeakBox::from_pointer(node.deref());
 
                 {
                     let new_node = min(node_copy.right().as_ref().unwrap());
 
-                    node = heap::Box::from_pointer(new_node);
+                    node = heap::WeakBox::from_pointer(new_node);
                 }
 
-                let right_copy = heap::Box::from_pointer(node_copy.right().as_ref().unwrap().deref());
-                //let left_copy = heap::Box::from_pointer(node_copy.left().as_ref().unwrap().deref());
+                let right_copy = heap::WeakBox::from_pointer(node_copy.right().as_ref().unwrap().deref());
+                //let left_copy = heap::WeakBox::from_pointer(node_copy.left().as_ref().unwrap().deref());
                 let new_right = delete_min(right_copy);                
                 node.set_right(Some(new_right));
                 //node.set_left(Some(left_copy));
@@ -326,7 +326,7 @@ impl<T> AVLNode<T> where T : cmp::Ord {
         &self.value
     }
 
-    pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::Box<Self> where M : MemoryAllocator {
+    pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::WeakBox<Self> where M : MemoryAllocator {
         let result = AVLNode {
             value  : value,
             height : height,
@@ -334,7 +334,7 @@ impl<T> AVLNode<T> where T : cmp::Ord {
             right  : None
         };
 
-        heap::Box::new(result, memory_allocator)
+        heap::WeakBox::new(result, memory_allocator)
     }
 }
 /*

@@ -16,10 +16,13 @@ use core::mem;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use stdx_memory::heap::RC;
 use stdx_memory::heap::Box;
+use allocator::buddy::BuddyAllocator;
 use core::alloc::Alloc;
 use core::alloc::Layout;
 use core::alloc::AllocErr;
 use core::ptr::NonNull;
+use core::ops::DerefMut;
+use core::ops::Deref;
 use self::free_list::FreeListAllocator;
 
 
@@ -77,7 +80,7 @@ impl cmp::PartialEq for free_list::FreeListAllocator {
 
 struct SlabKey {
     address : usize,
-    allocator : PtrToListOfAllocators
+    allocator : RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator>
 }
 
 impl SlabKey {
@@ -86,26 +89,41 @@ impl SlabKey {
     }
 }
 
-type ListOfAllocators = DoubleLinkedList<free_list::FreeListAllocator, free_list::FreeListAllocator>;
+type ListOfAllocators = DoubleLinkedList<free_list::FreeListAllocator>;
 type PtrToListOfAllocators = RC<ListOfAllocators, free_list::FreeListAllocator>;
-
 
 struct Slab {
     // free data structures
-    allocators : avl::AVLTree<SlabKey>,
+    non_empty : avl::AVLTree<RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator>>,
     // allocate data structures
-    non_full : PtrToListOfAllocators
+    non_full : Option<RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator>>
 }
 
 impl Slab {
-    pub fn new(allocator : free_list::FreeListAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> Self {
-        let list_cell = DoubleLinkedList::new(allocator, memory_allocator);
-        let rc = RC::new()
-        Slab {
+    fn new(allocator : free_list::FreeListAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> Self {
+        let list_cell= DoubleLinkedList::new(allocator, memory_allocator);
+        let rc = RC::new(list_cell, memory_allocator);
 
+        Slab {
+            non_empty : avl::AVLTree::new(),
+            non_full  : Some(rc)
+        }
+    }
+
+    fn increase_size(&mut self) {
+
+    }
+
+    fn allocate(&mut self, size : usize, frame_allocator : &mut BuddyAllocator) -> Option<usize> {
+        if let Some(ref mut head) = self.non_full {
+            head.value_mut().allocate(size)
+        }
+        else {
+            None
         }
     }
 }
+
 
 impl SlabAllocator {
     pub fn new(start_address1 : usize, end_address1 : usize) -> Self {
@@ -190,6 +208,16 @@ impl SlabAllocator {
             log - 5 // 2 ^ 5 = 32 = MIN_ALLOCATION_SIZE
         }        
     }
+
+    fn allocation_size_rounded(size : usize) -> usize {
+        let allocation_size_rounded0 = (2 as usize).pow(math::log2_align_up(size) as u32);
+
+        if allocation_size_rounded0 < MIN_ALLOCATION_SIZE {
+            MIN_ALLOCATION_SIZE
+        } else {
+            allocation_size_rounded0
+        }
+    }
 }
 
 impl MemoryAllocator for SlabAllocator {
@@ -209,16 +237,19 @@ unsafe impl Alloc for SlabAllocator {
         if size == 0 {
             Err(AllocErr {})
         } else {
-            let allocation_size_rounded0 = (2 as usize).pow(math::log2_align_up(size) as u32);
-            let allocation_size_rounded = if allocation_size_rounded0 < MIN_ALLOCATION_SIZE {
-                MIN_ALLOCATION_SIZE
-            } else {
-                allocation_size_rounded0
-            };
+
+            let allocation_size_rounded = SlabAllocator::allocation_size_rounded(size);
 
             if allocation_size_rounded > self.total_memory {
                 Err(AllocErr {})
             } else {
+
+                let slab_opt = &self.size_to_slab[(allocation_size_rounded / MIN_ALLOCATION_SIZE) - 1].as_mut();
+
+                if let Some(slab) = slab_opt {
+
+                }
+
 
                 unsafe { Ok(NonNull::new_unchecked(0 as *mut _)) }
             }

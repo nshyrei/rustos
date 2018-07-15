@@ -7,7 +7,7 @@ use stdx_memory::ConstantSizeMemoryAllocator;
 pub struct FreeListAllocator {
     bump_allocator        : ConstSizeBumpAllocator,
     block_size            : usize,
-    free_blocks           : heap::Box<LinkedList<usize>>,
+    free_blocks           : heap::Box<LinkedList<usize>, ConstSizeBumpAllocator>,
     free_blocks_allocator : ConstSizeBumpAllocator,
     free_blocks_count     : usize
 }
@@ -23,10 +23,10 @@ impl FreeListAllocator {
         let free_blocks = heap::Box::new(LinkedList::Nil, &mut free_blocks_allocator);
 
         FreeListAllocator {
-            bump_allocator        : bump_allocator,
-            block_size            : block_size,
-            free_blocks           : free_blocks,
-            free_blocks_allocator : free_blocks_allocator,
+            bump_allocator,
+            block_size,
+            free_blocks,
+            free_blocks_allocator,
             free_blocks_count     : 0
         }
     }
@@ -53,7 +53,7 @@ impl FreeListAllocator {
 impl ConstantSizeMemoryAllocator for FreeListAllocator {    
     fn allocate_size(&mut self) -> Option<usize> {
         if let Some((value, previous)) = self.free_blocks.take() {
-            self.free_blocks = previous;
+            self.free_blocks = previous.promote(&mut self.free_blocks_allocator);
             self.free_blocks_count -= 1;
 
             Some(value)

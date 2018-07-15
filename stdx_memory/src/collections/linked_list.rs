@@ -5,6 +5,7 @@ use core::mem;
 use MemoryAllocator;
 use heap::SharedBox;
 use heap::Box;
+use heap::WeakBox;
 
 /// Type that represents linked list of cells.
 #[repr(C)]
@@ -12,7 +13,7 @@ pub enum LinkedList<T> {
     /// Represents list starting point. Used as a marker that doesn't hold any value
     Nil,
     /// Represents list cell that holds value of type `T` and has reference to previous LinkedList
-    Cell { value: T, prev: Box<LinkedList<T>> },
+    Cell { value: T, prev: WeakBox<LinkedList<T>> },
 }
 
 impl<T> LinkedList<T> {
@@ -21,16 +22,16 @@ impl<T> LinkedList<T> {
     /// # Arguments
     /// * `value` - value to put into cell
     /// * `memory_allocator` - memory allocator
-    pub fn new<A>(value: T, memory_allocator : &mut A) -> Box<LinkedList<T>> where A : MemoryAllocator {
+    pub fn new<A>(value: T, memory_allocator : &mut A) -> Box<Self, A> where A : MemoryAllocator {
         let result = LinkedList::Cell {
                 value: value,
-                prev: LinkedList::nil(memory_allocator),
+                prev: WeakBox::new(LinkedList::Nil,memory_allocator),
         };
 
         Box::new(result, memory_allocator)
     }
 
-    pub fn nil<A>(memory_allocator : &mut A) -> Box<LinkedList<T>> where A : MemoryAllocator  {
+    pub fn nil<A>(memory_allocator : &mut A) -> Box<Self, A> where A : MemoryAllocator  {
         Box::new(LinkedList::Nil, memory_allocator)
     }
 
@@ -38,10 +39,10 @@ impl<T> LinkedList<T> {
     /// # Arguments
     /// * `value` - value to put into cell
     /// * `memory_allocator` - memory allocator
-    pub fn add<A>(&self, value: T, memory_allocator : &mut A) -> Box<LinkedList<T>> where A : MemoryAllocator {
+    pub fn add<A>(&self, value: T, memory_allocator : &mut A) -> Box<Self, A> where A : MemoryAllocator {
         let result = LinkedList::Cell {
                 value : value,
-                prev  : Box::from_pointer(self),
+                prev  : WeakBox::from_pointer(self),
         };
 
         Box::new(result, memory_allocator)
@@ -64,7 +65,7 @@ impl<T> LinkedList<T> {
     /// does nothing if `self` is LinkedList::Nil
     /// # Arguments    
     /// * `memory_allocator` - memory allocator
-    pub fn take(&mut self) -> Option<(T, Box<LinkedList<T>>)> {        
+    pub fn take(&mut self) -> Option<(T, WeakBox<Self>)> {
         match mem::replace(self, LinkedList::Nil) {
             LinkedList::Cell { value, prev } => Some((value, prev)),
             _ => None
@@ -94,7 +95,7 @@ impl<T> fmt::Display for LinkedList<T> {
         write!(f,"")
     }
 }
-
+/*
 pub struct LinkedListIterator<T> where T : Copy {
     current: Box<LinkedList<T>>,    
 }
@@ -121,3 +122,4 @@ impl<T> iter::Iterator for LinkedListIterator<T> where T : Copy {
         
     }
 }
+*/

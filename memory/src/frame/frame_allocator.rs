@@ -28,7 +28,7 @@ pub struct FrameAllocator {
     current_memory_area : ptr::NonNull<MemoryMapEntry>,
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,
-    empty_frame_list: heap::Box<LinkedList<Frame>>,
+    empty_frame_list: heap::WeakBox<LinkedList<Frame>>,
     frame_list_allocator : ConstSizeBumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
@@ -82,7 +82,7 @@ impl FrameAllocator {
         self.buddy_allocator_end_frame = f
     }
 
-    fn empty_frame_list(&self) -> &heap::Box<LinkedList<Frame>> {
+    fn empty_frame_list(&self) -> &heap::WeakBox<LinkedList<Frame>> {
         &self.empty_frame_list
     }
 
@@ -122,7 +122,7 @@ impl FrameAllocator {
             current_memory_area : ptr::NonNull::from(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: heap::Box::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::WeakBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -158,7 +158,7 @@ impl FrameAllocator {
             current_memory_area : ptr::NonNull::from(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: heap::Box::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::WeakBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
