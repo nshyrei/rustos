@@ -101,8 +101,7 @@ struct Slab {
 
 impl Slab {
     fn new(allocator : free_list::FreeListAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> Self {
-        let list_cell= DoubleLinkedList::new(allocator, memory_allocator);
-        let rc = RC::new(list_cell, memory_allocator);
+        let cell = Slab::new_allocator_cell(allocator, memory_allocator);
 
         Slab {
             non_empty : avl::AVLTree::new(),
@@ -110,17 +109,42 @@ impl Slab {
         }
     }
 
-    fn increase_size(&mut self) {
+    fn increase_size(&mut self, frame_allocator : &mut BuddyAllocator, allocator : free_list::FreeListAllocator, memory_allocator : &mut free_list::FreeListAllocator) {
 
     }
 
-    fn allocate(&mut self, size : usize, frame_allocator : &mut BuddyAllocator) -> Option<usize> {
+    fn new_allocator_cell(allocator : free_list::FreeListAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator> {
+        let list_cell= DoubleLinkedList::new(allocator, memory_allocator);
+
+        RC::new(list_cell, memory_allocator)
+    }
+
+    // slab size is passed here, to prevent saving it in slab structure, because slab allocator
+    // knows what slabs and of what sizes it has
+
+    fn allocate(&mut self, size : usize, slab_size : usize, frame_allocator : &mut BuddyAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> Option<usize> {
         if let Some(ref mut head) = self.non_full {
-            head.value_mut().allocate(size)
+            head.value_mut().allocate_size()
         }
         else {
-            None
+            if let Some(new_frame) = frame_allocator.allocate(slab_size) {
+                let allocator = free_list::FreeListAllocator::from_address(new_frame, slab_size, size);
+                let mut cell = Slab::new_allocator_cell(allocator, memory_allocator);
+                let result = cell.value_mut().allocate_size();
+
+                self.non_full = Some(cell);
+                self.non_empty.insert(RC::clone(&cell), memory_allocator);
+
+                result
+            }
+            else {
+                None
+            }
         }
+    }
+
+    fn free(&mut self, pointer : usize) {
+        let allocator = self.non_empty.find(pointer);
     }
 }
 
