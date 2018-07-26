@@ -63,6 +63,39 @@ fn find0<'a, T>(node : &'a OptNodeBox<T>, x : &T) -> Option<&'a T> where T : cmp
     })
 }
 
+fn find_by0<'a, T, F, P, C>(node : &'a mut OptNodeBox<T>, x : &C, selector : F, predicate : P) -> Option<&'a mut T>
+    where F : Fn(&'a T) -> C,
+          P : Fn(&'a T, &C) -> bool,
+          T : cmp::Ord,
+          C : cmp::Ord
+{
+    let mut predicate_result : Option<Ordering> = None;
+    let mut compare_result : Option<bool> = None;
+    {
+        let x = node.as_ref();
+    }
+
+    let y = node.as_mut();
+
+    None
+
+    /*node.as_mut().and_then(|n| {
+        let predicate_result = predicate(n.value(), x);
+        let compare_result = selector(n.value()).cmp(x);
+
+        if predicate_result {
+            Some(n.value_mut())
+        }
+        else {
+            match compare_result {
+                Ordering::Less => find_by0(n.left_mut(), x, selector, predicate),
+                Ordering::Greater => find_by0(n.right_mut(), x, selector, predicate),
+                _ => Some(&mut n.value)
+            }
+        }
+    })*/
+}
+
 fn rotate_right<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
     let mut y = x.take_left().expect("invalid avl");
 
@@ -230,6 +263,15 @@ impl<T> AVLTree<T> where T : cmp::Ord {
         }
     }
 
+    pub fn find_by<F, P, C>(&mut self, x : &C, selector : F, predicate : P) -> Option<&mut T>
+        where F : Fn(&T) -> C,
+              P : Fn(&T, &C) -> bool,
+              T : cmp::Ord,
+              C : cmp::Ord
+    {
+        find_by0(&mut self.root, x, selector, predicate)
+    }
+
     pub fn find(&self, x : &T) -> Option<&T> {
         find0(&self.root, x)
     }
@@ -283,6 +325,14 @@ impl<T> AVLNode<T> where T : cmp::Ord {
         &self.right
     }
 
+    pub fn left_mut(&mut self) -> &mut OptNodeBox<T> {
+        &mut self.left
+    }
+
+    pub fn right_mut(&mut self) -> &mut OptNodeBox<T> {
+        &mut self.right
+    }
+
     pub fn set_right(&mut self, v : OptNodeBox<T>) {
         self.right = v
     }
@@ -324,6 +374,10 @@ impl<T> AVLNode<T> where T : cmp::Ord {
     
     pub fn value(&self) -> &T {
         &self.value
+    }
+
+    pub fn value_mut(&mut self) -> &mut T {
+        &mut self.value
     }
 
     pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::WeakBox<Self> where M : MemoryAllocator {

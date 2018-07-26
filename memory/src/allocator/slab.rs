@@ -105,7 +105,7 @@ impl Slab {
 
         Slab {
             non_empty : avl::AVLTree::new(),
-            non_full  : Some(rc)
+            non_full  : Some(cell)
         }
     }
 
@@ -119,7 +119,7 @@ impl Slab {
         RC::new(list_cell, memory_allocator)
     }
 
-    // slab size is passed here, to prevent saving it in slab structure, because slab allocator
+    // slab size is passed here to prevent saving it in slab structure, because slab allocator
     // knows what slabs and of what sizes it has
 
     fn allocate(&mut self, size : usize, slab_size : usize, frame_allocator : &mut BuddyAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> Option<usize> {
@@ -132,8 +132,9 @@ impl Slab {
                 let mut cell = Slab::new_allocator_cell(allocator, memory_allocator);
                 let result = cell.value_mut().allocate_size();
 
-                self.non_full = Some(cell);
+
                 self.non_empty.insert(RC::clone(&cell), memory_allocator);
+                self.non_full = Some(cell);
 
                 result
             }
@@ -144,7 +145,16 @@ impl Slab {
     }
 
     fn free(&mut self, pointer : usize) {
-        let allocator = self.non_empty.find(pointer);
+        let dlist_opt = self.non_empty.find_by(&pointer,
+                                               |node| node.value().start_address(),
+                                               |node, ptr| node.value().is_inside_address_space(*ptr));
+
+        let dlist_opt_m = dlist_opt.as_mut();
+        if let Some(mut dlist) = dlist_opt_m {
+            let mut allocator = dlist.value_mut();
+
+            allocator.free(pointer);
+        }
     }
 }
 

@@ -58,6 +58,10 @@ impl ConstSizeBumpAllocator {
     pub fn increase_size(&mut self, size : usize) {
         self.pointer_end_address += size;
     }
+
+    pub fn is_inside_address_space(&self, pointer : usize) -> bool {
+        pointer >= self.start_address && pointer <= self.pointer_end_address
+    }
 }
 
 impl ConstantSizeMemoryAllocator for ConstSizeBumpAllocator {

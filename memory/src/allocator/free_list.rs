@@ -48,6 +48,10 @@ impl FreeListAllocator {
         self.bump_allocator.increase_size(size);
         self.free_blocks_allocator.increase_size(free_list_blocks_increase);
     }
+
+    pub fn is_inside_address_space(&self, pointer : usize) -> bool {
+        self.bump_allocator.is_inside_address_space(pointer)
+    }
 }
 
 impl ConstantSizeMemoryAllocator for FreeListAllocator {    
