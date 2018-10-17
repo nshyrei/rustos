@@ -63,37 +63,25 @@ fn find0<'a, T>(node : &'a OptNodeBox<T>, x : &T) -> Option<&'a T> where T : cmp
     })
 }
 
-fn find_by0<'a, T, F, P, C>(node : &'a mut OptNodeBox<T>, x : &C, selector : F, predicate : P) -> Option<&'a mut T>
-    where F : Fn(&'a T) -> C,
-          P : Fn(&'a T, &C) -> bool,
+fn find_by0<T, F, P, C>(node : &OptNodeBox<T>, x : &C, selector : F, predicate : P) -> Option<heap::WeakBox<T>>
+    where F : Fn(&T) -> C,
+          P : Fn(&T, &C) -> bool,
           T : cmp::Ord,
           C : cmp::Ord
 {
-    let mut predicate_result : Option<Ordering> = None;
-    let mut compare_result : Option<bool> = None;
-    {
-        let x = node.as_ref();
-    }
-
-    let y = node.as_mut();
-
-    None
-
-    /*node.as_mut().and_then(|n| {
-        let predicate_result = predicate(n.value(), x);
-        let compare_result = selector(n.value()).cmp(x);
-
-        if predicate_result {
-            Some(n.value_mut())
+    node.as_ref().and_then(|n| {
+        
+        if predicate(n.value(), x) {
+            Some(heap::WeakBox::from_pointer(n.value()))
         }
-        else {
-            match compare_result {
-                Ordering::Less => find_by0(n.left_mut(), x, selector, predicate),
-                Ordering::Greater => find_by0(n.right_mut(), x, selector, predicate),
-                _ => Some(&mut n.value)
+        else { 
+            match selector(n.value()).cmp(x)  {
+                Ordering::Less => find_by0(n.left(), x, selector, predicate),
+                Ordering::Greater => find_by0(n.right(), x, selector, predicate),
+                _ => Some(heap::WeakBox::from_pointer(n.value()))
             }
         }
-    })*/
+    })    
 }
 
 fn rotate_right<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
@@ -263,13 +251,14 @@ impl<T> AVLTree<T> where T : cmp::Ord {
         }
     }
 
-    pub fn find_by<F, P, C>(&mut self, x : &C, selector : F, predicate : P) -> Option<&mut T>
+    pub fn find_by<F, P, C>(&mut self, x : &C, selector : F, predicate : P) -> Option<heap::WeakBox<T>>
         where F : Fn(&T) -> C,
               P : Fn(&T, &C) -> bool,
               T : cmp::Ord,
               C : cmp::Ord
     {
         find_by0(&mut self.root, x, selector, predicate)
+        
     }
 
     pub fn find(&self, x : &T) -> Option<&T> {

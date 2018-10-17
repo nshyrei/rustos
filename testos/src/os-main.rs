@@ -35,6 +35,8 @@ static mut vga_writerg : Option<Writer> = None;
 use malloc::TestAllocator;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use stdx_memory::heap::RC;
+use alloc::alloc::Layout;
+use stdx_memory::heap;
 
 #[global_allocator]
 static HEAP_ALLOCATOR: TestAllocator = TestAllocator::new() ;
@@ -91,6 +93,26 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     loop {}
 }
 
+struct Nigga<A> {
+    value : A
+}
+
+impl<A> Nigga<A> {
+    pub fn v_m(&mut self) -> &mut A {
+        &mut self.value
+    }
+}
+
+fn doni<A, F>(x : &mut Option<heap::WeakBox<Nigga<A>>>,f : F) -> &mut A where F : Fn(&Nigga<A>) -> bool {
+    let mut bv : Option<bool> = None;
+    { 
+        let vx = f(x.as_ref().unwrap());
+        bv = Some(vx);
+     }
+     let xgv = bv;
+    x.as_mut().map(|b| { let vy = bv; b.v_m() }).unwrap()
+}
+
 pub fn free_list_should_properly_set_free( writer : &mut Writer, adr: usize) {
 
 use memory::frame::Frame;
@@ -133,7 +155,7 @@ pub extern "C" fn panic_impl(pi: &PanicInfo) -> ! {
 }
 #[lang = "oom"]
 #[no_mangle]
-pub extern "C" fn oom() -> ! {
+pub extern "C" fn oom(l: Layout) -> ! {
     loop {}
 }
 

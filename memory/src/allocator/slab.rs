@@ -25,7 +25,6 @@ use core::ops::DerefMut;
 use core::ops::Deref;
 use self::free_list::FreeListAllocator;
 
-
 macro_rules! block_sizes {
     ($total_buddy_levels:expr, $starting_block_size:expr) => {{
         (0 .. $total_buddy_levels).scan($starting_block_size, |block_size, _| {
@@ -78,17 +77,6 @@ impl cmp::PartialEq for free_list::FreeListAllocator {
     }
 }
 
-struct SlabKey {
-    address : usize,
-    allocator : RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator>
-}
-
-impl SlabKey {
-    fn address(&self) -> usize {
-        self.address
-    }
-}
-
 type ListOfAllocators = DoubleLinkedList<free_list::FreeListAllocator>;
 type PtrToListOfAllocators = RC<ListOfAllocators, free_list::FreeListAllocator>;
 
@@ -96,7 +84,7 @@ struct Slab {
     // free data structures
     non_empty : avl::AVLTree<RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator>>,
     // allocate data structures
-    non_full : Option<RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator>>
+    non_full : Option<RC<Box<DoubleLinkedList<free_list::FreeListAllocator>,free_list::FreeListAllocator>,free_list::FreeListAllocator, >>
 }
 
 impl Slab {

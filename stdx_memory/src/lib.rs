@@ -1,4 +1,5 @@
 #![feature(nonzero)]
+#![feature(type_ascription)]
 #![no_std]
 
 extern crate stdx;
