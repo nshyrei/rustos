@@ -283,6 +283,13 @@ impl<T> AVLTree<T> where T : cmp::Ord {
         }
     }
 
+    /*pub fn delete_wb(&mut self, key :heap::WeakBox< T>) {
+        match self.root.take() {
+            Some(node) => self.root = Some(delete(node, *key)),
+            _ => self.root = None
+        }
+    }*/
+
     pub fn check(&self) -> bool {
         is_BST(&self.root, None, None) && is_AVL(&self.root)
     }

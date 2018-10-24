@@ -1,5 +1,6 @@
 #![no_std]
-#![feature(alloc)]
+
+
 #![feature(allocator_api)]
 #![feature(const_fn)]
 

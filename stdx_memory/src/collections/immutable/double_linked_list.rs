@@ -10,6 +10,7 @@ use core::marker;
 
 type ListPointer<T, A> = heap::WeakBox<DoubleLinkedList<T,A>>;
 type StrongListPointer<T, A> = heap::WeakBox<DoubleLinkedList<T,A>>;
+type RCPointer<T, A> = heap::RC<DoubleLinkedList<T, A>, A>;
 
 #[repr(C, packed)]
 pub struct DoubleLinkedList<T, A> where A : MemoryAllocator {
@@ -25,6 +26,8 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
         &self.value
     }
 
+    pub fn value_mut(&mut self) -> &mut T { &mut self.value}
+
     pub fn new(value: T, memory_allocator : &mut A) -> ListPointer<T, A>  {
         let new_cell = DoubleLinkedList {
                 value : value,
@@ -34,6 +37,17 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
         };
 
         heap::WeakBox::new(new_cell, memory_allocator)
+    }
+
+    pub fn new_rc(value: T, memory_allocator : &mut A) -> RCPointer<T, A>  {
+        let new_cell = DoubleLinkedList {
+            value : value,
+            next  : None,
+            prev  : None,
+            phantom : marker::PhantomData
+        };
+
+        heap::RC::new(new_cell, memory_allocator)
     }
 
     pub fn add(&mut self, value: T, memory_allocator : &mut A) -> ListPointer<T, A> {

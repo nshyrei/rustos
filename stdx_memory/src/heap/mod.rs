@@ -101,6 +101,13 @@ impl <T> WeakBox<T> {
     pub fn promote<A>(self, allocator : &mut A) -> Box<T, A> where A : MemoryAllocator {
         Box::from_pointer(self.deref(), allocator)
     }
+
+    pub fn unbox(b : WeakBox<T>) -> T {
+        let nn : ptr::NonNull<T> = b.unique.into();
+        unsafe { *nn.as_ptr() }
+        //unsafe { b.unique.into().as_ptr() }
+
+    }
 }
 
 impl<T> ops::Deref for WeakBox<T> {
