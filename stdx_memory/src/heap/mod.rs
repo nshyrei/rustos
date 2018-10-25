@@ -102,12 +102,11 @@ impl <T> WeakBox<T> {
         Box::from_pointer(self.deref(), allocator)
     }
 
-    pub fn unbox(b : WeakBox<T>) -> T {
-        let nn : ptr::NonNull<T> = b.unique.into();
-        unsafe { *nn.as_ptr() }
-        //unsafe { b.unique.into().as_ptr() }
-
+    pub fn leak(self) -> T
+    {
+        unsafe {  ptr::read_unaligned(self.unique.as_ptr())  }
     }
+
 }
 
 impl<T> ops::Deref for WeakBox<T> {
@@ -145,8 +144,6 @@ impl<T> cmp::PartialEq for WeakBox<T> where T : cmp::PartialEq {
         self.deref().eq(other.deref())
     }
 }
-
-
 
 pub struct SharedBox<T>{
     unique : ptr::NonNull<T>

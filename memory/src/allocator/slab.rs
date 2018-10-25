@@ -16,6 +16,7 @@ use core::mem;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use stdx_memory::heap::RC;
 use stdx_memory::heap::Box;
+use stdx_memory::heap::WeakBox;
 use allocator::buddy::BuddyAllocator;
 use core::alloc::Alloc;
 use core::alloc::Layout;
@@ -134,32 +135,37 @@ impl Slab {
         }
 
         if allocator_is_free && self.non_full.is_some() {
-            let head = self.non_full.take();
+            let head = self.non_full.take().unwrap();
+
+            let (left, right) = head.remove();
+
+            if let Some(right) = right {
+                self.
+            }
+
             self.non_empty.delete(head.unwrap());
             return;
         }
 
-        let dlist_opt = self.non_empty.find_by(&pointer,
+        let mut dlist_opt = self.non_empty.find_by(&pointer,
                                                |node| node.value().start_address(),
                                                |node, ptr| node.value().is_inside_address_space(*ptr));
 
-
-        //self.non_empty.delete_wb(WeakBox::unbox(dlist_opt.unwrap().unbox())
-        /*{
-            let dlist_opt_m = dlist_opt.as_mut();
+        let mut allocator_is_free_tree_case = false;
 
 
-            if let Some(mut dlist) = dlist_opt_m {
-                let mut allocator = dlist.value_mut();
-                allocator.free(pointer);
+        if let Some(mut dlist) = dlist_opt.as_mut() {
+            let mut allocator = dlist.value_mut();
+            allocator.free(pointer);
 
-            }
-        }*/
+            allocator_is_free_tree_case = allocator.fully_free();
+        }
 
-        /*let dll = dlist_opt.take();
-        if let Some(dlist) = dll {
-            self.non_empty.delete(*dlist)
-        }*/
+        if allocator_is_free_tree_case && dlist_opt.is_some() {
+            let dlist = dlist_opt.unwrap();
+
+            self.non_empty.delete(dlist_opt.unwrap().leak())
+        }
     }
 }
 
