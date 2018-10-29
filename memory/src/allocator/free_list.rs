@@ -21,18 +21,22 @@ impl FreeListAllocator {
             bump_allocator.total_blocks_count() + 1); // +1 for LinkedList::Nil        
 
         let free_blocks = heap::Box::new(LinkedList::Nil, &mut free_blocks_allocator);
-
+        let free_blocks_count = bump_allocator.total_blocks_count();
         FreeListAllocator {
             bump_allocator,
             block_size,
             free_blocks,
             free_blocks_allocator,
-            free_blocks_count     : 0
+            free_blocks_count
         }
     }
 
     pub fn fully_free(&self) -> bool {
         self.free_blocks_count == self.bump_allocator.total_blocks_count()
+    }
+
+    pub fn fully_occupied(&self) -> bool {
+        self.free_blocks_count == 0
     }
 
     pub fn start_address(&self) -> usize {

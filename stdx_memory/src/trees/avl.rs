@@ -210,6 +210,56 @@ fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord 
     balance(node)
 }
 
+fn delete_by<T, Q, F>(mut node : NodeBox<T>, value : Q, f : F) -> NodeBox<T> where T : cmp::Ord, F : Fn(&T) -> Q, Q :cmp::Ord {
+    let comparable_value = f(node.value());
+    let cmp_result = comparable_value.cmp(&value);
+
+    match cmp_result {
+        Ordering::Less if node.left().is_some() => {
+            let new_left = delete_by(node.take_left_unwrap(), value, f);
+            node.set_left(Some(new_left));
+        },
+        Ordering::Greater if node.right().is_some() => {
+            let new_right = delete_by(node.take_right_unwrap(), value, f);
+            node.set_right(Some(new_right));
+        },
+        _ => {
+            if node.left().is_none() && node.right().is_some() {
+                return node.take_right_unwrap()
+            }
+                else if node.right().is_none() && node.left().is_some() {
+                    return node.take_left_unwrap()
+                }
+                    else {
+                        let node_copy = heap::WeakBox::from_pointer(node.deref());
+
+                        {
+                            let new_node = min(node_copy.right().as_ref().unwrap());
+
+                            node = heap::WeakBox::from_pointer(new_node);
+                        }
+
+                        let right_copy = heap::WeakBox::from_pointer(node_copy.right().as_ref().unwrap().deref());
+                        //let left_copy = heap::WeakBox::from_pointer(node_copy.left().as_ref().unwrap().deref());
+                        let new_right = delete_min(right_copy);
+                        node.set_right(Some(new_right));
+                        //node.set_left(Some(left_copy));
+
+
+                        /*
+                        Node y = x;
+                        x = min(y.right);
+                        x.right = deleteMin(y.right);
+                        x.left = y.left;
+                        */
+                    }
+        }
+    }
+
+    node.update_height();
+    balance(node)
+}
+
 fn is_BST<T>(node : &OptNodeBox<T>, min : Option<&T>, max : Option<&T>) -> bool where T : cmp::Ord {
     node.as_ref()
         .map(|n| {
@@ -279,6 +329,13 @@ impl<T> AVLTree<T> where T : cmp::Ord {
     pub fn delete(&mut self, key : T) {
         match self.root.take() {
             Some(node) => self.root = Some(delete(node, key)),
+            _ => self.root = None
+        }
+    }
+
+    pub fn delete_by<Q, F>(&mut self, key : Q, f : F)  where F : Fn(&T) -> Q, Q :cmp::Ord {
+        match self.root.take() {
+            Some(node) => self.root = Some(delete_by(node, key, f)),
             _ => self.root = None
         }
     }

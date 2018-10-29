@@ -22,6 +22,14 @@ pub struct DoubleLinkedList<T, A> where A : MemoryAllocator {
 
 impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
 
+    pub fn neighbours(&mut self) -> (&mut Option<ListPointer<T, A>>, &mut Option<ListPointer<T, A>>) {
+        (&mut self.prev, &mut self.next)
+    }
+
+    pub fn prev(&self) -> &Option<ListPointer<T, A>> {
+        &self.prev
+    }
+
     pub fn value(&self) -> &T {
         &self.value
     }
@@ -59,7 +67,7 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
                 phantom : marker::PhantomData
         };
 
-        heap::WeakBox::new(new_cell, memory_allocator)   
+        heap::WeakBox::new(new_cell, memory_allocator)
     }
     
     pub fn next_mut(&mut self) -> &mut Option<ListPointer<T, A>> {
@@ -72,8 +80,43 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
     /// * `memory_allocator` - memory allocator
     /// # Warning : modifies cells pointed by `self.next` and `self.prev`
     pub fn remove(mut self) -> (Option<ListPointer<T, A>>, Option<ListPointer<T, A>>) {
-        let result = self.take();
-        (result.1, result.2)
+        if let Some(mut next) = self.next.as_mut() {
+
+            next.prev.take();
+            next.prev = Some(heap::WeakBox::from_pointer(&self.prev.take().unwrap()));
+        }
+
+        if let Some(mut prev) = self.prev.as_mut() {
+
+            let b = prev.next.take();
+            let bv = b;
+            prev.next = Some(heap::WeakBox::from_pointer(&self.next.take().unwrap()));
+        }
+
+        let result =(self.prev, self.next);
+
+        result
+    }
+
+    pub fn modify_neighbour_connections(mut a : heap::RC<heap::Box<DoubleLinkedList<T,A>, A>, A>)  -> Option<ListPointer<T, A>>{
+        let prev_addr = a.prev.as_ref().map(|p| heap::WeakBox::from_pointer(p).leak());
+        let next_addr = a.next.as_ref().map(|p| heap::WeakBox::from_pointer(p).leak());
+
+        let result = a.prev.as_ref().map(|p| heap::WeakBox::from_pointer(p).leak());
+
+        if let Some(mut next) = a.next.as_mut() {
+
+            next.prev.take();
+            next.prev = prev_addr;
+        }
+
+        if let Some(mut prev) = a.prev.as_mut() {
+
+            prev.next.take();
+            prev.next = next_addr
+        }
+
+        result
     }
 
     /// Deletes this DoubleLinkedList from memory. Returns `prev` pointer if this was a
