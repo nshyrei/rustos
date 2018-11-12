@@ -40,11 +40,12 @@ impl FreeListAllocator {
     }
 
     pub fn start_address(&self) -> usize {
-        1
+
+        self.bump_allocator.start_address()
     }
 
     pub fn end_address(&self) -> usize {
-        1
+        self.bump_allocator.end_address()
     }    
 
     pub fn increase_size(&mut self, size : usize) {

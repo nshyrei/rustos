@@ -34,6 +34,7 @@ use alloc::boxed::Box;
 static mut vga_writerg : Option<Writer> = None;
 use malloc::TestAllocator;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
+use memory::allocator::slab::SlabAllocator;
 use stdx_memory::heap::RC;
 use alloc::alloc::Layout;
 use stdx_memory::heap;
@@ -128,20 +129,27 @@ use memory::allocator::free_list::FreeListAllocator;
 use core::mem;    
 use core::ptr;    
 
-    let size = 65536;
+    let size = 32768;
     let heap : [u8;80000] = [0;80000];
     let heap_addr = heap.as_ptr() as usize;    
 
     use stdx_memory::heap;
+
+
+  unsafe {   ptr::write_unaligned(heap_addr as *mut usize, 100); }
+
     let heap_a = Frame::address_align_up(heap_addr);
     let heap_end_address = heap_a + size - 1;
-    let mut allocator = BuddyAllocator::new(heap_a, heap_a + size);
-    let mut allocated : [usize;16] = [0;16];    
+    let allocator = BuddyAllocator::new(heap_a, heap_a + size);
+    let mut slab_allocator = SlabAllocator::new(heap_a + size + 1, heap_a + size + 1 + 32768, allocator);
 
-    let result = allocator.allocate(2);
+    let result = slab_allocator.allocate(100);
+    let result1 = slab_allocator.allocate(100);
+
+    slab_allocator.free(result1.unwrap());
 
 
-    let result = allocator.allocate(size);
+
     let exit = 0;
 }
 use core::panic::PanicInfo;

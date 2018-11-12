@@ -46,6 +46,14 @@ pub struct BuddyAllocator {
 
 impl BuddyAllocator {
 
+    pub fn true_allocation_size_for(size : usize) -> usize {
+        if size < FRAME_SIZE {
+            FRAME_SIZE
+        } else {
+            size
+        }
+    }
+
     fn start_address(&self) -> usize {
         1
     }
@@ -186,9 +194,9 @@ impl BuddyAllocator {
 
         loop {
             // if size < current_level_size at index 0 the algorithm will crash!
-            if i == 0 {
+            /*if i < 0 {
                 return None
-            }
+            }*/
 
             let block_index  = self.buddy_free_lists[i]                                   
                                    .first_free_block(&mut self.free_list_allocator)
@@ -197,9 +205,12 @@ impl BuddyAllocator {
             // we can return current block or split it at that point,
             // both operations will set the block to 'in use'
             self.buddy_free_lists[i].set_in_use(block_index, &mut self.free_list_allocator);
-            
-            if allocation_size == current_level_size {                
+
+            if allocation_size == current_level_size {
                 return Some((i, block_index * current_level_size))
+            }
+            else if i == 0 {
+                return None
             }
             else {
                 

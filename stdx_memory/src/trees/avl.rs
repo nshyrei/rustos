@@ -295,6 +295,10 @@ pub struct AVLTree<T> where T : cmp::Ord {
 
 impl<T> AVLTree<T> where T : cmp::Ord {
 
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
+    }
+
     pub fn new() -> Self {
         AVLTree {
             root : None

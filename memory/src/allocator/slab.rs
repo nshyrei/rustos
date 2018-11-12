@@ -234,10 +234,11 @@ impl SlabAllocator {
         let end_address        = Frame::address_align_down(end_address1);
         let total_memory       = end_address - start_address + 1;
 
-        assert!(total_memory >= MIN_ALLOCATION_SIZE,
+
+        /*assert!(total_memory <= MIN_ALLOCATION_SIZE,
                 "Cannot create allocator when total memory size < MIN_ALLOCATION_SIZE (32). Start address : {}, end address {}",
                 start_address,
-                end_address);
+                end_address);*/
 
         let total_slab_count = SlabAllocator::total_slab_count(total_memory);
         let array_size = Array::<Option<Slab>>::mem_size_for(total_slab_count);
