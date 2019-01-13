@@ -7,7 +7,7 @@ use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::memory_map::*;
 use multiboot::multiboot_header::tags::elf;
 
-
+#[repr(C)]
 #[derive(Clone)]
 pub struct ConstSizeBumpAllocator {
     current_pointer     : usize,
@@ -23,7 +23,7 @@ impl ConstSizeBumpAllocator {
     }
 
     pub fn total_blocks_count(&self) -> usize {
-        self.end_address() / self.allocation_size
+        self.size() / self.allocation_size
     }
 
     pub fn start_address(&self) -> usize {
@@ -32,6 +32,10 @@ impl ConstSizeBumpAllocator {
 
     pub fn end_address(&self) -> usize {
         self.pointer_end_address - 1
+    }
+
+    pub fn size(&self) -> usize {
+        self.end_address() - self.start_address() + 1
     }
 
     pub fn from_address(address: usize, size : usize, allocation_size : usize) -> Self {
@@ -80,7 +84,15 @@ impl ConstantSizeMemoryAllocator for ConstSizeBumpAllocator {
 
     fn free_size(&mut self, pointer : usize) {
         self.current_pointer -= self.allocation_size;
-    }    
+    }
+
+    fn assigned_memory_size() -> usize {
+        unimplemented!()
+    }
+
+    fn aux_data_structures_size() -> usize {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone)]
@@ -128,7 +140,15 @@ impl MemoryAllocator for BumpAllocator {
 
     fn free(&mut self, size: usize) {
         self.current_pointer -= size;
-    }    
+    }
+
+    fn assigned_memory_size() -> usize {
+        unimplemented!()
+    }
+
+    fn aux_data_structures_size() -> usize {
+        unimplemented!()
+    }
 }
 
 pub struct SafeBumpAllocator {    
@@ -245,5 +265,13 @@ impl MemoryAllocator for SafeBumpAllocator {
 
     fn free(&mut self, size: usize) {
         self.current_pointer -= size;
-    }    
+    }
+
+    fn assigned_memory_size() -> usize {
+        unimplemented!()
+    }
+
+    fn aux_data_structures_size() -> usize {
+        unimplemented!()
+    }
 }

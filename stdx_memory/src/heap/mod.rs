@@ -242,6 +242,7 @@ impl<T, A> RC<T, A> where A : MemoryAllocator {
 impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
     fn clone(&self) -> Self {                
         unsafe {
+            let pointer = self.rc_box.as_ptr() as usize;
             self.rc_box.as_ref().inc_ref_count();
 
             let rc_box     = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
@@ -258,6 +259,7 @@ impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
 impl<T, A> ops::Drop for RC<T, A> where A : MemoryAllocator {
     fn drop(&mut self) {
         unsafe {
+            let pointer = self.rc_box.as_ptr() as usize;
             if self.rc_box.as_ref().reference_count() == 1 {
                 let pointer = self.rc_box.as_ptr() as usize;
                 self.memory_allocator.as_mut().free(pointer);

@@ -8,20 +8,10 @@ pub mod heap;
 pub mod collections;
 pub mod trees;
 
-
 use core::mem;
+
 pub trait MemoryAllocator {
-    
-    /*
-    fn from_address(address: usize, size : usize) -> Self;
 
-    fn from_address_for_type<T>(address: usize) -> Self
-    where Self : core::marker::Sized {
-        use core::mem::size_of;
-        Self::from_address(address, size_of::<T>())
-    }
-
-    */
     fn allocate(&mut self, size : usize) -> Option<usize>;
 
     fn allocate_for<T>(&mut self) -> Option<usize> {
@@ -30,34 +20,20 @@ pub trait MemoryAllocator {
 
     fn free(&mut self, pointer : usize);
 
-    /*
-    fn start_address(&self) -> usize;
+    fn assigned_memory_size() -> usize;
 
-    fn end_address(&self) -> usize;
-    */
+    fn aux_data_structures_size() -> usize;
 }
 
-pub trait ConstantSizeMemoryAllocator {    
-
-    
-    /*
-    fn from_address(address: usize, size : usize, allocation_size : usize) -> Self;
-
-    fn from_address_for_type<T>(address: usize, size : usize) -> Self
-    where Self : core::marker::Sized {        
-        Self::from_address(address, size, mem::size_of::<T>())
-    }
-
-    fn from_address_for_type_multiple<T>(address: usize, elems_count : usize) -> Self
-    where Self : core::marker::Sized {    
-        let elem_size = mem::size_of::<T>();
-        Self::from_address(address, elem_size * elems_count, elem_size)
-    }
-    */
+pub trait ConstantSizeMemoryAllocator {
 
     fn allocate_size(&mut self) -> Option<usize>;    
 
-    fn free_size(&mut self, pointer : usize);    
+    fn free_size(&mut self, pointer : usize);
+
+    fn assigned_memory_size() -> usize;
+
+    fn aux_data_structures_size() -> usize;
 }
 
 impl<T> MemoryAllocator for T where T: ConstantSizeMemoryAllocator
@@ -68,5 +44,13 @@ impl<T> MemoryAllocator for T where T: ConstantSizeMemoryAllocator
 
     fn free(&mut self, pointer : usize) {
         self.free_size(pointer)
+    }
+
+    fn assigned_memory_size() -> usize {
+        T::assigned_memory_size()
+    }
+
+    fn aux_data_structures_size() -> usize {
+        T::aux_data_structures_size()
     }
 }

@@ -4,6 +4,7 @@ use stdx_memory::collections::linked_list::LinkedList;
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
 
+#[repr(C)]
 pub struct FreeListAllocator {
     bump_allocator        : ConstSizeBumpAllocator,
     block_size            : usize,
@@ -15,19 +16,19 @@ pub struct FreeListAllocator {
 impl FreeListAllocator {
     pub fn from_address(address: usize, size : usize, block_size : usize) -> FreeListAllocator {
         let bump_allocator = ConstSizeBumpAllocator::from_address(address, size, block_size);            
-
+        let blocks_count = bump_allocator.total_blocks_count();
         let mut free_blocks_allocator = ConstSizeBumpAllocator::from_address_for_type_multiple::<LinkedList<usize>>(
-            bump_allocator.end_address() + 1, 
-            bump_allocator.total_blocks_count() + 1); // +1 for LinkedList::Nil        
+            bump_allocator.end_address() + 1,
+            blocks_count + 1); // +1 for LinkedList::Nil
 
         let free_blocks = heap::Box::new(LinkedList::Nil, &mut free_blocks_allocator);
-        let free_blocks_count = bump_allocator.total_blocks_count();
+
         FreeListAllocator {
             bump_allocator,
             block_size,
             free_blocks,
             free_blocks_allocator,
-            free_blocks_count
+            free_blocks_count :blocks_count
         }
     }
 
@@ -45,7 +46,7 @@ impl FreeListAllocator {
     }
 
     pub fn end_address(&self) -> usize {
-        self.bump_allocator.end_address()
+        self.free_blocks_allocator.end_address()
     }    
 
     pub fn increase_size(&mut self, size : usize) {
@@ -68,7 +69,13 @@ impl ConstantSizeMemoryAllocator for FreeListAllocator {
             Some(value)
         }
         else {
-            self.bump_allocator.allocate(self.block_size)
+            let bump_result = self.bump_allocator.allocate(self.block_size);
+
+            if bump_result.is_some() {
+                self.free_blocks_count -= 1;
+            }
+
+            bump_result
         }
     }
 
@@ -77,4 +84,11 @@ impl ConstantSizeMemoryAllocator for FreeListAllocator {
         self.free_blocks = self.free_blocks.add(pointer, &mut self.free_blocks_allocator);
     }
 
+    fn assigned_memory_size() -> usize {
+        unimplemented!()
+    }
+
+    fn aux_data_structures_size() -> usize {
+        unimplemented!()
+    }
 }

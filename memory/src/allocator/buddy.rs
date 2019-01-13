@@ -54,12 +54,12 @@ impl BuddyAllocator {
         }
     }
 
-    fn start_address(&self) -> usize {
-        1
+    pub fn start_address(&self) -> usize {
+        self.start_address
     }
 
-    fn end_address(&self) -> usize {
-        1
+    pub fn end_address(&self) -> usize {
+        self.start_address - self.total_memory
     }
 
     pub fn new(start_address1 : usize, end_address1 : usize) -> Self {
@@ -334,6 +334,14 @@ impl MemoryAllocator for BuddyAllocator {
         let buddy_list_index   = self.allocation_sizes[frame_number];
 
         self.merge_up(normalized_pointer, buddy_list_index);        
+    }
+
+    fn assigned_memory_size() -> usize {
+        unimplemented!()
+    }
+
+    fn aux_data_structures_size() -> usize {
+        unimplemented!()
     }
 }
 

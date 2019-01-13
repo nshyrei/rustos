@@ -135,18 +135,22 @@ use core::ptr;
 
     use stdx_memory::heap;
 
-
   unsafe {   ptr::write_unaligned(heap_addr as *mut usize, 100); }
 
-    let heap_a = Frame::address_align_up(heap_addr);
-    let heap_end_address = heap_a + size - 1;
-    let allocator = BuddyAllocator::new(heap_a, heap_a + size);
-    let mut slab_allocator = SlabAllocator::new(heap_a + size + 1, heap_a + size + 1 + 32768, allocator);
+    let frame_allocator_start = Frame::address_align_up(heap_addr);
 
-    let result = slab_allocator.allocate(100);
-    let result1 = slab_allocator.allocate(100);
+    let allocator                       = BuddyAllocator::new(frame_allocator_start, frame_allocator_start + size);
+    let slab_allocator_start     = allocator.end_address() + 1;
+
+    let mut slab_allocator      = SlabAllocator::new(slab_allocator_start, frame_allocator_start + size, allocator);
+
+    let result = slab_allocator.allocate(2048);
+    let result1 = slab_allocator.allocate(2048);
+    let result2 = slab_allocator.allocate(2048);
 
     slab_allocator.free(result1.unwrap());
+    slab_allocator.free(result.unwrap());
+    slab_allocator.free(result2.unwrap());
 
 
 

@@ -12,17 +12,16 @@ use stdx::Iterable;
 use core::ops::Deref;
 use core::ops::DerefMut;
 
-type OptNodeBox<T> = Option<heap::WeakBox<AVLNode<T>>>;
-type NodeBox<T> = heap::WeakBox<AVLNode<T>>;
+type NodeBox<T, M>         = heap::RC<AVLNode<T, M>, M>;
+type OptNodeBox<T, M>  = Option<NodeBox<T, M>>;
 
-
-fn height<T>(node : &OptNodeBox<T>) -> i64 where T : cmp::Ord {
+fn height<T, M>(node : &OptNodeBox<T, M>) -> i64 where T : cmp::Ord, M : MemoryAllocator {
     node.as_ref()
         .map(|n| n.height())
         .unwrap_or(-1)
 }
 
-fn insert0<T, M>(mut node : NodeBox<T>, value : T, memory_allocator : &mut M) -> NodeBox<T> where T : cmp::Ord, M : MemoryAllocator  {
+fn insert0<T, M>(mut node : NodeBox<T, M>, value : T, memory_allocator : &mut M) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator  {
     let cmp_result = node.value().cmp(&value);
             
     match cmp_result {
@@ -55,7 +54,7 @@ fn insert0<T, M>(mut node : NodeBox<T>, value : T, memory_allocator : &mut M) ->
 }
 
 
-fn find0<'a, T>(node : &'a OptNodeBox<T>, x : &T) -> Option<&'a T> where T : cmp::Ord {
+fn find0<'a, T, M>(node : &'a OptNodeBox<T, M>, x : &T) -> Option<&'a T> where T : cmp::Ord, M : MemoryAllocator {
     node.as_ref().and_then(|n| match n.value().cmp(x) {
             Ordering::Less    => find0(&n.left, x),
             Ordering::Greater => find0(&n.right, x),
@@ -63,11 +62,12 @@ fn find0<'a, T>(node : &'a OptNodeBox<T>, x : &T) -> Option<&'a T> where T : cmp
     })
 }
 
-fn find_by0<T, F, P, C>(node : &OptNodeBox<T>, x : &C, selector : F, predicate : P) -> Option<heap::WeakBox<T>>
+fn find_by0<T, F, P, C, M>(node : &OptNodeBox<T, M>, x : &C, selector : F, predicate : P) -> Option<heap::WeakBox<T>>
     where F : Fn(&T) -> C,
           P : Fn(&T, &C) -> bool,
           T : cmp::Ord,
-          C : cmp::Ord
+          C : cmp::Ord,
+        M : MemoryAllocator
 {
     node.as_ref().and_then(|n| {
         
@@ -76,31 +76,31 @@ fn find_by0<T, F, P, C>(node : &OptNodeBox<T>, x : &C, selector : F, predicate :
         }
         else { 
             match selector(n.value()).cmp(x)  {
-                Ordering::Less => find_by0(n.left(), x, selector, predicate),
-                Ordering::Greater => find_by0(n.right(), x, selector, predicate),
+                Ordering::Less => find_by0(&n.left(), x, selector, predicate),
+                Ordering::Greater => find_by0(&n.right(), x, selector, predicate),
                 _ => Some(heap::WeakBox::from_pointer(n.value()))
             }
         }
     })    
 }
 
-fn rotate_right<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+fn rotate_right<T, M>(mut x : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     let mut y = x.take_left().expect("invalid avl");
 
     x.set_left(y.take_right());
     x.update_height();
         
-    y.set_right(Some(heap::WeakBox::from_pointer(&x)));
+    y.set_right(Some(heap::RC::clone(&x)));
     y.update_height();
 
     y
 }
 
-fn rotate_left<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+fn rotate_left<T, M>(mut x : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     let mut y = x.take_right().expect("invalid avl");
 
     x.set_right(y.take_left());
-    y.set_left(Some(heap::WeakBox::from_pointer(&x)));
+    y.set_left(Some(heap::RC::clone(&x)));
 
     x.update_height();
     y.update_height();
@@ -108,17 +108,17 @@ fn rotate_left<T>(mut x : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
     y
 }
 
-fn balance_factor_opt<T>(node : &OptNodeBox<T>) -> i64 where T : cmp::Ord {
+fn balance_factor_opt<T, M>(node : &OptNodeBox<T, M>) -> i64 where T : cmp::Ord, M : MemoryAllocator {
     node.as_ref()
         .map(|n| balance_factor(n))
         .unwrap_or(0)
 }
 
-fn balance_factor<T>(node : &AVLNode<T>) -> i64 where T : cmp::Ord {
+fn balance_factor<T, M>(node : &AVLNode<T, M>) -> i64 where T : cmp::Ord, M : MemoryAllocator {
     height(&node.left) - height(&node.right)
 }
 
-fn balance<T>(mut node : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+fn balance<T, M>(mut node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     let balance_factor = balance_factor(&node);
     if balance_factor < -1 {
         if balance_factor_opt(&node.right) > 0 && node.has_right() {
@@ -142,14 +142,14 @@ fn balance<T>(mut node : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
     node
 }
 
-fn min<T>(node : &NodeBox<T>) -> &NodeBox<T> where T : cmp::Ord {
+fn min<T, M>(node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     node.left()
         .as_ref()
-        .map(|l| min(l))
+        .map(|rc| min(heap::RC::clone(rc)))
         .unwrap_or(node)
 }
 
-fn delete_min<T>(mut node : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
+fn delete_min<T, M>(mut node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     match node.take_left() {
         Some(left) => {
             node.set_left(Some(delete_min(left)));
@@ -161,7 +161,7 @@ fn delete_min<T>(mut node : NodeBox<T>) -> NodeBox<T> where T : cmp::Ord {
     }
 }
 
-fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord {
+fn delete<T, M>(mut node : NodeBox<T, M>, value : T) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     let cmp_result = node.value().cmp(&value);
             
     match cmp_result {
@@ -181,15 +181,19 @@ fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord 
                 return node.take_left_unwrap()
             }
             else {
-                let node_copy = heap::WeakBox::from_pointer(node.deref());
+                let node_copy = heap::RC::clone(&node);
+
+                let cpy_right = node_copy.right().is_some();
+                let cpy_left = node_copy.left().is_some();
 
                 {
-                    let new_node = min(node_copy.right().as_ref().unwrap());
+                    let new_node = min(node_copy.right().unwrap());
 
-                    node = heap::WeakBox::from_pointer(new_node);
+                    node = (new_node);
                 }
 
-                let right_copy = heap::WeakBox::from_pointer(node_copy.right().as_ref().unwrap().deref());
+                let right_copy_n = node_copy.right().unwrap();
+                let right_copy = heap::RC::clone(&right_copy_n);
                 //let left_copy = heap::WeakBox::from_pointer(node_copy.left().as_ref().unwrap().deref());
                 let new_right = delete_min(right_copy);                
                 node.set_right(Some(new_right));
@@ -210,39 +214,43 @@ fn delete<T>(mut node : NodeBox<T>, value : T) -> NodeBox<T> where T : cmp::Ord 
     balance(node)
 }
 
-fn delete_by<T, Q, F>(mut node : NodeBox<T>, value : Q, f : F) -> NodeBox<T> where T : cmp::Ord, F : Fn(&T) -> Q, Q :cmp::Ord {
+fn delete_by<T, Q, F, M>(mut node : NodeBox<T, M>, value : Q, f : F) -> OptNodeBox<T, M> where T : cmp::Ord, F : Fn(&T) -> Q, Q :cmp::Ord, M : MemoryAllocator {
     let comparable_value = f(node.value());
     let cmp_result = comparable_value.cmp(&value);
 
     match cmp_result {
         Ordering::Less if node.left().is_some() => {
             let new_left = delete_by(node.take_left_unwrap(), value, f);
-            node.set_left(Some(new_left));
+            node.set_left(new_left);
         },
         Ordering::Greater if node.right().is_some() => {
             let new_right = delete_by(node.take_right_unwrap(), value, f);
-            node.set_right(Some(new_right));
+            node.set_right(new_right);
         },
         _ => {
-            if node.left().is_none() && node.right().is_some() {
-                return node.take_right_unwrap()
+            if node.left().is_none() {
+                return  node.right_mut().take()
             }
-                else if node.right().is_none() && node.left().is_some() {
-                    return node.take_left_unwrap()
+            else if node.right().is_none() {
+                return node.left_mut().take()
+            }
+            else {
+                let node_copy = heap::RC::clone(&node);
+
+                let cpy_right = node_copy.right().is_some();
+                let cpy_left = node_copy.left().is_some();
+
+                {
+                    let new_node = min(node_copy.right().unwrap());
+
+                    node = (new_node);
                 }
-                    else {
-                        let node_copy = heap::WeakBox::from_pointer(node.deref());
 
-                        {
-                            let new_node = min(node_copy.right().as_ref().unwrap());
-
-                            node = heap::WeakBox::from_pointer(new_node);
-                        }
-
-                        let right_copy = heap::WeakBox::from_pointer(node_copy.right().as_ref().unwrap().deref());
+                let right_copy_n = node_copy.right().unwrap();
+                let right_copy = heap::RC::clone(&right_copy_n);
                         //let left_copy = heap::WeakBox::from_pointer(node_copy.left().as_ref().unwrap().deref());
-                        let new_right = delete_min(right_copy);
-                        node.set_right(Some(new_right));
+                let new_right = delete_min(right_copy);
+                node.set_right(Some(new_right));
                         //node.set_left(Some(left_copy));
 
 
@@ -252,15 +260,15 @@ fn delete_by<T, Q, F>(mut node : NodeBox<T>, value : Q, f : F) -> NodeBox<T> whe
                         x.right = deleteMin(y.right);
                         x.left = y.left;
                         */
-                    }
+            }
         }
     }
 
     node.update_height();
-    balance(node)
+    Some(balance(node))
 }
 
-fn is_BST<T>(node : &OptNodeBox<T>, min : Option<&T>, max : Option<&T>) -> bool where T : cmp::Ord {
+fn is_BST<T, M>(node : &OptNodeBox<T, M>, min : Option<&T>, max : Option<&T>) -> bool where T : cmp::Ord, M : MemoryAllocator {
     node.as_ref()
         .map(|n| {
             let value = n.value();
@@ -270,30 +278,31 @@ fn is_BST<T>(node : &OptNodeBox<T>, min : Option<&T>, max : Option<&T>) -> bool 
             
             min_check && 
             max_check && 
-            is_BST(n.left(), min, Some(value)) &&
-            is_BST(n.right(), Some(value), max)
+            is_BST(&n.left(), min, Some(value)) &&
+            is_BST(&n.right(), Some(value), max)
         })
         .unwrap_or(true)
 }
 
-fn is_AVL<T>(node : &OptNodeBox<T>) -> bool where T : cmp::Ord {
+fn is_AVL<T, M>(node : &OptNodeBox<T, M>) -> bool where T : cmp::Ord, M : MemoryAllocator {
     node.as_ref()
         .map(|n| {
             let balance_factor = balance_factor(n);
             let balance_factor_check = balance_factor >= -1 && balance_factor <= 1;
 
             balance_factor_check &&
-            is_AVL(n.left()) &&
-            is_AVL(n.right())
+            is_AVL(&n.left()) &&
+            is_AVL(&n.right())
         })
         .unwrap_or(true)
 }
 
-pub struct AVLTree<T> where T : cmp::Ord {
-    root : OptNodeBox<T>
+#[repr(C)]
+pub struct AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
+    root : OptNodeBox<T, M>
 }
 
-impl<T> AVLTree<T> where T : cmp::Ord {
+impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 
     pub fn is_empty(&self) -> bool {
         self.root.is_none()
@@ -323,7 +332,7 @@ impl<T> AVLTree<T> where T : cmp::Ord {
         height(&self.root)
     }
 
-    pub fn insert<M>(&mut self, value : T, memory_allocator : &mut M) where M : MemoryAllocator {
+    pub fn insert(&mut self, value : T, memory_allocator : &mut M) where M : MemoryAllocator {
         match self.root.take() {
             Some(node) => self.root = Some(insert0(node, value, memory_allocator)),
             _ => self.root = Some(AVLNode::new(value, 0, memory_allocator)) 
@@ -339,7 +348,7 @@ impl<T> AVLTree<T> where T : cmp::Ord {
 
     pub fn delete_by<Q, F>(&mut self, key : Q, f : F)  where F : Fn(&T) -> Q, Q :cmp::Ord {
         match self.root.take() {
-            Some(node) => self.root = Some(delete_by(node, key, f)),
+            Some(node) => self.root = delete_by(node, key, f),
             _ => self.root = None
         }
     }
@@ -347,67 +356,66 @@ impl<T> AVLTree<T> where T : cmp::Ord {
     pub fn check(&self) -> bool {
         is_BST(&self.root, None, None) && is_AVL(&self.root)
     }
-}
 
-impl<T> AVLTree<T> where T : cmp::Ord {
     pub fn cell_size() -> usize {
-        mem::size_of::<AVLNode<T>>()
+        mem::size_of::<AVLNode<T, M>>()
     }
 }
 
-struct AVLNode<T> where T : cmp::Ord {
+#[repr(C)]
+struct AVLNode<T, M> where T : cmp::Ord, M : MemoryAllocator {
     value  : T,
     height : i64,
-    left   : OptNodeBox<T>,
-    right  : OptNodeBox<T>
+    left   : OptNodeBox<T, M>,
+    right  : OptNodeBox<T, M>
 }
 
-impl<T> AVLNode<T> where T : cmp::Ord {
+impl<T, M> AVLNode<T, M> where T : cmp::Ord, M : MemoryAllocator {
     pub fn height(&self) -> i64 {
         self.height
     }
 
-    pub fn left(&self) -> &OptNodeBox<T> {
-        &self.left
+    pub fn left(&self) -> OptNodeBox<T, M> {
+        self.left.as_ref().map(|rc| heap::RC::clone(rc))
     }
 
-    pub fn right(&self) -> &OptNodeBox<T> {
-        &self.right
+    pub fn right(&self) -> OptNodeBox<T, M> {
+        self.right.as_ref().map(|rc| heap::RC::clone(rc))
     }
 
-    pub fn left_mut(&mut self) -> &mut OptNodeBox<T> {
+    pub fn left_mut(&mut self) -> &mut OptNodeBox<T, M> {
         &mut self.left
     }
 
-    pub fn right_mut(&mut self) -> &mut OptNodeBox<T> {
+    pub fn right_mut(&mut self) -> &mut OptNodeBox<T, M> {
         &mut self.right
     }
 
-    pub fn set_right(&mut self, v : OptNodeBox<T>) {
+    pub fn set_right(&mut self, v : OptNodeBox<T, M>) {
         self.right = v
     }
 
-    pub fn set_left(&mut self, v : OptNodeBox<T>) {
+    pub fn set_left(&mut self, v : OptNodeBox<T, M>) {
         self.left = v
     }
 
     pub fn update_height(&mut self) {
-        self.height = 1 + cmp::max(height(self.left()), height(self.right()))
+        self.height = 1 + cmp::max(height(&self.left()), height(&self.right()))
     }
 
-    pub fn take_left(&mut self) -> OptNodeBox<T> {
+    pub fn take_left(&mut self) -> OptNodeBox<T, M> {
         self.left.take()
     }
 
-    pub fn take_right(&mut self) -> OptNodeBox<T> {
+    pub fn take_right(&mut self) -> OptNodeBox<T, M> {
         self.right.take()
     }
 
-    pub fn take_left_unwrap(&mut self) -> NodeBox<T> {
+    pub fn take_left_unwrap(&mut self) -> NodeBox<T, M> {
         self.take_left().unwrap()
     }
 
-    pub fn take_right_unwrap(&mut self) -> NodeBox<T> {
+    pub fn take_right_unwrap(&mut self) -> NodeBox<T, M> {
         self.take_right().unwrap()
     }
 
@@ -418,10 +426,7 @@ impl<T> AVLNode<T> where T : cmp::Ord {
     pub fn has_left(&self) -> bool {
         self.left.is_some()
     }
-}
 
-impl<T> AVLNode<T> where T : cmp::Ord {
-    
     pub fn value(&self) -> &T {
         &self.value
     }
@@ -430,7 +435,7 @@ impl<T> AVLNode<T> where T : cmp::Ord {
         &mut self.value
     }
 
-    pub fn new<M>(value : T, height : i64, memory_allocator : &mut M) -> heap::WeakBox<Self> where M : MemoryAllocator {
+    pub fn new(value : T, height : i64, memory_allocator : &mut M) -> heap::RC<Self, M> where M : MemoryAllocator {
         let result = AVLNode {
             value  : value,
             height : height,
@@ -438,7 +443,7 @@ impl<T> AVLNode<T> where T : cmp::Ord {
             right  : None
         };
 
-        heap::WeakBox::new(result, memory_allocator)
+        heap::RC::new(result, memory_allocator)
     }
 }
 /*
