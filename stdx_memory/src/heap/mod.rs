@@ -257,7 +257,7 @@ impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
                 rc_box,
                 memory_allocator
             }
-        }                
+        }
     }
 }
 
