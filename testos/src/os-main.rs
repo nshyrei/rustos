@@ -53,13 +53,14 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
             let sz = core::mem::size_of::<usize>();
             let boxin = Box::new(us);
             let bb = boxin;
+}
             */
         }
 
         let mut tst_aloc = memory::allocator::bump::BumpAllocator::from_address(10000, 512);
         {
-            let mut li = DoubleLinkedList::new(1, &mut tst_aloc);
-            let li2 = DoubleLinkedList::add(&mut li, 10, &mut tst_aloc);
+            /*let mut li = DoubleLinkedList::new(1, &mut tst_aloc);
+            let li2 = DoubleLinkedList::add(&mut li, 10, &mut tst_aloc);*/
         }
         
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
@@ -92,26 +93,6 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_translate_address_should_properly_translate_virtual_address(p4_table, &mut frame_allocator);        
     }
     loop {}
-}
-
-struct Nigga<A> {
-    value : A
-}
-
-impl<A> Nigga<A> {
-    pub fn v_m(&mut self) -> &mut A {
-        &mut self.value
-    }
-}
-
-fn doni<A, F>(x : &mut Option<heap::WeakBox<Nigga<A>>>,f : F) -> &mut A where F : Fn(&Nigga<A>) -> bool {
-    let mut bv : Option<bool> = None;
-    { 
-        let vx = f(x.as_ref().unwrap());
-        bv = Some(vx);
-     }
-     let xgv = bv;
-    x.as_mut().map(|b| { let vy = bv; b.v_m() }).unwrap()
 }
 
 pub fn free_list_should_properly_set_free( writer : &mut Writer, adr: usize) {

@@ -7,10 +7,10 @@ use core::cmp;
 use core::cell;
 use core::convert;
 
+#[repr(C)]
 pub struct Box<T, A> where A : MemoryAllocator{
-    unique           : ptr::NonNull<T>,
+    unique                    : ptr::NonNull<T>,
     memory_allocator : ptr::NonNull<A>
-
 }
 
 impl <T,A> Box<T,A> where A : MemoryAllocator {
@@ -29,7 +29,7 @@ impl <T,A> Box<T,A> where A : MemoryAllocator {
 
     pub fn from_pointer(pointer : &T, memory_allocator : &mut A) -> Self {
         Box {
-            unique           : ptr::NonNull::from(pointer),
+            unique                    : ptr::NonNull::from(pointer),
             memory_allocator : ptr::NonNull::from(memory_allocator)
         }
     }
@@ -74,7 +74,7 @@ impl<T, A> cmp::PartialEq for Box<T, A> where T : cmp::PartialEq, A : MemoryAllo
         self.deref().eq(other.deref())
     }
 }
-
+#[repr(C)]
 pub struct WeakBox<T>{
     unique : ptr::NonNull<T>
 }
@@ -144,7 +144,7 @@ impl<T> cmp::PartialEq for WeakBox<T> where T : cmp::PartialEq {
         self.deref().eq(other.deref())
     }
 }
-
+#[repr(C)]
 pub struct SharedBox<T>{
     unique : ptr::NonNull<T>
 }
@@ -211,7 +211,7 @@ impl<T> Clone for SharedBox<T> where T : Sized {
 
 impl<T> Copy for SharedBox<T> where T : Sized  { }
 
-
+#[repr(C)]
 pub struct RC<T, A> where A : MemoryAllocator {
     rc_box           : ptr::NonNull<RCBox<T>>,
     memory_allocator : ptr::NonNull<A>
@@ -234,23 +234,28 @@ impl<T, A> RC<T, A> where A : MemoryAllocator {
         }        
     }
 
+    pub fn reference_count(&self) -> usize {
+        let debug = unsafe { self.rc_box.as_ref() as *const _ as usize };
+        self.rc_box().reference_count()
+    }
+
     fn rc_box(&self) -> &RCBox<T> {
         unsafe { self.rc_box.as_ref() }
     }
 }
 
 impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
-    fn clone(&self) -> Self {                
+    fn clone(&self) -> Self {
         unsafe {
             let pointer = self.rc_box.as_ptr() as usize;
             self.rc_box.as_ref().inc_ref_count();
 
-            let rc_box     = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
+            let rc_box                      = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
             let memory_allocator = ptr::NonNull::new_unchecked(self.memory_allocator.as_ptr());
 
             RC {
-                rc_box           : rc_box,
-                memory_allocator : memory_allocator
+                rc_box,
+                memory_allocator
             }
         }                
     }
@@ -325,12 +330,13 @@ impl<T> RCBox<T> {
 
     fn new(value : T) -> Self {
         RCBox {
-            value           : value,
+            value,
             reference_count : cell::Cell::from(1)
         }
     }
 
     fn reference_count(&self) -> usize {
+        let debug = self.reference_count.get();
         self.reference_count.get()
     }
 
@@ -357,9 +363,7 @@ impl<T> cmp::PartialOrd for RCBox<T> where T : cmp::PartialOrd {
     }
 }
 
-impl<T> cmp::Eq for RCBox<T> where T : cmp::Eq {
-
-}
+impl<T> cmp::Eq for RCBox<T> where T : cmp::Eq { }
 
 impl<T> cmp::PartialEq for RCBox<T> where T : cmp::PartialEq {
     fn eq(&self, other: &Self) -> bool {

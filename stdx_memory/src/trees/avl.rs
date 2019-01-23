@@ -23,7 +23,7 @@ fn height<T, M>(node : &OptNodeBox<T, M>) -> i64 where T : cmp::Ord, M : MemoryA
 
 fn insert0<T, M>(mut node : NodeBox<T, M>, value : T, memory_allocator : &mut M) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator  {
     let cmp_result = node.value().cmp(&value);
-            
+    let rc1 = node.reference_count();
     match cmp_result {
         Ordering::Less    => {
             if node.left.is_some() {
@@ -48,8 +48,8 @@ fn insert0<T, M>(mut node : NodeBox<T, M>, value : T, memory_allocator : &mut M)
         _ => return node
     }
         
-    node.update_height();
-
+    (&mut node).update_height();
+    let rc2 = node.reference_count();
     balance(node)
 }
 
@@ -69,6 +69,7 @@ fn find_by0<T, F, P, C, M>(node : &OptNodeBox<T, M>, x : &C, selector : F, predi
           C : cmp::Ord,
         M : MemoryAllocator
 {
+    
     node.as_ref().and_then(|n| {
         
         if predicate(n.value(), x) {
@@ -304,6 +305,16 @@ pub struct AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 
 impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 
+    pub fn root_value(&self) -> Option<&T> {
+        self.root.as_ref().map(|rc| rc.value())
+    }
+
+    pub fn root_node(&self)   {
+        let arv = self.root.as_ref().map(|n| {
+            n.value()
+        });
+    }
+
     pub fn is_empty(&self) -> bool {
         self.root.is_none()
     }
@@ -320,6 +331,7 @@ impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
               T : cmp::Ord,
               C : cmp::Ord
     {
+
         find_by0(&mut self.root, x, selector, predicate)
         
     }
@@ -334,9 +346,19 @@ impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 
     pub fn insert(&mut self, value : T, memory_allocator : &mut M) where M : MemoryAllocator {
         match self.root.take() {
-            Some(node) => self.root = Some(insert0(node, value, memory_allocator)),
-            _ => self.root = Some(AVLNode::new(value, 0, memory_allocator)) 
+            Some(node) => {
+
+                self.root = Some(insert0(node, value, memory_allocator))
+            },
+            _ => {
+                self.root = Some(AVLNode::new(value, 0, memory_allocator));
+
+
+            }
         }
+
+        let wtf = self.root.as_ref().map(|rc| rc.reference_count()).unwrap_or(0);
+        let abc2 = wtf;
     }
 
     pub fn delete(&mut self, key : T) {

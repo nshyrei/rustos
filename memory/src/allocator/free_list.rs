@@ -3,6 +3,7 @@ use stdx_memory::heap;
 use stdx_memory::collections::linked_list::LinkedList;
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
+use core::cmp;
 
 #[repr(C)]
 pub struct FreeListAllocator {
@@ -90,5 +91,27 @@ impl ConstantSizeMemoryAllocator for FreeListAllocator {
 
     fn aux_data_structures_size() -> usize {
         unimplemented!()
+    }
+}
+
+impl cmp::Ord for FreeListAllocator {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.start_address().cmp(&other.start_address())
+    }
+}
+
+impl cmp::PartialOrd for FreeListAllocator {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.start_address().partial_cmp(&other.start_address())
+    }
+}
+
+impl cmp::Eq for FreeListAllocator {
+
+}
+
+impl cmp::PartialEq for FreeListAllocator {
+    fn eq(&self, other: &Self) -> bool {
+        self.start_address() == other.start_address()
     }
 }
