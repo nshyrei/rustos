@@ -83,7 +83,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         print_multiboot_data(multiboot_header, &mut vga_writer);                    
 
-        free_list_should_properly_set_free(&mut vga_writer, 0);
+        slab_allocator_should_be_fully_free(&mut vga_writer, 0);
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
@@ -95,35 +95,31 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     loop {}
 }
 
-pub fn free_list_should_properly_set_free( writer : &mut Writer, adr: usize) {
-
-use memory::frame::Frame;
-use memory::frame::FRAME_SIZE;
-use stdx::iterator::IteratorExt;
-use stdx::Sequence;
-use stdx::Iterable;
-use stdx_memory::MemoryAllocator;
-use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListIterator, BuddyMap};
-use memory::allocator::bump::BumpAllocator;
-use memory::allocator::buddy::BuddyAllocator;
-use memory::allocator::free_list::FreeListAllocator;
-use core::mem;    
-use core::ptr;    
-
-    let size = 32768;
-    let heap : [u8;80000] = [0;80000];
-    let heap_addr = heap.as_ptr() as usize;    
-
+pub fn slab_allocator_should_be_fully_free(writer: &mut Writer, adr: usize) {
+    use memory::frame::Frame;
+    use memory::frame::FRAME_SIZE;
+    use stdx::iterator::IteratorExt;
+    use stdx::Sequence;
+    use stdx::Iterable;
+    use stdx_memory::MemoryAllocator;
+    use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListIterator, BuddyMap};
+    use memory::allocator::bump::BumpAllocator;
+    use memory::allocator::buddy::BuddyAllocator;
+    use memory::allocator::free_list::FreeListAllocator;
+    use core::mem;
+    use core::ptr;
     use stdx_memory::heap;
 
-  unsafe {   ptr::write_unaligned(heap_addr as *mut usize, 100); }
+    let size = 32768;
+    let heap: [u8; 80000] = [0; 80000];
+    let heap_addr = heap.as_ptr() as usize;
 
     let frame_allocator_start = Frame::address_align_up(heap_addr);
 
-    let allocator                       = BuddyAllocator::new(frame_allocator_start, frame_allocator_start + size);
-    let slab_allocator_start     = allocator.end_address() + 1;
+    let allocator = BuddyAllocator::new(frame_allocator_start, frame_allocator_start + size);
+    let slab_allocator_start = allocator.end_address() + 1;
 
-    let mut slab_allocator      = SlabAllocator::new(slab_allocator_start, frame_allocator_start + size, allocator);
+    let mut slab_allocator = SlabAllocator::new(slab_allocator_start, frame_allocator_start + size, allocator);
 
     let result = slab_allocator.allocate(2048);
     let result1 = slab_allocator.allocate(2048);
@@ -133,10 +129,11 @@ use core::ptr;
     slab_allocator.free(result.unwrap());
     slab_allocator.free(result2.unwrap());
 
-
+    let result = slab_allocator.is_fully_free();
 
     let exit = 0;
 }
+
 use core::panic::PanicInfo;
 
 #[lang = "eh_personality"]
@@ -153,12 +150,7 @@ pub extern "C" fn oom(l: Layout) -> ! {
 }
 
 fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut Writer) {
-    let mut memInfo1 = multiboot_header            
-            .read_tag::<basic_memory_info::BasicMemoryInfo>()
-            .unwrap();
-
     writeln!(vga_writer, "---Basic memory info---");
-    writeln!(vga_writer, "{}", memInfo1);
 
     let memInfo = multiboot_header            
             .read_tag::<memory_map::MemoryMap>()
@@ -183,10 +175,10 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
     writeln!(vga_writer, "---Elf sections---");
     writeln!(vga_writer, "Elf sections start: {}", elf_sections.entries_start_address().unwrap());
     writeln!(vga_writer, "Elf sections end: {}", elf_sections.entries_end_address().unwrap());
+
     while let Some(e) = elf_sectionsIt.next() {
         writeln!(vga_writer, "{}", e);
     }
-    
 }
 
 unsafe fn paging_map_should_properly_map_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator, vga_writer : &mut Writer) {    
@@ -284,10 +276,6 @@ fn sanity_assert_translate_address_result(virtual_address : usize, physical_addr
 
     let result_address = result.unwrap();
 
-    assert!(physical_address == result_address, 
-        "Returned invalid translation result for virtual frame {}. Should be frame {} but was {}",
-        virtual_address,
-        physical_address,
-        result_address);
+    assert_eq!(physical_address, result_address, "Returned invalid translation result for virtual frame {}. Should be frame {} but was {}", virtual_address, physical_address, result_address);
 }
 

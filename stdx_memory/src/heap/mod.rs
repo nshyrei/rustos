@@ -7,6 +7,8 @@ use core::cmp;
 use core::cell;
 use core::convert;
 
+pub type RCBox<T, A> = RC<Box<T, A>, A>;
+
 #[repr(C)]
 pub struct Box<T, A> where A : MemoryAllocator{
     unique                    : ptr::NonNull<T>,
@@ -213,25 +215,32 @@ impl<T> Copy for SharedBox<T> where T : Sized  { }
 
 #[repr(C)]
 pub struct RC<T, A> where A : MemoryAllocator {
-    rc_box           : ptr::NonNull<RCBox<T>>,
+    rc_box           : ptr::NonNull<RcBox<T>>,
     memory_allocator : ptr::NonNull<A>
 }
 
 impl<T, A> RC<T, A> where A : MemoryAllocator {
     pub fn new(value : T, memory_allocator : &mut A) -> Self {
-        let pointer = memory_allocator.allocate_for::<RCBox<T>>().expect("No memory for RC box value");
-        let rc_box = RCBox::new(value);
+        let pointer = memory_allocator.allocate_for::<RcBox<T>>().expect("No memory for RC box value");
+        let rc_box = RcBox::new(value);
 
         unsafe { 
-            ptr::write_unaligned(pointer as *mut RCBox<T>, rc_box);
-            let rc_box = ptr::NonNull::new_unchecked(pointer as *mut RCBox<T>);
+            ptr::write_unaligned(pointer as *mut RcBox<T>, rc_box);
+
+            let rc_box                       = ptr::NonNull::new_unchecked(pointer as *mut RcBox<T>);
             let memory_allocator = ptr::NonNull::from(memory_allocator);
 
             RC {
-                rc_box           : rc_box,
-                memory_allocator : memory_allocator
+                rc_box,
+                memory_allocator
             }
         }        
+    }
+
+    pub fn new_rc_box(value : T, memory_allocator : &mut A) -> RCBox<T, A> {
+        let result = Box::new(value, memory_allocator);
+
+        RC::new(result, memory_allocator)
     }
 
     pub fn reference_count(&self) -> usize {
@@ -239,7 +248,7 @@ impl<T, A> RC<T, A> where A : MemoryAllocator {
         self.rc_box().reference_count()
     }
 
-    fn rc_box(&self) -> &RCBox<T> {
+    fn rc_box(&self) -> &RcBox<T> {
         unsafe { self.rc_box.as_ref() }
     }
 }
@@ -313,12 +322,12 @@ impl<T, A> cmp::PartialEq for RC<T, A> where T : cmp::PartialEq, A : MemoryAlloc
 }
 
 #[repr(C)]
-struct RCBox<T> {
+struct RcBox<T> {
     value           : T,
     reference_count : cell::Cell<usize>
 }
 
-impl<T> RCBox<T> {
+impl<T> RcBox<T> {
 
     fn value(&self) -> &T {
         &self.value
@@ -329,7 +338,7 @@ impl<T> RCBox<T> {
     }
 
     fn new(value : T) -> Self {
-        RCBox {
+        RcBox {
             value,
             reference_count : cell::Cell::from(1)
         }
@@ -351,21 +360,21 @@ impl<T> RCBox<T> {
     }
 }
 
-impl<T> cmp::Ord for RCBox<T> where T : cmp::Ord {
+impl<T> cmp::Ord for RcBox<T> where T : cmp::Ord {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.value().cmp(other.value())
     }
 }
 
-impl<T> cmp::PartialOrd for RCBox<T> where T : cmp::PartialOrd {
+impl<T> cmp::PartialOrd for RcBox<T> where T : cmp::PartialOrd {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.value().partial_cmp(other.value())
     }
 }
 
-impl<T> cmp::Eq for RCBox<T> where T : cmp::Eq { }
+impl<T> cmp::Eq for RcBox<T> where T : cmp::Eq { }
 
-impl<T> cmp::PartialEq for RCBox<T> where T : cmp::PartialEq {
+impl<T> cmp::PartialEq for RcBox<T> where T : cmp::PartialEq {
     fn eq(&self, other: &Self) -> bool {
         self.value().eq(other.value())
     }

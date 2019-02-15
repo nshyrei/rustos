@@ -8,6 +8,7 @@ use allocator::bump;
 use allocator::free_list;
 use frame::{Frame, FRAME_SIZE};
 use stdx::iterator::IteratorExt;
+use stdx::Iterable;
 use stdx::math;
 use stdx::Sequence;
 use stdx_memory::trees::avl;
@@ -16,6 +17,7 @@ use core::mem;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use stdx_memory::heap::RC;
 use stdx_memory::heap::Box;
+use stdx_memory::heap::RCBox;
 use stdx_memory::heap::WeakBox;
 use allocator::buddy::BuddyAllocator;
 use core::alloc::Alloc;
@@ -47,7 +49,7 @@ macro_rules! block_count {
 const MIN_ALLOCATION_SIZE : usize = 32; //bytes
 
 type ListOfAllocators = DoubleLinkedList<free_list::FreeListAllocator, free_list::FreeListAllocator>;
-type ProperPtr             = RC<Box<ListOfAllocators, free_list::FreeListAllocator>, free_list::FreeListAllocator>;
+type ProperPtr             = RC<ListOfAllocators, free_list::FreeListAllocator>;
 
 #[repr(C)]
 struct Slab {
@@ -64,63 +66,51 @@ impl Slab {
             let slab_size = BuddyAllocator::true_allocation_size_for(allocation_size);
             let allocator = free_list::FreeListAllocator::from_address(slab_start_address, slab_size, allocation_size);
 
-            let allocator_boxed = DoubleLinkedList::new(allocator, memory_allocator);
+            let allocator_boxed = DoubleLinkedList::new_rc(allocator, memory_allocator);
 
-            let cell = RC::new(allocator_boxed, memory_allocator);
-
-            let mut tree = avl::AVLTree::new();
-            tree.insert(RC::clone(&cell), memory_allocator);
+            let tree = avl::AVLTree::new(RC::clone(&allocator_boxed), memory_allocator);
 
             Slab {
                 non_empty: tree,
-                non_full: Some(cell),
+                non_full: Some(allocator_boxed),
             }
         })
     }
 
     // slab size is passed here to prevent saving it in slab structure, because slab allocator
     // knows what slabs and of what sizes it has
-
     fn allocate(&mut self, size : usize, slab_size : usize, frame_allocator : &mut BuddyAllocator, memory_allocator : &mut free_list::FreeListAllocator) -> Option<usize> {
         let non_full_allocation_result = self.try_allocate_non_full(size, frame_allocator, memory_allocator);
 
-        if  non_full_allocation_result.is_some() {
-            non_full_allocation_result
-        }
-            else {
-                // try increase slab size
-                let true_slab_size = BuddyAllocator::true_allocation_size_for(slab_size);
-                if let Some(new_frame) = frame_allocator.allocate(true_slab_size) {
-                    let allocator = free_list::FreeListAllocator::from_address(new_frame, slab_size, true_slab_size);
+        non_full_allocation_result.or_else(|| {
+            // try increase slab size
+            let true_slab_size                 = BuddyAllocator::true_allocation_size_for(slab_size);
+            let frame_allocation_result = frame_allocator.allocate(true_slab_size);
 
-                    let mut cell = match self.non_full {
-                        Some(ref mut node) => {
-                            DoubleLinkedList::add(&mut RC::clone(node),  allocator, memory_allocator)},
-                        _ =>
-                            RC::new(DoubleLinkedList::new(allocator, memory_allocator), memory_allocator)
-                    };
+            frame_allocation_result.and_then(|new_frame| {
+                let mut allocator = free_list::FreeListAllocator::from_address(new_frame, true_slab_size, slab_size);
 
-                    let result = cell.value_mut().allocate_size();
+                let result = allocator.allocate_size(); // this will always succeed
 
-                    self.non_empty.insert(RC::clone(&cell), memory_allocator);
+                let cell = match self.non_full {
+                    Some(ref mut node) => {
+                        DoubleLinkedList::add(&mut RC::clone(node),  allocator, memory_allocator)},
+                    _ =>
+                        DoubleLinkedList::new_rc(allocator, memory_allocator)
+                };
 
-                    self.non_full = Some(cell);
+                self.non_empty.insert(RC::clone(&cell), memory_allocator);
+                self.non_full = Some(cell);
 
-                    result
-                }
-                    else {
-                        None
-                    }
-            }
+                result
+            })
+        })
     }
 
     fn try_allocate_non_full(&mut self, size: usize, frame_allocator: &mut BuddyAllocator, memory_allocator: &mut free_list::FreeListAllocator) -> Option<usize> {
-        if let Some(ref mut allocator) = self.non_full {
-            let allocation_result = allocator.value_mut().allocate_size();
-            allocation_result
-        } else {
-            None
-        }
+        self.non_full
+            .as_mut()
+            .and_then(|allocator_list| allocator_list.value_mut().allocate_size())
     }
 
     fn address_belongs_to_non_full(&self, pointer : usize) -> bool {
@@ -142,20 +132,21 @@ impl Slab {
         }
 
         if allocator_is_free {
-            let mut head            = self.non_full.take().unwrap();
-            let head_start_addr = head.value().start_address();
+            if let Some(mut head) = self.non_full.take() {
+                let head_start_addr = head.value().start_address();
 
-            {
-                let prev = head.prev();
+                {
+                    let prev = head.prev();
 
-                self.non_full = prev;
+                    self.non_full = prev;
+                }
+
+                DoubleLinkedList::modify_neighbour_connections(head);
+
+                self.non_empty.delete_by(head_start_addr, |n| n.value().start_address());
+
+                frame_allocator.free(head_start_addr);
             }
-
-            DoubleLinkedList::modify_neighbour_connections(head);
-
-            self.non_empty.delete_by(head_start_addr, |n| n.value().start_address());
-
-            frame_allocator.free(head_start_addr);
         }
     }
 
@@ -164,7 +155,6 @@ impl Slab {
         let mut dlist_opt = self.non_empty.find_by(&pointer,
                                                    |node| node.value().start_address(),
                                                    |node, ptr| node.value().is_inside_address_space(*ptr));
-
 
         let mut allocator_is_free_tree_case = false;
 
@@ -175,15 +165,16 @@ impl Slab {
             allocator_is_free_tree_case = allocator.fully_free();
         }
 
-        if allocator_is_free_tree_case && dlist_opt.is_some() {
-            let dlist                  = dlist_opt.unwrap();
-            let start_address = dlist.value().start_address();
+        if allocator_is_free_tree_case {
+            if let Some(dlist) = dlist_opt {
+                let start_address = dlist.value().start_address();
 
-            DoubleLinkedList::modify_neighbour_connections(dlist.leak());
+                DoubleLinkedList::modify_neighbour_connections(dlist.leak());
 
-            self.non_empty.delete_by(start_address, |n| n.value().start_address());
+                self.non_empty.delete_by(start_address, |n| n.value().start_address());
 
-            frame_allocator.free(start_address);
+                frame_allocator.free(start_address);
+            }
         }
     }
 
@@ -203,46 +194,47 @@ impl Slab {
 }
 
 pub struct SlabAllocator {
-    size_to_slab         : Array<Option<Slab>>,
-    address_to_size      : avl::AVLTree<(usize, usize), free_list::FreeListAllocator>,
-    total_memory         : usize,
-    start_address        : usize,
-    array_allocator      : bump::BumpAllocator,
-    tree_allocator       : free_list::FreeListAllocator,
+    size_to_slab                : Array<Option<Slab>>,
+    address_to_size         : avl::AVLTree<(usize, usize), free_list::FreeListAllocator>,
+    total_memory            : usize,
+    start_address             : usize,
+    array_allocator         : bump::BumpAllocator,
+    tree_allocator            : free_list::FreeListAllocator,
     linked_list_allocator : free_list::FreeListAllocator,
-    frame_allocator : BuddyAllocator
+    frame_allocator        : BuddyAllocator
 }
 
 impl SlabAllocator {
+
+    pub fn is_fully_free(&self) ->bool {
+        let slabs_are_empty = self.size_to_slab.iterator().all(|e| e.is_none());
+        let tree_is_empty = self.address_to_size.is_empty();
+
+         slabs_are_empty && tree_is_empty
+    }
+
     pub fn new(start_address1 : usize, end_address1 : usize, frame_allocator : BuddyAllocator) -> Self {
         let start_address      = Frame::address_align_up(start_address1);
         let end_address        = Frame::address_align_down(end_address1);
-        let total_memory       = end_address - start_address + 1;
+        let total_memory      = end_address - start_address + 1;
 
-
-        /*assert!(total_memory <= MIN_ALLOCATION_SIZE,
+        assert!(total_memory > MIN_ALLOCATION_SIZE,
                 "Cannot create allocator when total memory size < MIN_ALLOCATION_SIZE (32). Start address : {}, end address {}",
                 start_address,
-                end_address);*/
+                end_address);
 
-        let total_slab_count = SlabAllocator::total_slab_count(total_memory);
-        let array_size = Array::<Option<Slab>>::mem_size_for(total_slab_count);
-        let (avl_tree_size, linked_list_size) = SlabAllocator::buddy_free_list_size(total_slab_count, total_memory);
-        let avl_tree_cell_size = avl::AVLTree::<free_list::FreeListAllocator, free_list::FreeListAllocator>::cell_size();
-        let linked_list_cell_size = mem::size_of::<DoubleLinkedList<free_list::FreeListAllocator, free_list::FreeListAllocator>>();
+        let total_slab_count                             = SlabAllocator::total_slab_count(total_memory);
+        let array_size                                         = Array::<Option<Slab>>::mem_size_for(total_slab_count);
+        let (avl_tree_size, linked_list_size)  = SlabAllocator::buddy_free_list_size(total_slab_count, total_memory);
+        let avl_tree_cell_size                           = avl::AVLTree::<free_list::FreeListAllocator, free_list::FreeListAllocator>::cell_size();
+        let linked_list_cell_size                       = mem::size_of::<DoubleLinkedList<free_list::FreeListAllocator, free_list::FreeListAllocator>>();
 
-        let mut array_allocator = bump::BumpAllocator::from_address(start_address, array_size);
-        let mut tree_allocator = free_list::FreeListAllocator::from_address(
-            array_allocator.end_address() + 1,
-            avl_tree_size,
-            avl_tree_cell_size);
-        let mut linked_list_allocator = free_list::FreeListAllocator::from_address(
-            tree_allocator.end_address() + 1,
-            linked_list_size,
-            linked_list_cell_size);
+        let mut array_allocator             = bump::BumpAllocator::from_address(start_address, array_size);
+        let mut tree_allocator               = free_list::FreeListAllocator::from_address(array_allocator.end_address() + 1, avl_tree_size, avl_tree_cell_size);
+        let mut linked_list_allocator    = free_list::FreeListAllocator::from_address(tree_allocator.end_address() + 1, linked_list_size, linked_list_cell_size);
 
-        let size_to_slab = Array::<Option<Slab>>::new(total_slab_count, &mut array_allocator);
-        let address_to_size = avl::AVLTree::<(usize, usize), free_list::FreeListAllocator>::new();
+        let size_to_slab         = Array::<Option<Slab>>::new(total_slab_count, &mut array_allocator);
+        let address_to_size = avl::AVLTree::<(usize, usize), free_list::FreeListAllocator>::new_empty();
 
         SlabAllocator {
             size_to_slab,
@@ -399,6 +391,8 @@ impl MemoryAllocator for SlabAllocator {
             if  slab_is_fully_free {
                 self.size_to_slab[slab_array_idx] = None;
             }
+
+            //self.address_to_size.delete((was_allocated.leak()));
         }
     }
 

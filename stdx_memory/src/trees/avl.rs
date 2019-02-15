@@ -23,23 +23,21 @@ fn height<T, M>(node : &OptNodeBox<T, M>) -> i64 where T : cmp::Ord, M : MemoryA
 
 fn insert0<T, M>(mut node : NodeBox<T, M>, value : T, memory_allocator : &mut M) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator  {
     let cmp_result = node.value().cmp(&value);
-    let rc1 = node.reference_count();
+
     match cmp_result {
-        Ordering::Less    => {
-            if node.left.is_some() {
-                let new_left = insert0(node.take_left_unwrap(), value, memory_allocator);
+        Ordering::Less => {
+            if let Some(left_node) = node.left.take() {
+                let new_left = insert0(left_node, value, memory_allocator);
                 node.set_left(Some(new_left));
-                
             }
             else {
                 node.set_left(Some(AVLNode::new(value, 0, memory_allocator)));
             }
         },
         Ordering::Greater => {
-            if node.right.is_some() {
-                let new_right = insert0(node.take_right_unwrap(), value, memory_allocator);
+            if let Some(right_node) = node.right.take() {
+                let new_right = insert0(right_node, value, memory_allocator);
                 node.set_right(Some(new_right));
-                
             }
             else {
                 node.set_right(Some(AVLNode::new(value, 0, memory_allocator)));
@@ -48,8 +46,8 @@ fn insert0<T, M>(mut node : NodeBox<T, M>, value : T, memory_allocator : &mut M)
         _ => return node
     }
         
-    (&mut node).update_height();
-    let rc2 = node.reference_count();
+    node.update_height();
+
     balance(node)
 }
 
@@ -69,7 +67,6 @@ fn find_by0<T, F, P, C, M>(node : &OptNodeBox<T, M>, x : &C, selector : F, predi
           C : cmp::Ord,
         M : MemoryAllocator
 {
-    
     node.as_ref().and_then(|n| {
         
         if predicate(n.value(), x) {
@@ -121,6 +118,7 @@ fn balance_factor<T, M>(node : &AVLNode<T, M>) -> i64 where T : cmp::Ord, M : Me
 
 fn balance<T, M>(mut node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     let balance_factor = balance_factor(&node);
+
     if balance_factor < -1 {
         if balance_factor_opt(&node.right) > 0 && node.has_right() {
             let r = node.take_right_unwrap();
@@ -151,7 +149,7 @@ fn min<T, M>(node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : Memo
 }
 
 fn delete_min<T, M>(mut node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
-    match node.take_left() {
+    match node.left.take() {
         Some(left) => {
             node.set_left(Some(delete_min(left)));
             node.update_height();
@@ -184,8 +182,8 @@ fn delete<T, M>(mut node : NodeBox<T, M>, value : T) -> NodeBox<T, M> where T : 
             else {
                 let node_copy = heap::RC::clone(&node);
 
-                let cpy_right = node_copy.right().is_some();
-                let cpy_left = node_copy.left().is_some();
+                let cpy_right  = node_copy.right().is_some();
+                let cpy_left    = node_copy.left().is_some();
 
                 {
                     let new_node = min(node_copy.right().unwrap());
@@ -319,7 +317,14 @@ impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
         self.root.is_none()
     }
 
-    pub fn new() -> Self {
+    pub fn new(root_value : T, memory_allocator : &mut M) -> Self {
+        let mut result = AVLTree::new_empty();
+        result.insert(root_value, memory_allocator);
+
+        result
+    }
+
+    pub fn new_empty() -> Self {
         AVLTree {
             root : None
         }
