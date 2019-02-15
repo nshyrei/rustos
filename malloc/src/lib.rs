@@ -1,30 +1,47 @@
 #![no_std]
-#![feature(allocator)]
-#![allocator]
 
-#[no_mangle]
-pub extern fn __rust_allocate(size: usize, _align: usize) -> *mut u8 {
-    &mut 1
+
+#![feature(allocator_api)]
+#![feature(const_fn)]
+
+use core::alloc::{Alloc, AllocErr, Layout, GlobalAlloc};
+use core::ptr::NonNull;
+use core::ptr::null_mut;
+
+pub struct TestAllocator {
+
 }
 
-#[no_mangle]
-pub extern fn __rust_deallocate(ptr: *mut u8, _old_size: usize, _align: usize) {
-    
+impl TestAllocator {
+    pub const fn new() -> Self {
+        TestAllocator {}
+    }
 }
 
-#[no_mangle]
-pub extern fn __rust_reallocate(ptr: *mut u8, _old_size: usize, size: usize,
-                                _align: usize) -> *mut u8 {
-    &mut 1
+unsafe impl<'a> Alloc for &'a TestAllocator {
+
+    unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
+        let a = 10;
+        let b = a;
+
+        Err(AllocErr)
+    }
+
+    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
+        let a = 10;
+        let b = a;
+    }    
 }
 
-#[no_mangle]
-pub extern fn __rust_reallocate_inplace(_ptr: *mut u8, old_size: usize,
-                                        _size: usize, _align: usize) -> usize {
-    1
-}
-
-#[no_mangle]
-pub extern fn __rust_usable_size(size: usize, _align: usize) -> usize {
-    1
+unsafe impl GlobalAlloc for TestAllocator {
+    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 { 
+        let a = 10;
+        let b = a;
+null_mut()
+        }
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+               let a = 10;
+        let b = a;
+ 
+    }
 }

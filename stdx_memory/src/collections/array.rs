@@ -4,7 +4,6 @@ use core::ops;
 use core::iter;
 use core::ptr;
 use MemoryAllocator;
-use smart_ptr;
 use stdx::Sequence;
 use stdx::Iterable;
 
@@ -46,8 +45,8 @@ impl <T> Array<T> {
         let start_address = memory_allocator.allocate(size).expect("No memory for Array");
 
         Array { 
-            length : length,
-            start_address : start_address,
+            length,
+            start_address,
             phantom : marker::PhantomData
         }
     }    
@@ -70,26 +69,6 @@ impl <T> Array<T> {
         unsafe { ptr::read(self.index_to_address(index) as *const T) }
     }
 
-    pub fn elem_ref(&self, index : usize) -> &T {
-        assert!(index < self.length);
-        unsafe { &*(self.index_to_address(index) as *const T) }
-    }
-
-    pub fn elem_ref_mut(&self, index : usize) -> &mut T {
-        assert!(index < self.length);
-        unsafe { &mut *(self.index_to_address(index) as *mut T) }
-    }
-
-    pub fn elem_ref_i(&self, index : isize) -> &T {
-        assert!(index < self.length as isize && index > -1);
-        unsafe { &*(self.index_to_address_i(index) as *const T) }
-    }
-
-    pub fn elem_ref_mut_i(&self, index : isize) -> &mut T {
-        assert!(index < self.length as isize && index > -1);
-        unsafe { &mut *(self.index_to_address_i(index) as *mut T) }
-    }
-
     pub fn indices(&self) -> IndicesIterator {
         IndicesIterator::new(self)
     }
@@ -100,7 +79,13 @@ impl <T> Array<T> {
         for address in addresses {
             unsafe { ptr::write_unaligned(address as *mut T, filler()); }
         }
-    }    
+    }
+
+    pub fn replace(&mut self, index : usize, value : T) -> T {
+        unsafe {
+            mem::replace(&mut *(self.index_to_address(index) as *mut T), value)
+        }
+    }
 
     fn index_to_address(&self, index : usize) -> usize {
         self.start_address + (mem::size_of::<T>() * index)
@@ -122,7 +107,7 @@ impl<T> Iterable for Array<T> {
     type IntoIter = ArrayIterator<T>;
 
     fn iterator(&self) -> ArrayIterator<T> {
-        ArrayIterator::new(smart_ptr::Shared::new(self))
+        ArrayIterator::new()
     }
 }
 
@@ -179,32 +164,36 @@ impl<T> ops::Index<usize> for Array<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &T {        
-        self.elem_ref(index)
+        assert!(index < self.length);
+        unsafe { &*(self.index_to_address(index) as *const T) }
     }
 }
 
 impl<T> ops::IndexMut<usize> for Array<T> {
 
     fn index_mut(&mut self, index: usize) -> &mut T {
-        self.elem_ref_mut(index)
+        assert!(index < self.length);
+        unsafe { &mut *(self.index_to_address(index) as *mut T) }
     }
 }
+
 
 impl<T> ops::Index<isize> for Array<T> {
     type Output = T;
 
     fn index(&self, index: isize) -> &T {        
-        self.elem_ref_i(index)
+        assert!(index < self.length as isize && index > -1);
+        unsafe { &*(self.index_to_address_i(index) as *const T) }
     }
 }
 
 impl<T> ops::IndexMut<isize> for Array<T> {
 
     fn index_mut(&mut self, index: isize) -> &mut T {
-        self.elem_ref_mut_i(index)
+        assert!(index < self.length as isize && index > -1);
+        unsafe { &mut *(self.index_to_address_i(index) as *mut T) }
     }
 }
-
 
 pub struct IndicesIterator {
     i : usize,
@@ -238,15 +227,15 @@ impl iter::Iterator for IndicesIterator {
 
 pub struct ArrayIterator<T> {
     i : usize,
-    array : smart_ptr::Shared<Array<T>>,    
+    p : marker::PhantomData<T>//array : smart_ptr::Shared<Array<T>>,    
 }
 
 impl<T> ArrayIterator <T> {
 
-    pub fn new(array : smart_ptr::Shared<Array<T>>) -> Self {
+    pub fn new() -> Self {
         ArrayIterator {
             i  : 0,
-            array : array,      
+            p: marker::PhantomData
         }
     }
 }
@@ -255,6 +244,7 @@ impl<T> iter::Iterator for ArrayIterator<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<T> {
+        /*
         if self.i >= self.array.length() {
             None
         }
@@ -264,6 +254,8 @@ impl<T> iter::Iterator for ArrayIterator<T> {
 
             Some(result)
         }
+        */
+        None
     }
 }
 

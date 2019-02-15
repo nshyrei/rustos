@@ -6,10 +6,10 @@ use frame::FRAME_SIZE;
 use stdx_memory::collections::linked_list::LinkedList;
 use allocator::bump::{BumpAllocator, ConstSizeBumpAllocator};
 use stdx_memory::MemoryAllocator;
-use stdx_memory::smart_ptr;
 use stdx_memory::heap;
 use core::fmt;
 use core::mem;
+use core::ptr;
 
 
 /*
@@ -25,10 +25,10 @@ pub struct FrameAllocator {
     multiboot_end_frame: Frame,
     kernel_start_frame: Frame,
     kernel_end_frame: Frame,
-    current_memory_area : smart_ptr::Unique<MemoryMapEntry>,
+    current_memory_area : ptr::NonNull<MemoryMapEntry>,
     memory_areas: AvailableMemorySectionsIterator,
     last_frame_number: Frame,
-    empty_frame_list: heap::SharedBox<LinkedList<Frame>>,
+    empty_frame_list: heap::WeakBox<LinkedList<Frame>>,
     frame_list_allocator : ConstSizeBumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
@@ -53,7 +53,9 @@ impl FrameAllocator {
     }
 
     pub fn current_memory_area(&self) -> &MemoryMapEntry {
-        self.current_memory_area.pointer()
+        unsafe {
+        self.current_memory_area.as_ref()
+        }
     }
 
     pub fn memory_areas(&self) -> AvailableMemorySectionsIterator {
@@ -80,7 +82,7 @@ impl FrameAllocator {
         self.buddy_allocator_end_frame = f
     }
 
-    fn empty_frame_list(&self) -> &heap::SharedBox<LinkedList<Frame>> {
+    fn empty_frame_list(&self) -> &heap::WeakBox<LinkedList<Frame>> {
         &self.empty_frame_list
     }
 
@@ -117,10 +119,10 @@ impl FrameAllocator {
             multiboot_end_frame: Frame::from_address(multiboot_header.end_address()),
             kernel_start_frame: Frame::from_address(kernel_start_address),
             kernel_end_frame: Frame::from_address(kernel_end_address),
-            current_memory_area : smart_ptr::Unique::new(first_memory_area),
+            current_memory_area : ptr::NonNull::from(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: heap::SharedBox::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::WeakBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -153,10 +155,10 @@ impl FrameAllocator {
             multiboot_end_frame: Frame::from_address(multiboot_header.end_address()),
             kernel_start_frame: Frame::from_address(kernel_start_address),
             kernel_end_frame: kernel_end_frame,
-            current_memory_area : smart_ptr::Unique::new(first_memory_area),
+            current_memory_area : ptr::NonNull::from(first_memory_area),
             memory_areas: memory_areas.entries(),
             last_frame_number: last_frame_number,
-            empty_frame_list: heap::SharedBox::new(LinkedList::Nil, &mut bump_allocator),
+            empty_frame_list: heap::WeakBox::new(LinkedList::Nil, &mut bump_allocator),
             frame_list_allocator : bump_allocator,
             buddy_allocator_start_frame : Frame::from_address(0),
             buddy_allocator_end_frame : Frame::from_address(0)
@@ -173,12 +175,11 @@ impl FrameAllocator {
     pub fn allocate(&mut self) -> Option<Frame> {
                         
         // check empty frame list first, if nothing perform bump allocation
-        match *self.empty_frame_list {
-            LinkedList::Cell { value, prev } => {
+        match self.empty_frame_list.take() {
+            Some((value, prev)) => {
                 
                 // pick first result from empty frame list                
-                self.empty_frame_list = prev;
-                prev.free(&mut self.frame_list_allocator);
+                self.empty_frame_list = prev;                
                 
                 Some(value)
             },
@@ -203,12 +204,13 @@ impl FrameAllocator {
         Changes self.current_memory_area when moving to new memory area.
     */
     fn bump_allocate(&mut self) -> Option<Frame> {
+        unsafe {
         let possible_frame = self.last_frame_number;
         let result = self.step_over_reserved_memory_if_needed(possible_frame);        
 
-        if result.end_address() > self.current_memory_area.pointer().end_address() as usize {  
+        if result.end_address() > self.current_memory_area.as_ref().end_address() as usize {  
             if let Some(memory_area) = FrameAllocator::next_fitting_memory_area(self.memory_areas.clone(), result) {
-                self.current_memory_area = smart_ptr::Unique::new(memory_area);
+                self.current_memory_area = ptr::NonNull::from(memory_area);
 
                 let result = FrameAllocator::frame_for_base_address(memory_area.base_address() as usize);
                 Some(result)
@@ -217,6 +219,7 @@ impl FrameAllocator {
             }            
         } else {
             Some(result)
+        }
         }
     }
 
@@ -293,6 +296,7 @@ impl FrameAllocator {
 
 impl fmt::Display for FrameAllocator {    
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        unsafe {
         write!(f,
                "multiboot_start_frame: {}, 
                multiboot_end_frame : {},
@@ -306,10 +310,11 @@ impl fmt::Display for FrameAllocator {
                self.multiboot_end_frame,
                self.kernel_start_frame,
                self.kernel_end_frame,
-               self.current_memory_area,
+               self.current_memory_area.as_ref(),
                self.memory_areas,
                self.last_frame_number,
                //self.frame_bit_map,
                "")
+    }
     }
 }

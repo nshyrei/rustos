@@ -46,15 +46,23 @@ pub struct BuddyAllocator {
 
 impl BuddyAllocator {
 
-    fn start_address(&self) -> usize {
-        1
+    pub fn true_allocation_size_for(size : usize) -> usize {
+        if size < FRAME_SIZE {
+            FRAME_SIZE
+        } else {
+            size
+        }
     }
 
-    fn end_address(&self) -> usize {
-        1
+    pub fn start_address(&self) -> usize {
+        self.start_address
     }
 
-    pub fn new(start_address1 : usize, end_address1 : usize) -> BuddyAllocator {
+    pub fn end_address(&self) -> usize {
+        self.start_address - self.total_memory
+    }
+
+    pub fn new(start_address1 : usize, end_address1 : usize) -> Self {
         let start_address      = Frame::address_align_up(start_address1);
         let end_address        = end_address1;
 
@@ -186,9 +194,9 @@ impl BuddyAllocator {
 
         loop {
             // if size < current_level_size at index 0 the algorithm will crash!
-            if i == 0 {
+            /*if i < 0 {
                 return None
-            }
+            }*/
 
             let block_index  = self.buddy_free_lists[i]                                   
                                    .first_free_block(&mut self.free_list_allocator)
@@ -197,9 +205,12 @@ impl BuddyAllocator {
             // we can return current block or split it at that point,
             // both operations will set the block to 'in use'
             self.buddy_free_lists[i].set_in_use(block_index, &mut self.free_list_allocator);
-            
-            if allocation_size == current_level_size {                
+
+            if allocation_size == current_level_size {
                 return Some((i, block_index * current_level_size))
+            }
+            else if i == 0 {
+                return None
             }
             else {
                 
@@ -323,6 +334,14 @@ impl MemoryAllocator for BuddyAllocator {
         let buddy_list_index   = self.allocation_sizes[frame_number];
 
         self.merge_up(normalized_pointer, buddy_list_index);        
+    }
+
+    fn assigned_memory_size() -> usize {
+        unimplemented!()
+    }
+
+    fn aux_data_structures_size() -> usize {
+        unimplemented!()
     }
 }
 

@@ -1,74 +1,166 @@
-use smart_ptr;
 use MemoryAllocator;
 use core::ptr;
 use core::ops;
+use core::ops::Deref;
+use core::mem;
+use core::cmp;
+use core::cell;
+use core::convert;
 
-pub struct Box<T>{
-    unique : smart_ptr::Unique<T>
+pub type RCBox<T, A> = RC<Box<T, A>, A>;
+
+#[repr(C)]
+pub struct Box<T, A> where A : MemoryAllocator{
+    unique                    : ptr::NonNull<T>,
+    memory_allocator : ptr::NonNull<A>
 }
 
-impl <T> Box<T> {
+impl <T,A> Box<T,A> where A : MemoryAllocator {
     
-    pub fn new<A>(value : T, memory_allocator : &mut A) -> Box<T>  where A : MemoryAllocator {
+    pub fn new(value : T, memory_allocator : &mut A) -> Self {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
-
-        unsafe { ptr::write_unaligned(pointer as *mut T, value); }
-
-        Box {
-            unique : smart_ptr::Unique::new(pointer as *const T)
+        
+        unsafe {
+            ptr::write_unaligned(pointer as *mut T, value);
+            Box {
+                unique           : ptr::NonNull::new_unchecked(pointer as *mut T),
+                memory_allocator : ptr::NonNull::from(memory_allocator)
+            }
         }
-    }    
-
-    pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
-        memory_allocator.free(self.pointer() as *const _ as usize)
-    }    
-
-    pub fn pointer(&self) -> &T {
-        self.unique.pointer()
     }
 
-    pub fn pointer_mut(&self) -> &mut T {
-        self.unique.pointer_mut()
-    }        
-}
+    pub fn from_pointer(pointer : &T, memory_allocator : &mut A) -> Self {
+        Box {
+            unique                    : ptr::NonNull::from(pointer),
+            memory_allocator : ptr::NonNull::from(memory_allocator)
+        }
+    }
 
-impl<T> Box<T> where T : Clone {
-
-    pub fn unbox<A>(self, memory_allocator : &mut A) -> T where A : MemoryAllocator {
-        let result = self.pointer().clone();
-        self.free(memory_allocator);
-
-        result
+    fn allocator(&self) -> &ptr::NonNull<A> {
+        &self.memory_allocator
     }
 }
 
-impl<T> ops::Deref for Box<T> {
+impl<T, A> ops::Deref for Box<T, A>  where A : MemoryAllocator {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.unique.pointer()
+        unsafe { self.unique.as_ref() }
     }
 }
 
-impl<T> ops::DerefMut for Box<T> {
+impl<T, A> ops::DerefMut for Box<T, A> where A : MemoryAllocator {
     fn deref_mut(&mut self) -> &mut T {
-        self.unique.pointer_mut()
+        unsafe { self.unique.as_mut() }
     }
 }
 
+impl<T, A> cmp::Ord for Box<T,A> where T : cmp::Ord, A : MemoryAllocator {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.deref().cmp(other.deref())
+    }
+}
+
+impl<T, A> cmp::PartialOrd for Box<T, A> where T : cmp::PartialOrd, A : MemoryAllocator {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.deref().partial_cmp(other.deref())
+    }
+}
+
+impl<T, A> cmp::Eq for Box<T, A> where T : cmp::Eq, A : MemoryAllocator {
+
+}
+
+impl<T, A> cmp::PartialEq for Box<T, A> where T : cmp::PartialEq, A : MemoryAllocator {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref().eq(other.deref())
+    }
+}
+#[repr(C)]
+pub struct WeakBox<T>{
+    unique : ptr::NonNull<T>
+}
+
+impl <T> WeakBox<T> {
+
+    pub fn new<A>(value : T, memory_allocator : &mut A) -> Self  where A : MemoryAllocator {
+        let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
+
+        unsafe {
+            ptr::write_unaligned(pointer as *mut T, value);
+            WeakBox {
+                unique : ptr::NonNull::new_unchecked(pointer as *mut T)
+            }
+        }
+    }
+
+    pub fn from_pointer(pointer : &T) -> Self {
+        WeakBox {
+            unique : ptr::NonNull::from(pointer)
+        }
+    }
+
+    pub fn promote<A>(self, allocator : &mut A) -> Box<T, A> where A : MemoryAllocator {
+        Box::from_pointer(self.deref(), allocator)
+    }
+
+    pub fn leak(self) -> T
+    {
+        unsafe {  ptr::read_unaligned(self.unique.as_ptr())  }
+    }
+
+}
+
+impl<T> ops::Deref for WeakBox<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { self.unique.as_ref() }
+    }
+}
+
+impl<T> ops::DerefMut for WeakBox<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { self.unique.as_mut() }
+    }
+}
+
+impl<T> cmp::Ord for WeakBox<T> where T : cmp::Ord {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.deref().cmp(other.deref())
+    }
+}
+
+impl<T> cmp::PartialOrd for WeakBox<T> where T : cmp::PartialOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.deref().partial_cmp(other.deref())
+    }
+}
+
+impl<T> cmp::Eq for WeakBox<T> where T : cmp::Eq {
+
+}
+
+impl<T> cmp::PartialEq for WeakBox<T> where T : cmp::PartialEq {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref().eq(other.deref())
+    }
+}
+#[repr(C)]
 pub struct SharedBox<T>{
-    unique : smart_ptr::Shared<T>
+    unique : ptr::NonNull<T>
 }
 
 impl <T> SharedBox<T> {
         
     pub fn new<A>(value : T, memory_allocator : &mut A) -> Self  where A : MemoryAllocator {
         let pointer = memory_allocator.allocate_for::<T>().expect("No memory for box value");
-        unsafe { ptr::read_unaligned(pointer as *const T); }
-        unsafe { ptr::write_unaligned(pointer as *mut T, value); }
-        
-        SharedBox {
-            unique : smart_ptr::Shared::new(pointer as *const T)
+                
+        unsafe {
+            ptr::write_unaligned(pointer as *mut T, value); 
+            SharedBox {
+                unique : ptr::NonNull::new_unchecked(pointer as *mut T) 
+            }
         }
     }
 
@@ -78,45 +170,38 @@ impl <T> SharedBox<T> {
 
     pub fn from_pointer(pointer : &T) -> Self {
         SharedBox {
-            unique : smart_ptr::Shared::new(pointer)
+            unique : ptr::NonNull::from(pointer)
         }
     }
 
     pub fn from_usize(pointer : usize) -> Self {
+        unsafe { 
         SharedBox {
-            unique : smart_ptr::Shared::from_usize(pointer)
-        }
+            unique : ptr::NonNull::new_unchecked(pointer as *mut T) 
+        }}
     }
 
     pub fn pointer(&self) -> &T {
-        self.unique.pointer()
+        unsafe { self.unique.as_ref() }
     }
 
-    pub fn pointer_mut(&self) -> &mut T {
-        self.unique.pointer_mut()
+    pub fn pointer_mut(&mut self) -> &mut T {
+        unsafe { self.unique.as_mut() }
     }
 
-    pub fn free<A>(self, memory_allocator : &mut A) where A : MemoryAllocator {
-        memory_allocator.free(self.pointer() as *const _ as usize)
-    }
-
-    pub fn read(&self) -> T {
-        use core::ptr;
-        unsafe { ptr::read_unaligned(self.pointer() as *const T) }
-    }
 }
 
 impl<T> ops::Deref for SharedBox<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        self.unique.pointer()
+        unsafe { self.unique.as_ref() }
     }
 }
 
 impl<T> ops::DerefMut for SharedBox<T> {
     fn deref_mut(&mut self) -> &mut T {
-        self.unique.pointer_mut()
+       unsafe { self.unique.as_mut() }
     }
 }
 
@@ -127,3 +212,170 @@ impl<T> Clone for SharedBox<T> where T : Sized {
 }
 
 impl<T> Copy for SharedBox<T> where T : Sized  { }
+
+#[repr(C)]
+pub struct RC<T, A> where A : MemoryAllocator {
+    rc_box           : ptr::NonNull<RcBox<T>>,
+    memory_allocator : ptr::NonNull<A>
+}
+
+impl<T, A> RC<T, A> where A : MemoryAllocator {
+    pub fn new(value : T, memory_allocator : &mut A) -> Self {
+        let pointer = memory_allocator.allocate_for::<RcBox<T>>().expect("No memory for RC box value");
+        let rc_box = RcBox::new(value);
+
+        unsafe { 
+            ptr::write_unaligned(pointer as *mut RcBox<T>, rc_box);
+
+            let rc_box                       = ptr::NonNull::new_unchecked(pointer as *mut RcBox<T>);
+            let memory_allocator = ptr::NonNull::from(memory_allocator);
+
+            RC {
+                rc_box,
+                memory_allocator
+            }
+        }        
+    }
+
+    pub fn new_rc_box(value : T, memory_allocator : &mut A) -> RCBox<T, A> {
+        let result = Box::new(value, memory_allocator);
+
+        RC::new(result, memory_allocator)
+    }
+
+    pub fn reference_count(&self) -> usize {
+        let debug = unsafe { self.rc_box.as_ref() as *const _ as usize };
+        self.rc_box().reference_count()
+    }
+
+    fn rc_box(&self) -> &RcBox<T> {
+        unsafe { self.rc_box.as_ref() }
+    }
+}
+
+impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
+    fn clone(&self) -> Self {
+        unsafe {
+            let pointer = self.rc_box.as_ptr() as usize;
+            self.rc_box.as_ref().inc_ref_count();
+
+            let rc_box                      = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
+            let memory_allocator = ptr::NonNull::new_unchecked(self.memory_allocator.as_ptr());
+
+            RC {
+                rc_box,
+                memory_allocator
+            }
+        }
+    }
+}
+
+impl<T, A> ops::Drop for RC<T, A> where A : MemoryAllocator {
+    fn drop(&mut self) {
+        unsafe {
+            let pointer = self.rc_box.as_ptr() as usize;
+            if self.rc_box.as_ref().reference_count() == 1 {
+                let pointer = self.rc_box.as_ptr() as usize;
+                self.memory_allocator.as_mut().free(pointer);
+            }
+            else {
+                self.rc_box.as_ref().dec_ref_count();
+            }
+        }
+    }
+}
+
+impl<T, A> ops::Deref for RC<T, A> where A : MemoryAllocator {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        unsafe { self.rc_box.as_ref().value() }
+    }
+}
+
+impl<T, A> ops::DerefMut for RC<T, A> where A : MemoryAllocator {
+    fn deref_mut(&mut self) -> &mut T {
+       unsafe { self.rc_box.as_mut().value_mut() }
+    }
+}
+
+impl<T, A> cmp::Ord for RC<T, A> where T : cmp::Ord, A : MemoryAllocator {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.rc_box().cmp(other.rc_box())
+    }
+}
+
+impl<T, A> cmp::PartialOrd for RC<T, A> where T : cmp::PartialOrd, A : MemoryAllocator {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.rc_box().partial_cmp(other.rc_box())
+    }
+}
+
+impl<T, A> cmp::Eq for RC<T, A> where T : cmp::Eq, A : MemoryAllocator {
+
+}
+
+impl<T, A> cmp::PartialEq for RC<T, A> where T : cmp::PartialEq, A : MemoryAllocator {
+    fn eq(&self, other: &Self) -> bool {
+        self.rc_box().eq(other.rc_box())
+    }
+}
+
+#[repr(C)]
+struct RcBox<T> {
+    value           : T,
+    reference_count : cell::Cell<usize>
+}
+
+impl<T> RcBox<T> {
+
+    fn value(&self) -> &T {
+        &self.value
+    }
+
+    fn value_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+
+    fn new(value : T) -> Self {
+        RcBox {
+            value,
+            reference_count : cell::Cell::from(1)
+        }
+    }
+
+    fn reference_count(&self) -> usize {
+        let debug = self.reference_count.get();
+        self.reference_count.get()
+    }
+
+    fn dec_ref_count(&self) {
+        let old = self.reference_count.get();
+        self.reference_count.set(old - 1);
+    }
+
+    fn inc_ref_count(&self) {
+        let old = self.reference_count.get();
+        self.reference_count.set(old + 1);
+    }
+}
+
+impl<T> cmp::Ord for RcBox<T> where T : cmp::Ord {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.value().cmp(other.value())
+    }
+}
+
+impl<T> cmp::PartialOrd for RcBox<T> where T : cmp::PartialOrd {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.value().partial_cmp(other.value())
+    }
+}
+
+impl<T> cmp::Eq for RcBox<T> where T : cmp::Eq { }
+
+impl<T> cmp::PartialEq for RcBox<T> where T : cmp::PartialEq {
+    fn eq(&self, other: &Self) -> bool {
+        self.value().eq(other.value())
+    }
+}

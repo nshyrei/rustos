@@ -1,7 +1,8 @@
 use memory::allocator::bump::BumpAllocator;
 use stdx_memory::collections::linked_list::{LinkedList, LinkedListIterator};
-use stdx_memory::heap::SharedBox;
+use stdx_memory::heap::Box;
 use memory::frame::Frame;
+use std::ops::Deref;
 use memory::frame::FRAME_SIZE;
 
 
@@ -31,8 +32,8 @@ pub fn new_should_create_a_new_cell() {
 pub fn is_cell_should_return_true_for_cell() {    
     let mut bump_allocator = bump_alloc!(200);
 
-    let nil = SharedBox::new(LinkedList::Nil, &mut bump_allocator);
-    let list = SharedBox::new(LinkedList::Cell { value : 1, prev : nil }, &mut bump_allocator);
+    let nil = Box::new(LinkedList::Nil, &mut bump_allocator);
+    let list = Box::new(LinkedList::Cell { value : 1, prev : nil }, &mut bump_allocator);
 
     assert!(list.is_cell(), "LinkedList::is_cell() returned false for LinkedList::Cell but should be true");    
 }
@@ -41,7 +42,7 @@ pub fn is_cell_should_return_true_for_cell() {
 pub fn is_cell_should_return_false_for_nil() {    
     let mut bump_allocator = bump_alloc!(200);
 
-    let nil : SharedBox<LinkedList<usize>> = SharedBox::new(LinkedList::Nil, &mut bump_allocator);    
+    let nil : Box<LinkedList<usize>> = Box::new(LinkedList::Nil, &mut bump_allocator);    
 
     assert!(nil.is_cell() == false, "LinkedList::is_cell() returned true for LinkedList::Nil but should be false");    
 }
@@ -50,7 +51,7 @@ pub fn is_cell_should_return_false_for_nil() {
 pub fn is_nil_should_return_true_for_nil() {    
     let mut bump_allocator = bump_alloc!(200);
 
-    let nil : SharedBox<LinkedList<usize>> = SharedBox::new(LinkedList::Nil, &mut bump_allocator);    
+    let nil : Box<LinkedList<usize>> = Box::new(LinkedList::Nil, &mut bump_allocator);    
 
     assert!(nil.is_nil(), "LinkedList::is_nil() returned false for LinkedList::Nil but should be true");    
 }
@@ -59,8 +60,8 @@ pub fn is_nil_should_return_true_for_nil() {
 pub fn is_nil_should_return_false_for_cell() {    
     let mut bump_allocator = bump_alloc!(200);
 
-    let nil = SharedBox::new(LinkedList::Nil, &mut bump_allocator);
-    let list = SharedBox::new(LinkedList::Cell { value : 1, prev : nil }, &mut bump_allocator);
+    let nil = Box::new(LinkedList::Nil, &mut bump_allocator);
+    let list = Box::new(LinkedList::Cell { value : 1, prev : nil }, &mut bump_allocator);
 
     assert!(list.is_nil() == false, 
         "LinkedList::is_nil() returned true for LinkedList::Cell but should be false");    
@@ -93,7 +94,7 @@ pub fn add_should_create_a_new_cell_with_reference_to_the_old_one() {
 pub fn add_should_create_a_new_cell_with_reference_to_the_old_one_nil_case() {    
     let mut bump_allocator = bump_alloc!(200);
 
-    let start : SharedBox<LinkedList<u32>> = SharedBox::new(LinkedList::Nil, &mut bump_allocator);    
+    let start : Box<LinkedList<u32>> = Box::new(LinkedList::Nil, &mut bump_allocator);    
     let end = start.add(2, &mut bump_allocator);
     let mut iterator = LinkedListIterator::new(end);
 
@@ -127,10 +128,10 @@ fn adding_elems_should_work_properly() {
     let mut head = LinkedList::new(test_values[0], &mut bump_allocator);
 
     for i in 1..test_values_len {
-        head = head.pointer().add(test_values[i],&mut bump_allocator);
+        head = head.add(test_values[i],&mut bump_allocator);
     }
 
-    let it = LinkedListIterator::new(head);
+    let it = LinkedListIterator::new(Box::from_pointer(head.deref()));
     let it_count = it.count();
 
     assert!(it_count == test_values_len,

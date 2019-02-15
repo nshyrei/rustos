@@ -22,22 +22,25 @@ pub fn log2_align_up(x : usize) -> usize {
     log_align_up(2, x)
 }
 
-fn log_inner(base : usize, x : usize) -> (usize, Ordering) {  
-    let mut result = 1;
-    let mut accm = base;        
+fn log_inner(base : usize, x : usize) -> (usize, Ordering) {
+    if base == x {
+        (1, Ordering::Equal)
+    }
+    else {
+        let mut result = 1;
+        let mut accm = base;
 
-    loop {
-        if accm == x {
-            return (result, Ordering::Equal)
+        loop {
+            if accm == x {
+                return (result, Ordering::Equal);
+            } else if accm > x {
+                return (result, Ordering::Greater);
+            } else {
+                accm *= base;
+                result += 1;
+            }
         }
-        else if accm > x {
-            return (result, Ordering::Greater)
-        }
-        else {
-            accm *= base;
-            result += 1;
-        }
-    }    
+    }
 }
 
 pub fn is_even(x : usize) -> bool {
