@@ -1,4 +1,4 @@
-use core::nonzero::NonZero;
+use core::ptr::NonNull;
 use core::marker::PhantomData;
 use core::fmt;
 use core::marker::Sized;
@@ -7,7 +7,7 @@ use core::ops;
 // shamelless copy of rust core lib
 // only change is a func that accepts & and not &mut
 pub struct Unique<T: Sized> {
-    pointer: NonZero<*mut T>,
+    pointer: NonNull<*mut T>,
     phantom: PhantomData<T>,
 }
 
@@ -16,7 +16,7 @@ impl<T> Unique<T> where T : Sized {
     pub fn new(ptr: *const T) -> Self {
         unsafe {
             Unique { 
-                pointer : NonZero::new(ptr as *mut _),
+                pointer : NonNull::new(ptr as *mut _),
                 phantom : PhantomData
             }
         }        
@@ -59,7 +59,7 @@ impl<T> fmt::Display for Unique<T> where T : Sized + fmt::Display {
 }
 
 pub struct Shared<T: Sized> {
-    pointer: NonZero<*mut T>,
+    pointer: NonNull<*mut T>,
     phantom: PhantomData<T>,
 }
 
@@ -77,7 +77,7 @@ impl<T> Shared<T> where T : Sized {
     pub fn from_usize(ptr: usize) -> Self {        
         unsafe {
             Shared { 
-                pointer : NonZero::new(ptr as *mut _),
+                pointer : NonNull::new(ptr as *mut _),
                 phantom : PhantomData
             }
         }
@@ -97,19 +97,13 @@ impl<T> ops::Deref for Shared<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        unsafe { &*self.pointer.get() }
+        unsafe { self.pointer.as_ref() }
     }
 }
 
 impl<T> ops::DerefMut for Shared<T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.pointer.get() }
-    }
-}
-
-impl <T> Shared<T> where T : Copy {
-    pub fn value(&self) -> T {
-        unsafe { *self.pointer.get() } 
+        unsafe { self.pointer.as_mut() }
     }
 }
 

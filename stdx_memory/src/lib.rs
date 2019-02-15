@@ -5,6 +5,7 @@
 extern crate stdx;
 
 pub mod heap;
+
 pub mod collections;
 pub mod trees;
 

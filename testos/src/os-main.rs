@@ -31,62 +31,56 @@ use hardware::x86_64::registers;
 use core::clone::Clone;
 use core::fmt::Write;
 use alloc::boxed::Box;
-static mut vga_writerg : Option<Writer> = None;
 use malloc::TestAllocator;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use memory::allocator::slab::SlabAllocator;
+use memory::allocator::slab::SlabHelp;
 use stdx_memory::heap::RC;
+use stdx_memory::heap::SharedBox;
+use core::ptr::NonNull;
 use alloc::alloc::Layout;
 use stdx_memory::heap;
 
+static mut vga_writerg : Option<Writer> = None;
+
 #[global_allocator]
-static HEAP_ALLOCATOR: TestAllocator = TestAllocator::new() ;
+static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : None };
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header_address: usize) {    
     unsafe {        
+
+        
+        let multiboot_header = MultibootHeader::load(multiboot_header_address);
+
+        let mut vga_writer = Writer::new();
+
+        print_multiboot_data(multiboot_header, &mut vga_writer);
+        
+        let mut frame_allocator = FrameAllocator::new(multiboot_header);
+
+        paging::remap_kernel(&mut paging::p4_table(), &mut frame_allocator, multiboot_header);
+
+        print_multiboot_data(multiboot_header, &mut vga_writer);
+
+        let mut slab_allocator = slab_allocator_should_be_fully_free(&mut vga_writer, 0);
+        HEAP_ALLOCATOR.value = NonNull::new(&mut slab_allocator as *mut SlabAllocator);
+
         {
-            
-            /*
+
             let us : usize = 128;
             let sz = core::mem::size_of::<usize>();
             let boxin = Box::new(us);
             let bb = boxin;
-}
-            */
+
         }
 
-        let mut tst_aloc = memory::allocator::bump::BumpAllocator::from_address(10000, 512);
-        {
-            /*let mut li = DoubleLinkedList::new(1, &mut tst_aloc);
-            let li2 = DoubleLinkedList::add(&mut li, 10, &mut tst_aloc);*/
-        }
-        
-        let multiboot_header = MultibootHeader::load(multiboot_header_address);
-        let mut vga_writer = Writer::new();
-        //vga_writerg = Some(vga_writer);
-        
-        print_multiboot_data(multiboot_header, &mut vga_writer);
-        
-        let mut frame_allocator = FrameAllocator::new(multiboot_header);
-        //free_list_should_properly_set_free();
-        //let mut buddy_allocator = BuddyAllocator::new(frame_allocator.end_address() + 1, 104857600);
-        //frame_allocator.set_buddy_start(Frame::from_address(buddy_allocator.start_address()));
-        //frame_allocator.set_buddy_end(Frame::from_address(buddy_allocator.end_address()));
-        //buddy_allocator.allocate(1024);        
-        let mut temp_p4_table = paging::p4_table();
-        paging::remap_kernel(&mut temp_p4_table, &mut frame_allocator, multiboot_header);
-
-        let p4_table = paging::p4_table();
-        
-
-        print_multiboot_data(multiboot_header, &mut vga_writer);                    
-
-        slab_allocator_should_be_fully_free(&mut vga_writer, 0);
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
+        let p4_table = paging::p4_table();
+
         paging_map_should_properly_map_pages(p4_table, &mut frame_allocator, &mut vga_writer);
         paging_translate_page_should_properly_translate_pages(p4_table, &mut frame_allocator);
         paging_unmap_should_properly_unmap_elements(p4_table, &mut frame_allocator);
@@ -95,7 +89,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     loop {}
 }
 
-pub fn slab_allocator_should_be_fully_free(writer: &mut Writer, adr: usize) {
+pub fn slab_allocator_should_be_fully_free(writer: &mut Writer, adr: usize) -> SlabAllocator {
     use memory::frame::Frame;
     use memory::frame::FRAME_SIZE;
     use stdx::iterator::IteratorExt;
@@ -131,7 +125,7 @@ pub fn slab_allocator_should_be_fully_free(writer: &mut Writer, adr: usize) {
 
     let result = slab_allocator.is_fully_free();
 
-    let exit = 0;
+    slab_allocator
 }
 
 use core::panic::PanicInfo;

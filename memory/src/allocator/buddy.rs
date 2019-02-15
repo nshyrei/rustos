@@ -41,7 +41,7 @@ pub struct BuddyAllocator {
     array_allocator      : bump::BumpAllocator,
     free_list_allocator  : free_list::FreeListAllocator,
     total_memory         : usize,
-    start_address        : usize,    
+    start_address          : usize,
 }
 
 impl BuddyAllocator {
@@ -75,7 +75,8 @@ impl BuddyAllocator {
         assert!(end_address > start_address, "Cannot create allocator when total memory size < FRAME_SIZE (4096)");
 
         let total_buddy_levels = BuddyAllocator::total_buddy_levels(total_memory);
-        
+
+        // compute max memory size for inner allocators to work with
         let sizes_array_size           = Array::<usize>::mem_size_for(total_frames_count);
         let bitmap_size                = FrameBitMap::mem_size_for(total_frames_count);
         let buddy_free_list_array_size = Array::<BuddyFreeList>::mem_size_for(total_buddy_levels);
@@ -85,16 +86,18 @@ impl BuddyAllocator {
         
         let array_sizes = sizes_array_size + buddy_array_size + buddy_free_list_array_size + bitmap_size;
 
+        // create inner allocators
         let mut array_allocator     = bump::BumpAllocator::from_address(start_address, array_sizes);
         let mut free_list_allocator = free_list::FreeListAllocator::from_address(
             array_allocator.end_address() + 1, 
             buddy_free_lists_size,
             BuddyMap::cell_size());
 
-        let allocation_sizes            = Array::<usize>::new(total_frames_count, &mut array_allocator);        
+        // create allocate/free data structures
+        let allocation_sizes                      = Array::<usize>::new(total_frames_count, &mut array_allocator);
         let mut buddy_free_lists_array  = Array::<BuddyFreeList>::new(total_buddy_levels, &mut array_allocator);   
 
-        BuddyAllocator::create_buddy_free_lists(
+        BuddyAllocator::populate_buddy_free_lists(
             &mut buddy_free_lists_array, 
             &mut array_allocator, 
             &mut free_list_allocator, 
@@ -126,10 +129,10 @@ impl BuddyAllocator {
         }
     }
 
-    fn create_buddy_free_lists(buddy_free_lists : &mut Array<BuddyFreeList>, 
+    fn populate_buddy_free_lists(buddy_free_lists : &mut Array<BuddyFreeList>,
         array_allocator : &mut bump::BumpAllocator,
         free_list_allocator : &mut free_list::FreeListAllocator,
-        total_memory : usize, 
+        total_memory : usize,
         total_buddy_levels : usize)
     {        
         for (block_count, i) in block_count_indexed!(total_memory, total_buddy_levels, FRAME_SIZE) {

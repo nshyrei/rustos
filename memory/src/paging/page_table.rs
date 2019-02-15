@@ -73,7 +73,7 @@ impl HasNextTableLevel for P2 {
 pub struct PageTable<Level> where Level : TableLevel
 {    
     entries : [PageTableEntry; 512], // 512 * 8 (sizeof(PageTableEntry)) = 4096 b = 4kb = 1 Frame size
-                                     // why this size? Because x86-64 spec.
+                                                                    // why this size? Because x86-64 spec.
     level : marker::PhantomData<Level>
 }
 
