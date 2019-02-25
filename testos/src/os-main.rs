@@ -74,8 +74,10 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
             let boxin = Box::new(us);
             let bb = boxin;
 
+
         }
 
+        let welp = slab_allocator.is_fully_free();
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
@@ -115,7 +117,7 @@ pub fn slab_allocator_should_be_fully_free(writer: &mut Writer, adr: usize) -> S
 
     let mut slab_allocator = SlabAllocator::new(slab_allocator_start, frame_allocator_start + size, allocator);
 
-    let result = slab_allocator.allocate(2048);
+   let result = slab_allocator.allocate(2048);
     let result1 = slab_allocator.allocate(2048);
     let result2 = slab_allocator.allocate(2048);
 

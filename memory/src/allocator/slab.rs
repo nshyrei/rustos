@@ -411,6 +411,8 @@ impl MemoryAllocator for SlabAllocator {
                     slab.free(pointer, linked_list_allocator, frame_allocator);
 
                     slab_is_fully_free = slab.is_fully_free();
+
+                    self.address_to_size.delete(was_allocated.leak());
                 }
             }
 

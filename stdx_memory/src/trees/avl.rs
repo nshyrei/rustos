@@ -148,69 +148,58 @@ fn min<T, M>(node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : Memo
         .unwrap_or(node)
 }
 
-fn delete_min<T, M>(mut node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
+fn delete_min<T, M>(mut node : NodeBox<T, M>) -> OptNodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     match node.left.take() {
         Some(left) => {
-            node.set_left(Some(delete_min(left)));
+            node.set_left(delete_min(left));
             node.update_height();
 
-            balance(node)
+            Some(balance(node))
         },
-        _ => node.take_right().expect("Invalid avl (no right node) in delete min"),
+        _ => node.right()
     }
 }
 
-fn delete<T, M>(mut node : NodeBox<T, M>, value : T) -> NodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
+fn delete<T, M>(mut node : NodeBox<T, M>, value : T) -> OptNodeBox<T, M> where T : cmp::Ord, M : MemoryAllocator {
     let cmp_result = node.value().cmp(&value);
             
     match cmp_result {
-        Ordering::Less if node.left().is_some() => {
+        Ordering::Less => {
             let new_left = delete(node.take_left_unwrap(), value);
-            node.set_left(Some(new_left));
+            node.set_left(new_left);
         },
-        Ordering::Greater if node.right().is_some() => {
+        Ordering::Greater => {
             let new_right = delete(node.take_right_unwrap(), value);
-            node.set_right(Some(new_right));                
+            node.set_right(new_right);
         },
         _ => {
-            if node.left().is_none() && node.right().is_some() {
-                return node.take_right_unwrap()
+            if node.left().is_none() {
+                return node.right()
             }
-            else if node.right().is_none() && node.left().is_some() {
-                return node.take_left_unwrap()
+            else if node.right().is_none() {
+                return node.left()
             }
             else {
-                let node_copy = heap::RC::clone(&node);
+                let y = heap::RC::clone(&node);
 
-                let cpy_right  = node_copy.right().is_some();
-                let cpy_left    = node_copy.left().is_some();
+                let cpy_right  = y.right().is_some();
+                let cpy_left    = y.left().is_some();
 
                 {
-                    let new_node = min(node_copy.right().unwrap());
+                    let new_node = min(y.right().unwrap());
 
                     node = (new_node);
                 }
 
-                let right_copy_n = node_copy.right().unwrap();
-                let right_copy = heap::RC::clone(&right_copy_n);
-                //let left_copy = heap::WeakBox::from_pointer(node_copy.left().as_ref().unwrap().deref());
-                let new_right = delete_min(right_copy);                
-                node.set_right(Some(new_right));
-                //node.set_left(Some(left_copy));
-
-
-                /*
-                Node y = x;
-                x = min(y.right);
-                x.right = deleteMin(y.right);
-                x.left = y.left;
-                */
+                let new_right = delete_min(y.right().unwrap());
+                node.set_right(new_right);
+                node.set_left(y.left());
             }
         }
     }
         
     node.update_height();
-    balance(node)
+    Some(balance(node))
 }
 
 fn delete_by<T, Q, F, M>(mut node : NodeBox<T, M>, value : Q, f : F) -> OptNodeBox<T, M> where T : cmp::Ord, F : Fn(&T) -> Q, Q :cmp::Ord, M : MemoryAllocator {
@@ -218,47 +207,36 @@ fn delete_by<T, Q, F, M>(mut node : NodeBox<T, M>, value : Q, f : F) -> OptNodeB
     let cmp_result = comparable_value.cmp(&value);
 
     match cmp_result {
-        Ordering::Less if node.left().is_some() => {
+        Ordering::Less => {
             let new_left = delete_by(node.take_left_unwrap(), value, f);
             node.set_left(new_left);
         },
-        Ordering::Greater if node.right().is_some() => {
+        Ordering::Greater => {
             let new_right = delete_by(node.take_right_unwrap(), value, f);
             node.set_right(new_right);
         },
         _ => {
             if node.left().is_none() {
-                return  node.right_mut().take()
+                return  node.right()
             }
             else if node.right().is_none() {
-                return node.left_mut().take()
+                return node.left()
             }
             else {
-                let node_copy = heap::RC::clone(&node);
+                let y = heap::RC::clone(&node);
 
-                let cpy_right = node_copy.right().is_some();
-                let cpy_left = node_copy.left().is_some();
+                let cpy_right  = y.right().is_some();
+                let cpy_left     = y.left().is_some();
 
                 {
-                    let new_node = min(node_copy.right().unwrap());
+                    let new_node = min(y.right().unwrap());
 
-                    node = (new_node);
+                    node = new_node;
                 }
 
-                let right_copy_n = node_copy.right().unwrap();
-                let right_copy = heap::RC::clone(&right_copy_n);
-                        //let left_copy = heap::WeakBox::from_pointer(node_copy.left().as_ref().unwrap().deref());
-                let new_right = delete_min(right_copy);
-                node.set_right(Some(new_right));
-                        //node.set_left(Some(left_copy));
-
-
-                        /*
-                        Node y = x;
-                        x = min(y.right);
-                        x.right = deleteMin(y.right);
-                        x.left = y.left;
-                        */
+                let new_right = delete_min(y.right().unwrap());
+                node.set_right(new_right);
+                node.set_left(y.left());
             }
         }
     }
@@ -352,13 +330,10 @@ impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
     pub fn insert(&mut self, value : T, memory_allocator : &mut M) where M : MemoryAllocator {
         match self.root.take() {
             Some(node) => {
-
                 self.root = Some(insert0(node, value, memory_allocator))
             },
             _ => {
                 self.root = Some(AVLNode::new(value, 0, memory_allocator));
-
-
             }
         }
 
@@ -368,7 +343,7 @@ impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 
     pub fn delete(&mut self, key : T) {
         match self.root.take() {
-            Some(node) => self.root = Some(delete(node, key)),
+            Some(node) => self.root = delete(node, key),
             _ => self.root = None
         }
     }

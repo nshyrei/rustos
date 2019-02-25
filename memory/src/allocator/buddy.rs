@@ -42,6 +42,7 @@ pub struct BuddyAllocator {
     free_list_allocator  : free_list::FreeListAllocator,
     total_memory         : usize,
     start_address          : usize,
+    memory_start_addresss : usize
 }
 
 impl BuddyAllocator {
@@ -107,14 +108,17 @@ impl BuddyAllocator {
         // set initial block that covers all memory as free
         let idx = if total_buddy_levels > 0 { total_buddy_levels - 1} else { 0 };
         buddy_free_lists_array[idx].set_free(0, &mut free_list_allocator);
-                
+
+        let memory_start_address = Frame::address_align_up(free_list_allocator.end_address() + 1);
+
         BuddyAllocator {
             allocation_sizes            : allocation_sizes,            
             buddy_free_lists            : buddy_free_lists_array,            
             total_memory                : total_memory,            
             array_allocator             : array_allocator,
             free_list_allocator         : free_list_allocator,
-            start_address               : start_address,            
+            start_address               : start_address,
+            memory_start_addresss : memory_start_address
         }
     }
 
@@ -320,9 +324,9 @@ impl MemoryAllocator for BuddyAllocator {
                 
                 if let Some((new_buddy_index, result_address)) = result {
                     let frame_number = Frame::number_for_address(result_address);
-                    self.allocation_sizes[frame_number] = new_buddy_index as usize;                
+                    self.allocation_sizes[frame_number] = new_buddy_index as usize;
 
-                    Some(result_address + self.start_address)
+                    Some(result_address + self.memory_start_addresss)
                 }
                 else {
                     None
@@ -332,7 +336,7 @@ impl MemoryAllocator for BuddyAllocator {
     }
 
     fn free(&mut self, pointer : usize) {
-        let normalized_pointer = pointer - self.start_address;
+        let normalized_pointer = pointer - self.memory_start_addresss;
         let frame_number       = Frame::number_for_address(normalized_pointer);
         let buddy_list_index   = self.allocation_sizes[frame_number];
 
