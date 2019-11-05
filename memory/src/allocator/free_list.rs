@@ -3,22 +3,35 @@ use stdx_memory::heap;
 use stdx_memory::collections::linked_list::LinkedList;
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
+use stdx_memory::MemoryAllocatorMeta;
 use core::cmp;
+use core::mem;
+
+type LinkedListBlock = LinkedList<usize>;
 
 #[repr(C)]
 pub struct FreeListAllocator {
     bump_allocator        : ConstSizeBumpAllocator,
     block_size            : usize,
-    free_blocks           : heap::Box<LinkedList<usize>, ConstSizeBumpAllocator>,
+    free_blocks           : heap::Box<LinkedListBlock, ConstSizeBumpAllocator>,
     free_blocks_allocator : ConstSizeBumpAllocator,
     free_blocks_count     : usize
 }
 
 impl FreeListAllocator {
-    pub fn from_address(address: usize, size : usize, block_size : usize) -> FreeListAllocator {
-        let bump_allocator = ConstSizeBumpAllocator::from_address(address, size, block_size);            
+
+    pub fn aux_data_structures_size_for(address: usize, size : usize, block_size : usize) -> usize {
+        let bump_allocator = ConstSizeBumpAllocator::from_size(address, size, block_size);
+        let blocks_count = bump_allocator.total_blocks_count() + 1;
+
+        let elem_size = mem::size_of::<LinkedListBlock>();
+
+        blocks_count * elem_size
+    }
+
+    fn new(bump_allocator : ConstSizeBumpAllocator, block_size : usize) -> FreeListAllocator {
         let blocks_count = bump_allocator.total_blocks_count();
-        let mut free_blocks_allocator = ConstSizeBumpAllocator::from_address_for_type_multiple::<LinkedList<usize>>(
+        let mut free_blocks_allocator = ConstSizeBumpAllocator::from_address_for_type_multiple::<LinkedListBlock>(
             bump_allocator.end_address() + 1,
             blocks_count + 1); // +1 for LinkedList::Nil
 
@@ -33,6 +46,19 @@ impl FreeListAllocator {
         }
     }
 
+    pub fn from_size(address: usize, size : usize, block_size : usize) -> FreeListAllocator {
+        let bump_allocator = ConstSizeBumpAllocator::from_size(address, size, block_size);
+
+        FreeListAllocator::new(bump_allocator, block_size)
+    }
+
+    pub fn from_address(address: usize, end_address : usize, block_size : usize) -> FreeListAllocator {
+        let bump_allocator = ConstSizeBumpAllocator::from_address(address, end_address, block_size);
+
+        FreeListAllocator::new(bump_allocator, block_size)
+    }
+
+
     pub fn fully_free(&self) -> bool {
         self.free_blocks_count == self.bump_allocator.total_blocks_count()
     }
@@ -40,15 +66,6 @@ impl FreeListAllocator {
     pub fn fully_occupied(&self) -> bool {
         self.free_blocks_count == 0
     }
-
-    pub fn start_address(&self) -> usize {
-
-        self.bump_allocator.start_address()
-    }
-
-    pub fn end_address(&self) -> usize {
-        self.free_blocks_allocator.end_address()
-    }    
 
     pub fn increase_size(&mut self, size : usize) {
         let free_list_blocks_increase = size / self.block_size;
@@ -59,7 +76,29 @@ impl FreeListAllocator {
     pub fn is_inside_address_space(&self, pointer : usize) -> bool {
         self.bump_allocator.is_inside_address_space(pointer)
     }
+
+    fn linked_list_blocks_count(&self) -> usize {
+        self.free_blocks_count + 1 // +1 for LinkedList::Nil
+    }
 }
+
+impl MemoryAllocatorMeta for FreeListAllocator {
+
+    fn aux_data_structures_size(&self) -> usize {
+        let elem_size = mem::size_of::<LinkedListBlock>();
+
+        self.linked_list_blocks_count() * elem_size
+    }
+
+    fn start_address(&self) -> usize {
+        self.bump_allocator.start_address()
+    }
+
+    fn end_address(&self) -> usize {
+        self.free_blocks_allocator.end_address()
+    }
+}
+
 
 impl ConstantSizeMemoryAllocator for FreeListAllocator {    
     fn allocate_size(&mut self) -> Option<usize> {
@@ -84,14 +123,6 @@ impl ConstantSizeMemoryAllocator for FreeListAllocator {
         self.free_blocks_count += 1;
         self.free_blocks = self.free_blocks.add(pointer, &mut self.free_blocks_allocator);
     }
-
-    fn assigned_memory_size() -> usize {
-        unimplemented!()
-    }
-
-    fn aux_data_structures_size() -> usize {
-        unimplemented!()
-    }
 }
 
 impl cmp::Ord for FreeListAllocator {
@@ -112,6 +143,6 @@ impl cmp::Eq for FreeListAllocator {
 
 impl cmp::PartialEq for FreeListAllocator {
     fn eq(&self, other: &Self) -> bool {
-        self.start_address() == other.start_address()
+        ConstantSizeMemoryAllocator::start_address(self) == ConstantSizeMemoryAllocator::start_address(other)
     }
 }

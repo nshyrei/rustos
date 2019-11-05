@@ -1,6 +1,8 @@
 pub mod tags;
 pub mod tag;
 use core::iter;
+use multiboot_header::tags::memory_map::MemoryMap;
+use multiboot_header::tags::memory_map::MemoryMapEntry;
 
 pub trait MultibootHeaderTag {
     fn numeric_type() -> u32;
@@ -45,6 +47,17 @@ impl MultibootHeader {
             let tag_address = e as *const _ as usize;
             unsafe { &(*(tag_address as *const T)) }
         })        
+    }
+
+    pub fn biggest_memory_area(&self) -> (usize, usize) {
+        let memory_areas = self.read_tag::<MemoryMap>().expect("Memory map is not present in MultiBootHeader");
+
+        let result = memory_areas
+            .entries()
+            .max_by_key(|e| e.end_address() - e.base_address())
+            .unwrap();
+
+        (result.base_address() as usize , result.end_address() as usize)
     }
 }
 

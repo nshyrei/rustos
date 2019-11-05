@@ -6,3 +6,6 @@ authors = ["charlolizard <nikitas2209@gmail.com>"]
 
 [dependencies.stdx]
 path = "../stdx"
+
+[dependencies.display]
+path = "../display"

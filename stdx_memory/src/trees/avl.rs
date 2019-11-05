@@ -11,6 +11,9 @@ use stdx::Sequence;
 use stdx::Iterable;
 use core::ops::Deref;
 use core::ops::DerefMut;
+use display::vga::writer::Writer;
+use core::fmt::Write;
+use core::fmt::Display;
 
 type NodeBox<T, M>         = heap::RC<AVLNode<T, M>, M>;
 type OptNodeBox<T, M>  = Option<NodeBox<T, M>>;
@@ -123,7 +126,7 @@ fn balance<T, M>(mut node : NodeBox<T, M>) -> NodeBox<T, M> where T : cmp::Ord, 
         if balance_factor_opt(&node.right) > 0 && node.has_right() {
             let r = node.take_right_unwrap();
 
-            node.set_right(Some(rotate_right(r)));            
+            node.set_right(Some(rotate_right(r)));
         }
 
         node = rotate_left(node);
@@ -280,6 +283,22 @@ pub struct AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 }
 
 impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
+
+
+    pub fn print_what<F, C>(&self, selector : F, writer : &mut Writer) -> ()
+        where F : Fn(&T) -> C, C :Display {
+
+        AVLTree::print_what0(self.root.as_ref(), &selector, writer)
+    }
+
+    fn print_what0<F, C>(node : Option<&NodeBox<T, M>>, selector :& F, writer : &mut Writer) -> () where F : Fn(&T) -> C, C : Display {
+        if let Some(n) = node {
+            writeln!(writer, "---Tree val {}", selector(n.value()));
+
+            AVLTree:: print_what0(n.left().as_ref(), selector, writer);
+            AVLTree::print_what0(n.right().as_ref(), selector, writer);
+        }
+    }
 
     pub fn root_value(&self) -> Option<&T> {
         self.root.as_ref().map(|rc| rc.value())
@@ -448,6 +467,7 @@ impl<T, M> AVLNode<T, M> where T : cmp::Ord, M : MemoryAllocator {
         heap::RC::new(result, memory_allocator)
     }
 }
+
 /*
 public class AVLTreeST<Key extends Comparable<Key>, Value> {
 

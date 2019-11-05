@@ -1,16 +1,23 @@
 pub mod page_table;
 
-use paging::page_table::P4Table;
+use paging::page_table::{ P4Table, PAGE_TABLE_SIZE, PAGE_TABLE_ENTRY_SIZE };
 use frame::frame_allocator::*;
 use frame::Frame;
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::elf;
 use hardware::x86_64::registers;
+use stdx_memory::MemoryAllocator;
 
+/// Returns size of page tables to describe virtual memory
+/// # Arguments
+/// * `virtual_memory_size` - the size of virtual memory
+pub fn table_size_for(virtual_memory_size : usize) -> usize {
+    (virtual_memory_size / PAGE_TABLE_SIZE) * PAGE_TABLE_ENTRY_SIZE
+}
 
 /// Returns current p4 table.
 pub fn p4_table() -> &'static mut P4Table {
-    const P4_TABLE_ADDRESS : usize = 0xfffffffffffff000;  // recursive mapping to P4s 0 entry
+    const P4_TABLE_ADDRESS : usize = 0xfffffffffffff000;         // recursive mapping to P4s 0 entry
     unsafe { &mut (*(P4_TABLE_ADDRESS as *mut P4Table)) } // reading predefined recursive address is safe
 }
 
@@ -52,7 +59,7 @@ pub unsafe fn remap_kernel(current_p4_table : &mut P4Table, frame_allocator : &m
     new_p4.unmap(old_p4_address  as usize)
 }
 
-fn remap_kernel0(p4_table : &mut P4Table, frame_allocator : &mut FrameAllocator, multiboot_header : & MultibootHeader) {
+fn remap_kernel0<M>(p4_table : &mut P4Table, frame_allocator : &mut M, multiboot_header : & MultibootHeader)  where M : MemoryAllocator + FrameAllocatorFake {
     let elf_sections = multiboot_header
             .read_tag::<elf::ElfSections>()
             .unwrap();

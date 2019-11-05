@@ -7,6 +7,7 @@ use core::iter;
 use core::ptr;
 use core::cmp;
 use core::marker;
+use stdx::Iterable;
 
 type ListPointer<T, A> = heap::RCBox<DoubleLinkedList<T,A>, A>;
 type RCPointer<T, A> = heap::RC<DoubleLinkedList<T, A>, A>;
@@ -123,10 +124,21 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
     pub fn is_end(&self) -> bool {
         self.next.is_none()
     }
-    
+
 
     
 }
+
+/*impl<T, M> Iterable for DoubleLinkedList<T, M> where M : MemoryAllocator {
+
+    type Item = T;
+
+    type IntoIter = DoubleLinkedListIterator<T, M>;
+
+    fn iterator(&self) -> DoubleLinkedListIterator<T, M> {
+        DoubleLinkedListIterator::new()
+    }
+}*/
 
 impl<T, A> cmp::Ord for DoubleLinkedList<T, A> where T : cmp::Ord, A : MemoryAllocator {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
@@ -149,6 +161,34 @@ impl<T, A> cmp::PartialEq for DoubleLinkedList<T, A> where T : cmp::PartialEq, A
         self.value().eq(other.value())
     }
 }
+
+pub struct DoubleLinkedListIterator<T, M> where M : MemoryAllocator {
+    current : Option<RCPointer<T, M>>
+}
+
+impl<T, M> DoubleLinkedListIterator<T, M> where M : MemoryAllocator {
+    pub fn new(head: Option<RCPointer<T, M>>) -> DoubleLinkedListIterator<T, M> {
+        DoubleLinkedListIterator {
+            current : head
+        }
+    }
+}
+
+impl<T, M> iter::Iterator for DoubleLinkedListIterator<T, M> where M : MemoryAllocator {
+
+    type Item = RCPointer<T, M>;
+
+    fn next(&mut self) -> Option<RCPointer<T, M>> {
+        match self.current.take() {
+            Some(cell) => {
+                    self.current = cell.next();
+                    Some(cell)
+                },
+            _ => None
+            }
+    }
+}
+
 
 /*
 impl<T> ops::Deref for DoubleLinkedList<T> {

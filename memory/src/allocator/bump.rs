@@ -1,5 +1,6 @@
 use stdx_memory::MemoryAllocator;
 use stdx_memory::ConstantSizeMemoryAllocator;
+use stdx_memory::MemoryAllocatorMeta;
 use core::marker;
 use core::mem;
 use core::ptr;
@@ -38,7 +39,7 @@ impl ConstSizeBumpAllocator {
         self.end_address() - self.start_address() + 1
     }
 
-    pub fn from_address(address: usize, size : usize, allocation_size : usize) -> Self {
+    pub fn from_size(address: usize, size : usize, allocation_size : usize) -> Self {
         ConstSizeBumpAllocator {
             current_pointer     : address, 
             start_address       : address, 
@@ -47,16 +48,25 @@ impl ConstSizeBumpAllocator {
         }
     }
 
+    pub fn from_address(address: usize, end_address : usize, allocation_size : usize) -> Self {
+        ConstSizeBumpAllocator {
+            current_pointer     : address,
+            start_address       : address,
+            pointer_end_address : end_address,
+            allocation_size     : allocation_size
+        }
+    }
+
     pub fn from_address_for_type<T>(address: usize, size : usize) -> Self
     where Self : marker::Sized {
         let elem_size = mem::size_of::<T>();
-        Self::from_address(address, size, elem_size)
+        Self::from_size(address, size, elem_size)
     }
 
     pub fn from_address_for_type_multiple<T>(address: usize, elems_count : usize) -> Self
     where Self : marker::Sized {    
         let elem_size = mem::size_of::<T>();
-        Self::from_address(address, elem_size * elems_count, elem_size)
+        Self::from_size(address, elem_size * elems_count, elem_size)
     }
 
     pub fn increase_size(&mut self, size : usize) {
@@ -65,6 +75,20 @@ impl ConstSizeBumpAllocator {
 
     pub fn is_inside_address_space(&self, pointer : usize) -> bool {
         pointer >= self.start_address && pointer <= self.pointer_end_address
+    }
+}
+
+impl MemoryAllocatorMeta for ConstSizeBumpAllocator {
+    fn aux_data_structures_size(&self) -> usize {
+        0
+    }
+
+    fn start_address(&self) -> usize {
+        self.start_address()
+    }
+
+    fn end_address(&self) -> usize {
+        self.end_address()
     }
 }
 
@@ -86,13 +110,7 @@ impl ConstantSizeMemoryAllocator for ConstSizeBumpAllocator {
         self.current_pointer -= self.allocation_size;
     }
 
-    fn assigned_memory_size() -> usize {
-        unimplemented!()
-    }
 
-    fn aux_data_structures_size() -> usize {
-        unimplemented!()
-    }
 }
 
 #[derive(Clone)]
@@ -121,7 +139,20 @@ impl BumpAllocator {
 
     pub fn end_address(&self) -> usize {
         self.pointer_end_address - 1
-    }    
+    }
+}
+
+impl MemoryAllocatorMeta for BumpAllocator {
+
+    fn start_address(&self) -> usize { self.start_address() }
+
+    fn end_address(&self) -> usize {
+        self.end_address()
+    }
+
+    fn aux_data_structures_size(&self) -> usize {
+        0
+    }
 }
 
 impl MemoryAllocator for BumpAllocator {
@@ -141,17 +172,10 @@ impl MemoryAllocator for BumpAllocator {
     fn free(&mut self, size: usize) {
         self.current_pointer -= size;
     }
-
-    fn assigned_memory_size() -> usize {
-        unimplemented!()
-    }
-
-    fn aux_data_structures_size() -> usize {
-        unimplemented!()
-    }
 }
 
-pub struct SafeBumpAllocator {    
+/*
+pub struct SafeBumpAllocator {
     kernel_end_address : usize,
     kernel_start_address : usize,
     multiboot_start_address: usize,
@@ -202,7 +226,7 @@ impl SafeBumpAllocator {
             current_memory_area : ptr::NonNull::from(fitting_memory_area),
             memory_map : ptr::NonNull::from(memory_areas)
         }        
-    }    
+    }
 
     fn step_over_reserved_memory_if_needed(&self, address1 : usize, size : usize) -> usize {
         // dont touch multiboot data
@@ -215,7 +239,7 @@ impl SafeBumpAllocator {
         else if address >= self.kernel_start_address &&
                 address <= self.kernel_end_address {
             self.step_over_reserved_memory_if_needed(self.kernel_end_address + 1, size) // in case next will touch empty address list
-        }        
+        }
         else{
             address
         }
@@ -267,11 +291,15 @@ impl MemoryAllocator for SafeBumpAllocator {
         self.current_pointer -= size;
     }
 
-    fn assigned_memory_size() -> usize {
+    fn start_address(&self) -> usize {
         unimplemented!()
     }
 
-    fn aux_data_structures_size() -> usize {
+    fn end_address(&self) -> usize {
         unimplemented!()
     }
-}
+
+    fn aux_data_structures_size(&self) -> usize {
+        unimplemented!()
+    }
+}*/

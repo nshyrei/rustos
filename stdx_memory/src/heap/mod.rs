@@ -215,11 +215,16 @@ impl<T> Copy for SharedBox<T> where T : Sized  { }
 
 #[repr(C)]
 pub struct RC<T, A> where A : MemoryAllocator {
-    rc_box           : ptr::NonNull<RcBox<T>>,
-    memory_allocator : ptr::NonNull<A>
+    rc_box                          : ptr::NonNull<RcBox<T>>,
+    memory_allocator    : ptr::NonNull<A>
+}
+
+pub fn rc_size_for<T>() -> usize {
+    mem::size_of::<RcBox<T>>()
 }
 
 impl<T, A> RC<T, A> where A : MemoryAllocator {
+
     pub fn new(value : T, memory_allocator : &mut A) -> Self {
         let pointer = memory_allocator.allocate_for::<RcBox<T>>().expect("No memory for RC box value");
         let rc_box = RcBox::new(value);
@@ -258,6 +263,7 @@ impl<T, A> Clone for RC<T, A> where A : MemoryAllocator {
         unsafe {
             let pointer = self.rc_box.as_ptr() as usize;
             self.rc_box.as_ref().inc_ref_count();
+            let debug = self.reference_count();
 
             let rc_box                      = ptr::NonNull::new_unchecked(self.rc_box.as_ptr());
             let memory_allocator = ptr::NonNull::new_unchecked(self.memory_allocator.as_ptr());
@@ -274,7 +280,8 @@ impl<T, A> ops::Drop for RC<T, A> where A : MemoryAllocator {
     fn drop(&mut self) {
         unsafe {
             let pointer = self.rc_box.as_ptr() as usize;
-            if self.rc_box.as_ref().reference_count() == 1 {
+            let count = self.rc_box.as_ref().reference_count();
+            if count == 1 {
                 let pointer = self.rc_box.as_ptr() as usize;
                 self.memory_allocator.as_mut().free(pointer);
             }
@@ -288,8 +295,12 @@ impl<T, A> ops::Drop for RC<T, A> where A : MemoryAllocator {
 impl<T, A> ops::Deref for RC<T, A> where A : MemoryAllocator {
     type Target = T;
 
-    fn deref(&self) -> &T {
-        unsafe { self.rc_box.as_ref().value() }
+    fn deref(&self) -> &T {        
+        unsafe { 
+            let count = self.rc_box.as_ref().reference_count();
+
+            self.rc_box.as_ref().value()
+        }
     }
 }
 
@@ -330,6 +341,7 @@ struct RcBox<T> {
 impl<T> RcBox<T> {
 
     fn value(&self) -> &T {
+        self.reference_count();
         &self.value
     }
 

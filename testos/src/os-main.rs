@@ -27,6 +27,7 @@ use memory::paging;
 use memory::paging::page_table;
 use memory::paging::page_table::P4Table;
 use stdx_memory::MemoryAllocator;
+use stdx_memory::MemoryAllocatorMeta;
 use hardware::x86_64::registers;
 use core::clone::Clone;
 use core::fmt::Write;
@@ -35,6 +36,7 @@ use malloc::TestAllocator;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use memory::allocator::slab::SlabAllocator;
 use memory::allocator::slab::SlabHelp;
+use memory::allocator::buddy::BuddyAllocator;
 use stdx_memory::heap::RC;
 use stdx_memory::heap::SharedBox;
 use core::ptr::NonNull;
@@ -54,44 +56,65 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
 
-        let mut vga_writer = Writer::new();
+        vga_writerg = Some(Writer::new());
 
-        print_multiboot_data(multiboot_header, &mut vga_writer);
+        print_multiboot_data(multiboot_header, vga_writerg.as_mut().unwrap());
         
         let mut frame_allocator = FrameAllocator::new(multiboot_header);
 
         paging::remap_kernel(&mut paging::p4_table(), &mut frame_allocator, multiboot_header);
 
-        print_multiboot_data(multiboot_header, &mut vga_writer);
+        print_multiboot_data(multiboot_header, vga_writerg.as_mut().unwrap());
 
-        let mut slab_allocator = slab_allocator_should_be_fully_free(&mut vga_writer, 0);
+        slab_allocator_should_be_fully_free(vga_writerg.as_mut().unwrap(), 1);
+
+        /*let size = 32768;
+        let heap: [u8; 80000] = [0; 80000];
+        let memory_start = heap.as_ptr() as usize;        
+    
+
+        //let (memory_start, memory_end1) = multiboot_header.biggest_memory_area();
+        let memory_end = memory_start + 20000;
+        let aux_data_structures_size = SlabAllocator::aux_data_structures_size_for(memory_start, memory_end);
+        let mut premade_bump = BumpAllocator::from_address(memory_start, aux_data_structures_size);
+
+        //let mut page_tables_allocator = FrameAllocator::new(multiboot_header);
+        //let mut frame_allocator = BuddyAllocator::new(memory_start, memory_start+10000, page_tables_allocator);
+
+        // premap memory for memory allocator inner data structures
+        for frame in Frame::range_inclusive(premade_bump.end_address() + 1, memory_end) {
+            let p4_table = paging::p4_table();
+            unsafe { p4_table.map_page_1_to_1(frame, page_table::PRESENT | page_table::WRITABLE, &mut premade_bump); }
+        }
+
+
+        let mut slab_allocator = SlabAllocator::new(memory_start, memory_end);
+
+        //let mut slab_allocator = slab_allocator_should_be_fully_free(&mut vga_writer, 0);
         HEAP_ALLOCATOR.value = NonNull::new(&mut slab_allocator as *mut SlabAllocator);
 
         {
-
             let us : usize = 128;
             let sz = core::mem::size_of::<usize>();
             let boxin = Box::new(us);
             let bb = boxin;
-
-
         }
 
-        let welp = slab_allocator.is_fully_free();
+        let welp = slab_allocator.is_fully_free();*/
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
         let p4_table = paging::p4_table();
 
-        paging_map_should_properly_map_pages(p4_table, &mut frame_allocator, &mut vga_writer);
-        paging_translate_page_should_properly_translate_pages(p4_table, &mut frame_allocator);
-        paging_unmap_should_properly_unmap_elements(p4_table, &mut frame_allocator);
-        paging_translate_address_should_properly_translate_virtual_address(p4_table, &mut frame_allocator);        
+        /*paging_map_should_properly_map_pages(p4_table, slab_allocator.frame_allocator(), &mut vga_writer);
+        paging_translate_page_should_properly_translate_pages(p4_table, slab_allocator.frame_allocator());
+        paging_unmap_should_properly_unmap_elements(p4_table, slab_allocator.frame_allocator());
+        paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
     }
     loop {}
 }
 
-pub fn slab_allocator_should_be_fully_free(writer: &mut Writer, adr: usize) -> SlabAllocator {
+pub fn slab_allocator_should_be_fully_free(writer: &'static mut Writer, adr: usize) -> SlabAllocator {
     use memory::frame::Frame;
     use memory::frame::FRAME_SIZE;
     use stdx::iterator::IteratorExt;
@@ -110,20 +133,21 @@ pub fn slab_allocator_should_be_fully_free(writer: &mut Writer, adr: usize) -> S
     let heap: [u8; 80000] = [0; 80000];
     let heap_addr = heap.as_ptr() as usize;
 
-    let frame_allocator_start = Frame::address_align_up(heap_addr);
+    let memory_start = Frame::address_align_up(heap_addr);
 
-    let allocator = BuddyAllocator::new(frame_allocator_start, frame_allocator_start + size);
-    let slab_allocator_start = allocator.end_address() + 1;
+    let memory_end = memory_start + 40000;
+    let aux_data_structures_size = SlabAllocator::aux_data_structures_size_for(memory_start, memory_end);
+    let mut premade_bump = BumpAllocator::from_address(memory_start, aux_data_structures_size);
 
-    let mut slab_allocator = SlabAllocator::new(slab_allocator_start, frame_allocator_start + size, allocator);
+    let mut slab_allocator = SlabAllocator::new(memory_start, memory_end, writer);
 
    let result = slab_allocator.allocate(2048);
     let result1 = slab_allocator.allocate(2048);
-    let result2 = slab_allocator.allocate(2048);
+    //let result2 = slab_allocator.allocate(2048);
 
     slab_allocator.free(result1.unwrap());
     slab_allocator.free(result.unwrap());
-    slab_allocator.free(result2.unwrap());
+    //slab_allocator.free(result2.unwrap());
 
     let result = slab_allocator.is_fully_free();
 
@@ -177,10 +201,10 @@ fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut W
     }
 }
 
-unsafe fn paging_map_should_properly_map_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator, vga_writer : &mut Writer) {    
+unsafe fn paging_map_should_properly_map_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut BuddyAllocator, vga_writer : &mut Writer) {
 
     let virtual_frame = Frame::from_address(0x400000000000);
-    let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
+    let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
         
     page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);
 
@@ -195,13 +219,13 @@ unsafe fn paging_map_should_properly_map_pages(page_table : &mut page_table::P4T
         }
     } 
 
-    frame_alloc.deallocate(physical_frame);
+    frame_alloc.free(physical_frame.address());
     page_table.unmap_page(virtual_frame);
 }
 
-unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator) {
+unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut BuddyAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
-    let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
+    let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
         
     page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);
 
@@ -209,13 +233,13 @@ unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mu
 
     sanity_assert_translate_page_result(virtual_frame, physical_frame, result);
 
-    frame_alloc.deallocate(physical_frame);
+    frame_alloc.free(physical_frame.address());
     page_table.unmap_page(virtual_frame);
 }
 
-unsafe fn paging_translate_address_should_properly_translate_virtual_address(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator) {
+unsafe fn paging_translate_address_should_properly_translate_virtual_address(page_table : &mut page_table::P4Table, frame_alloc : &mut BuddyAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
-    let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
+    let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
         
     page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);
     
@@ -230,13 +254,13 @@ unsafe fn paging_translate_address_should_properly_translate_virtual_address(pag
         sanity_assert_translate_address_result(virtual_address, physical_address, result);        
     }
     
-    frame_alloc.deallocate(physical_frame);
+    frame_alloc.free(physical_frame.address());
     page_table.unmap_page(virtual_frame);
 }
 
-unsafe fn paging_unmap_should_properly_unmap_elements(page_table : &mut page_table::P4Table, frame_alloc : &mut FrameAllocator) {
+unsafe fn paging_unmap_should_properly_unmap_elements(page_table : &mut page_table::P4Table, frame_alloc : &mut BuddyAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
-    let physical_frame = frame_alloc.allocate().expect("No frames for paging test");
+    let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
 
     page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);    
     page_table.unmap_page(virtual_frame);    
@@ -248,7 +272,7 @@ unsafe fn paging_unmap_should_properly_unmap_elements(page_table : &mut page_tab
         virtual_frame,
         result.unwrap());
 
-    frame_alloc.deallocate(physical_frame);
+    frame_alloc.free(physical_frame.address());
 }
 
 fn sanity_assert_translate_page_result(virtual_frame : Frame, physical_frame : Frame, result : Option<Frame>) {

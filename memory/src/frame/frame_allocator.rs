@@ -6,6 +6,8 @@ use frame::FRAME_SIZE;
 use stdx_memory::collections::linked_list::LinkedList;
 use allocator::bump::{BumpAllocator, ConstSizeBumpAllocator};
 use stdx_memory::MemoryAllocator;
+use stdx_memory::ConstantSizeMemoryAllocator;
+use stdx_memory::MemoryAllocatorMeta;
 use stdx_memory::heap;
 use core::fmt;
 use core::mem;
@@ -20,6 +22,25 @@ use core::ptr;
     You can think of bump allocation as a meachanism to populate free frame stack, the other option to do it without bump allocation is to 
     create a big free frame stack that describes all available memory and use only it.  
 */
+
+pub struct FreeListFrameAllocator {
+    multiboot_start_frame: Frame,
+    multiboot_end_frame: Frame,
+    kernel_start_frame: Frame,
+    kernel_end_frame: Frame,
+    current_memory_area : ptr::NonNull<MemoryMapEntry>,
+    memory_areas: AvailableMemorySectionsIterator,
+    last_frame_number: Frame,
+    empty_frame_list: heap::WeakBox<LinkedList<Frame>>,
+    frame_list_allocator : ConstSizeBumpAllocator,
+    buddy_allocator_start_frame : Frame,
+    buddy_allocator_end_frame : Frame
+}
+
+pub trait FrameAllocatorFake {
+    fn bump_allocator(&self) -> ConstSizeBumpAllocator;
+}
+
 pub struct FrameAllocator {
     multiboot_start_frame: Frame,
     multiboot_end_frame: Frame,
@@ -32,6 +53,12 @@ pub struct FrameAllocator {
     frame_list_allocator : ConstSizeBumpAllocator,
     buddy_allocator_start_frame : Frame,
     buddy_allocator_end_frame : Frame
+}
+
+impl FrameAllocatorFake for FrameAllocator {
+    fn bump_allocator(&self) -> ConstSizeBumpAllocator {
+        self.frame_list_allocator.clone()
+    }
 }
 
 impl FrameAllocator {
@@ -64,10 +91,6 @@ impl FrameAllocator {
 
     pub fn last_frame_number(&self) -> Frame {
         self.last_frame_number
-    }
-
-    pub fn bump_allocator(&self) -> ConstSizeBumpAllocator {
-        self.frame_list_allocator.clone()
     }
 
     pub fn end_address(&self) -> usize {
@@ -136,7 +159,7 @@ impl FrameAllocator {
         let memory_areas = multiboot_header.read_tag::<MemoryMap>()
             .expect("Cannot create frame allocator without multiboot memory map");        
 
-        assert!(elf_sections.entries().count() != 0, "No elf sections, cannot determine kernel code address");        
+        assert!(elf_sections.entries().count() != 0, "No elf sections, cannot determine kernel code address");
         assert!(memory_areas.entries().count() != 0, "No available memory areas for frame allocator");
         
         let kernel_start_address = elf_sections.entries_start_address().unwrap() as usize;
@@ -292,6 +315,32 @@ impl FrameAllocator {
         self.empty_frame_list = Some(new_list);
         */
     }
+}
+
+impl MemoryAllocatorMeta for FrameAllocator {
+
+    fn start_address(&self) -> usize {
+        self.frame_list_allocator.start_address()
+    }
+
+    fn end_address(&self) -> usize {
+        self.frame_list_allocator.end_address()
+    }
+
+    fn aux_data_structures_size(&self) -> usize {
+        self.frame_list_allocator.full_size()
+    }
+}
+
+impl ConstantSizeMemoryAllocator for FrameAllocator {
+    fn allocate_size(&mut self) -> Option<usize> {
+        self.allocate().map(|e| e.address())
+    }
+
+    fn free_size(&mut self, pointer : usize) {
+        self.deallocate(Frame::from_address(pointer))
+    }
+
 }
 
 impl fmt::Display for FrameAllocator {    
