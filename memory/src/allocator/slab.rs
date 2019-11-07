@@ -66,7 +66,7 @@ struct Slab {
 }
 
 impl Slab {
-    fn new(allocation_size: usize, frame_allocator: &mut BuddyAllocator, memory_allocator: &mut free_list::FreeListAllocator) -> Option<Self> {
+    fn new(allocation_size: usize, frame_allocator: &mut BuddyAllocator, memory_allocator: &mut free_list::FreeListAllocator, tree_allocator: &mut free_list::FreeListAllocator) -> Option<Self> {
         frame_allocator.allocate(allocation_size).map(|slab_start_address| {
 
             let slab_size = BuddyAllocator::true_allocation_size_for(allocation_size);
@@ -77,7 +77,7 @@ impl Slab {
             let allocator_boxed = DoubleLinkedList::new_rc(allocator, memory_allocator);
             let cv = allocator_boxed.value().start_address();
 
-            let tree = avl::AVLTree::new(RC::clone(&allocator_boxed), memory_allocator);
+            let tree = avl::AVLTree::new(RC::clone(&allocator_boxed), tree_allocator);
 
             let cvv = allocator_boxed.value().start_address();
 
@@ -173,12 +173,7 @@ impl Slab {
         // if allocator is empty (every allocated block was freed) then we can reclaim its memory and
         // remove it from dlist and tree
         if allocator_is_empty {
-            self.non_full.take();
-
-         
-
-        self.print_what(printer);
-            /*if let Some(mut head_cell) = self.non_full.take() {
+            if let Some(mut head_cell) = self.non_full.take() {
                 let head_start_addr = head_cell.value().start_address();
 
                 {
@@ -197,8 +192,9 @@ impl Slab {
 
                 // reclaim frame
                 frame_allocator.free(head_start_addr);
-            }*/
+            }
         }
+        self.print_what(printer);
     }
 
     fn free_from_non_empty(&mut self, pointer : usize, memory_allocator : &mut free_list::FreeListAllocator, frame_allocator : &mut BuddyAllocator, printer : &mut Writer) {
@@ -285,7 +281,7 @@ impl SlabAllocator {
         let total_slab_count                             = SlabAllocator::total_slab_count(total_memory);
         let array_size                                         = Array::<Option<Slab>>::mem_size_for(total_slab_count);
         let (avl_tree_size, linked_list_size)       = SlabAllocator::buddy_free_list_size(total_slab_count, total_memory);
-        let avl_tree_cell_size                           = heap::rc_size_for::<>(); avl::AVLTree::<free_list::FreeListAllocator, free_list::FreeListAllocator>::cell_size();
+        let avl_tree_cell_size                           = avl::AVLTree::<free_list::FreeListAllocator, free_list::FreeListAllocator>::cell_size();
         let linked_list_cell_size                       = heap::rc_size_for::<DoubleLinkedList<free_list::FreeListAllocator, free_list::FreeListAllocator>>();
 
         let this_aux_data_structures_size =  array_size + avl_tree_cell_size + linked_list_cell_size;
@@ -460,7 +456,7 @@ impl MemoryAllocator for SlabAllocator {
                 // if no slab is found, then try create a new one
                 let mut size_to_slab  = &mut self.size_to_slab;
                 result_from_existing_slab.or_else(|| {
-                    let new_slab_opt = Slab::new(size_rounded, frame_allocator, linked_list_allocator);
+                    let new_slab_opt = Slab::new(size_rounded, frame_allocator, linked_list_allocator, tree_allocator);
 
                     // if slab cannot be created - then its oom
                     new_slab_opt.and_then(|mut new_slab| {
