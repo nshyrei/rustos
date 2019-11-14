@@ -283,8 +283,7 @@ pub struct AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 
 impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
 
-
-    pub fn print_what<F, C>(&self, selector : F, writer : &mut Writer) -> ()
+    /*pub fn print_what<F, C>(&self, selector : F, writer : &mut Writer) -> ()
         where F : Fn(&T) -> C, C :Display {
 
         AVLTree::print_what0(self.root.as_ref(), &selector, writer)
@@ -297,7 +296,7 @@ impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
             AVLTree:: print_what0(n.left().as_ref(), selector, writer);
             AVLTree::print_what0(n.right().as_ref(), selector, writer);
         }
-    }
+    }*/
 
     pub fn root_value(&self) -> Option<&T> {
         self.root.as_ref().map(|rc| rc.value())
