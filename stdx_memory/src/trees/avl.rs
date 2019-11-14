@@ -254,8 +254,7 @@ fn is_BST<T, M>(node : &OptNodeBox<T, M>, min : Option<&T>, max : Option<&T>) ->
             let value = n.value();
             let min_check = min.is_none() || value <= min.unwrap();
             let max_check = max.is_none() || value >= max.unwrap();
-            
-            
+
             min_check && 
             max_check && 
             is_BST(&n.left(), min, Some(value)) &&
@@ -379,7 +378,7 @@ impl<T, M> AVLTree<T, M> where T : cmp::Ord, M : MemoryAllocator {
     }
 
     pub fn cell_size() -> usize {
-        mem::size_of::<AVLNode<T, M>>()
+        heap::rc_size_for::<AVLNode<T, M>>()
     }
 }
 

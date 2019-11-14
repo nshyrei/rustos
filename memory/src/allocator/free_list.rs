@@ -1,9 +1,7 @@
 use allocator::bump::ConstSizeBumpAllocator;
 use stdx_memory::heap;
 use stdx_memory::collections::linked_list::LinkedList;
-use stdx_memory::MemoryAllocator;
-use stdx_memory::ConstantSizeMemoryAllocator;
-use stdx_memory::MemoryAllocatorMeta;
+use stdx_memory::{MemoryAllocator, ConstantSizeMemoryAllocator, MemoryAllocatorMeta};
 use core::cmp;
 use core::mem;
 
@@ -11,53 +9,52 @@ type LinkedListBlock = LinkedList<usize>;
 
 #[repr(C)]
 pub struct FreeListAllocator {
-    bump_allocator        : ConstSizeBumpAllocator,
-    block_size            : usize,
-    free_blocks           : heap::Box<LinkedListBlock, ConstSizeBumpAllocator>,
+    bump_allocator :         ConstSizeBumpAllocator,
+    free_blocks :                heap::Box<LinkedListBlock, ConstSizeBumpAllocator>,
     free_blocks_allocator : ConstSizeBumpAllocator,
-    free_blocks_count     : usize
+    free_blocks_count :       usize,
 }
 
 impl FreeListAllocator {
 
-    pub fn aux_data_structures_size_for(address: usize, size : usize, block_size : usize) -> usize {
-        let bump_allocator = ConstSizeBumpAllocator::from_size(address, size, block_size);
-        let blocks_count = bump_allocator.total_blocks_count() + 1;
+    pub fn aux_data_structures_size_for(total_memory : usize, block_size : usize) -> usize {
+        let bump_allocator   = ConstSizeBumpAllocator::from_size(0, total_memory, block_size);
+        let blocks_count        = bump_allocator.total_blocks_count() + 1;
 
         let elem_size = mem::size_of::<LinkedListBlock>();
 
         blocks_count * elem_size
     }
 
-    fn new(bump_allocator : ConstSizeBumpAllocator, block_size : usize) -> FreeListAllocator {
+    fn new(bump_allocator : ConstSizeBumpAllocator) -> FreeListAllocator {
         let blocks_count = bump_allocator.total_blocks_count();
         let mut free_blocks_allocator = ConstSizeBumpAllocator::from_address_for_type_multiple::<LinkedListBlock>(
-            bump_allocator.end_address() + 1,
+            bump_allocator.start_address(),
             blocks_count + 1); // +1 for LinkedList::Nil
 
         let free_blocks = heap::Box::new(LinkedList::Nil, &mut free_blocks_allocator);
+        let resulting_bump = ConstSizeBumpAllocator::from_size(free_blocks_allocator.end_address() + 1, bump_allocator.size(), bump_allocator.block_size());
 
         FreeListAllocator {
-            bump_allocator,
-            block_size,
+            bump_allocator : resulting_bump,
             free_blocks,
             free_blocks_allocator,
             free_blocks_count :blocks_count
         }
     }
 
+
     pub fn from_size(address: usize, size : usize, block_size : usize) -> FreeListAllocator {
         let bump_allocator = ConstSizeBumpAllocator::from_size(address, size, block_size);
 
-        FreeListAllocator::new(bump_allocator, block_size)
+        FreeListAllocator::new(bump_allocator)
     }
 
     pub fn from_address(address: usize, end_address : usize, block_size : usize) -> FreeListAllocator {
         let bump_allocator = ConstSizeBumpAllocator::from_address(address, end_address, block_size);
 
-        FreeListAllocator::new(bump_allocator, block_size)
+        FreeListAllocator::new(bump_allocator)
     }
-
 
     pub fn fully_free(&self) -> bool {
         self.free_blocks_count == self.bump_allocator.total_blocks_count()
@@ -68,7 +65,7 @@ impl FreeListAllocator {
     }
 
     pub fn increase_size(&mut self, size : usize) {
-        let free_list_blocks_increase = size / self.block_size;
+        let free_list_blocks_increase = size / self.bump_allocator.block_size();
         self.bump_allocator.increase_size(size);
         self.free_blocks_allocator.increase_size(free_list_blocks_increase);
     }
@@ -95,7 +92,7 @@ impl MemoryAllocatorMeta for FreeListAllocator {
     }
 
     fn end_address(&self) -> usize {
-        self.free_blocks_allocator.end_address()
+        self.bump_allocator.end_address()
     }
 }
 
@@ -109,7 +106,7 @@ impl ConstantSizeMemoryAllocator for FreeListAllocator {
             Some(value)
         }
         else {
-            let bump_result = self.bump_allocator.allocate(self.block_size);
+            let bump_result = self.bump_allocator.allocate_size();
 
             if bump_result.is_some() {
                 self.free_blocks_count -= 1;

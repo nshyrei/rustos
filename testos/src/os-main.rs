@@ -20,6 +20,7 @@ use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
 use multiboot::multiboot_header::tags::memory_map::*;
 use display::vga::writer::Writer;
 use memory::allocator::bump::BumpAllocator;
+use memory::allocator::bump::ConstSizeBumpAllocator;
 use memory::frame::frame_allocator::*;
 use memory::frame::Frame;
 use memory::frame::FRAME_SIZE;
@@ -32,6 +33,7 @@ use hardware::x86_64::registers;
 use core::clone::Clone;
 use core::fmt::Write;
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 use malloc::TestAllocator;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use memory::allocator::slab::SlabAllocator;
@@ -39,7 +41,7 @@ use memory::allocator::slab::SlabHelp;
 use memory::allocator::buddy::BuddyAllocator;
 use stdx_memory::heap::RC;
 use stdx_memory::heap::SharedBox;
-use core::ptr::NonNull;
+use core::ptr;
 use alloc::alloc::Layout;
 use stdx_memory::heap;
 
@@ -58,49 +60,54 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         vga_writerg = Some(Writer::new());
 
-        print_multiboot_data(multiboot_header, vga_writerg.as_mut().unwrap());
+        //print_multiboot_data(multiboot_header, vga_writerg.as_mut().unwrap());
         
         let mut frame_allocator = FrameAllocator::new(multiboot_header);
 
-        paging::remap_kernel(&mut paging::p4_table(), &mut frame_allocator, multiboot_header);
+        paging::remap_kernel(&mut paging::p4_table(), &mut frame_allocator, multiboot_header);        
 
-        print_multiboot_data(multiboot_header, vga_writerg.as_mut().unwrap());
+       let (memory_start, memory_end1) = multiboot_header.biggest_memory_area();
+        let memory_end = memory_start + 31457280; //30 mb, something bigger than that produces 0x6 crash
+        let total_memory = memory_end - memory_start + 1;
+        let aux_data_structures_size = SlabAllocator::total_aux_data_structures_size(memory_start, memory_end);
 
-        slab_allocator_should_be_fully_free(vga_writerg.as_mut().unwrap(), 1);
+        let premade_bump_end_address = Frame::address_align_up(memory_start + aux_data_structures_size);
+        let mut premade_bump = ConstSizeBumpAllocator::from_address(memory_start, premade_bump_end_address, FRAME_SIZE);
 
-        /*let size = 32768;
-        let heap: [u8; 80000] = [0; 80000];
-        let memory_start = heap.as_ptr() as usize;        
-    
-
-        //let (memory_start, memory_end1) = multiboot_header.biggest_memory_area();
-        let memory_end = memory_start + 20000;
-        let aux_data_structures_size = SlabAllocator::aux_data_structures_size_for(memory_start, memory_end);
-        let mut premade_bump = BumpAllocator::from_address(memory_start, aux_data_structures_size);
-
-        //let mut page_tables_allocator = FrameAllocator::new(multiboot_header);
-        //let mut frame_allocator = BuddyAllocator::new(memory_start, memory_start+10000, page_tables_allocator);
-
+        // |aux structures page tables|aux structures working memory|allocator working memory|
         // premap memory for memory allocator inner data structures
-        for frame in Frame::range_inclusive(premade_bump.end_address() + 1, memory_end) {
+        let aux_structures_start_address = premade_bump_end_address + FRAME_SIZE; // next frame
+        let aux_structures_end_address = Frame::address_align_up(aux_structures_start_address + aux_data_structures_size);
+
+        for frame in Frame::range_inclusive(aux_structures_start_address, aux_structures_end_address) {
             let p4_table = paging::p4_table();
             unsafe { p4_table.map_page_1_to_1(frame, page_table::PRESENT | page_table::WRITABLE, &mut premade_bump); }
         }
 
+        for frame in Frame::range_inclusive(aux_structures_start_address, aux_structures_end_address) {
+            let p4_table = paging::p4_table();
+            let present = p4_table.is_present(frame);
 
-        let mut slab_allocator = SlabAllocator::new(memory_start, memory_end);
+            writeln!(vga_writerg.as_mut().unwrap(), "Is present {}, val {}", frame, present);
 
-        //let mut slab_allocator = slab_allocator_should_be_fully_free(&mut vga_writer, 0);
-        HEAP_ALLOCATOR.value = NonNull::new(&mut slab_allocator as *mut SlabAllocator);
+            Frame::zero_frame(&frame);
+        }
+
+        let mut slab_allocator = SlabAllocator::new2(aux_structures_start_address, total_memory, memory_end, vga_writerg.as_mut().unwrap());
+
+        HEAP_ALLOCATOR.value = ptr::NonNull::new(&mut slab_allocator as *mut SlabAllocator);
 
         {
             let us : usize = 128;
             let sz = core::mem::size_of::<usize>();
-            let boxin = Box::new(us);
-            let bb = boxin;
+
+            let boxin2 = Box::new(us);
+
+            let bb = boxin2;
         }
 
-        let welp = slab_allocator.is_fully_free();*/
+
+        let welp = slab_allocator.is_fully_free();
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
@@ -136,18 +143,18 @@ pub fn slab_allocator_should_be_fully_free(writer: &'static mut Writer, adr: usi
     let memory_start = Frame::address_align_up(heap_addr);
 
     let memory_end = memory_start + 40000;
-    let aux_data_structures_size = SlabAllocator::aux_data_structures_size_for(memory_start, memory_end);
+    let aux_data_structures_size = SlabAllocator::total_aux_data_structures_size(memory_start, memory_end);
     let mut premade_bump = BumpAllocator::from_address(memory_start, aux_data_structures_size);
 
     let mut slab_allocator = SlabAllocator::new(memory_start, memory_end, writer);
 
    let result = slab_allocator.allocate(2048);
     let result1 = slab_allocator.allocate(2048);
-    //let result2 = slab_allocator.allocate(2048);
+    let result2 = slab_allocator.allocate(2048);
 
     slab_allocator.free(result1.unwrap());
     slab_allocator.free(result.unwrap());
-    //slab_allocator.free(result2.unwrap());
+    slab_allocator.free(result2.unwrap());
 
     let result = slab_allocator.is_fully_free();
 

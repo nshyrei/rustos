@@ -315,6 +315,18 @@ impl PageTable<P4> {
         })
     }
 
+    /// Checks whether virtual page points to existing physical frame
+    ///
+    /// # Arguments
+    /// * `page` - virtual frame
+    /// * `frame_allocator` - frame allocator
+    ///
+    /// # Returns
+    /// True if entry is present for corresponding virtual frame, otherwise returns false.
+    pub fn is_present(&self, page : VirtualFrame) -> bool {
+        self.translate_page(page).is_some()
+    }
+
     /// Translates virtual address to physical address.
     ///
     /// # Arguments

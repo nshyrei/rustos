@@ -14,17 +14,21 @@ pub struct ConstSizeBumpAllocator {
     current_pointer     : usize,
     start_address       : usize,
     pointer_end_address : usize,
-    allocation_size     : usize
+    block_size: usize
 }
 
 impl ConstSizeBumpAllocator {            
+
+    pub fn block_size(&self) -> usize {
+        self.block_size
+    }
 
     pub fn current_pointer(&self) -> usize {
         self.current_pointer
     }
 
     pub fn total_blocks_count(&self) -> usize {
-        self.size() / self.allocation_size
+        self.size() / self.block_size
     }
 
     pub fn start_address(&self) -> usize {
@@ -39,21 +43,21 @@ impl ConstSizeBumpAllocator {
         self.end_address() - self.start_address() + 1
     }
 
-    pub fn from_size(address: usize, size : usize, allocation_size : usize) -> Self {
+    pub fn from_size(address: usize, size : usize, block_size : usize) -> Self {
         ConstSizeBumpAllocator {
             current_pointer     : address, 
             start_address       : address, 
             pointer_end_address : address + size,
-            allocation_size     : allocation_size
+            block_size: block_size
         }
     }
 
-    pub fn from_address(address: usize, end_address : usize, allocation_size : usize) -> Self {
+    pub fn from_address(address: usize, end_address : usize, block_size : usize) -> Self {
         ConstSizeBumpAllocator {
             current_pointer     : address,
             start_address       : address,
             pointer_end_address : end_address,
-            allocation_size     : allocation_size
+            block_size: block_size
         }
     }
 
@@ -95,19 +99,19 @@ impl MemoryAllocatorMeta for ConstSizeBumpAllocator {
 impl ConstantSizeMemoryAllocator for ConstSizeBumpAllocator {
         
     fn allocate_size(&mut self) -> Option<usize> {        
-        if self.current_pointer + self.allocation_size > self.pointer_end_address {
+        if self.current_pointer + self.block_size > self.pointer_end_address {
             None
         }
         else {
             let result = self.current_pointer;
-            self.current_pointer += self.allocation_size;
+            self.current_pointer += self.block_size;
 
             Some(result)
         }        
     }
 
     fn free_size(&mut self, pointer : usize) {
-        self.current_pointer -= self.allocation_size;
+        self.current_pointer -= self.block_size;
     }
 
 

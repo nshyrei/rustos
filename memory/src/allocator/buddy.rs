@@ -1,6 +1,4 @@
-use stdx_memory::MemoryAllocator;
-use stdx_memory::ConstantSizeMemoryAllocator;
-use stdx_memory::MemoryAllocatorMeta;
+use stdx_memory::{MemoryAllocator, ConstantSizeMemoryAllocator, MemoryAllocatorMeta};
 use stdx_memory::collections::array::Array;
 use stdx_memory::collections::double_linked_list::{BuddyMap, UsizeLinkedMap};
 use stdx_memory::collections::frame_bitmap::FrameBitMap;
@@ -9,12 +7,12 @@ use frame::{Frame, FRAME_SIZE};
 use frame::frame_allocator::FrameAllocator;
 use stdx::iterator::IteratorExt;
 use allocator::free_list;
+use allocator;
 use stdx::math;
 use stdx::Sequence;
 use paging;
 use paging::page_table;
 use multiboot::multiboot_header::MultibootHeader;
-
 
 macro_rules! block_sizes {
     ($total_buddy_levels:expr, $starting_block_size:expr) => {{
@@ -31,6 +29,12 @@ macro_rules! block_count {
     ($total_memory:expr, $total_buddy_levels:expr, $starting_block_size:expr) => {{
         block_sizes!($total_buddy_levels, $starting_block_size)
             .map(|block_size| $total_memory / block_size)
+    }}
+}
+
+macro_rules! total_block_count {
+    ($total_memory:expr, $total_buddy_levels:expr, $starting_block_size:expr) => {{
+        block_count!($total_memory, $total_buddy_levels, $starting_block_size).sum()
     }}
 }
 
@@ -53,13 +57,25 @@ pub struct BuddyAllocator {
 
 impl BuddyAllocator {
 
-    pub fn aux_data_structures_size_for(start_address1 : usize, end_address1 : usize) -> usize {
-        let start_address      = Frame::address_align_up(start_address1);
-        let end_address        = end_address1;
+    pub fn debug_allocation_size(&self) -> usize {
+        self.allocation_sizes[Frame::number_for_address(0)]
+    }
 
+    pub fn total_aux_data_structures_size(start_address1 : usize, end_address1 : usize) -> usize {
+        let (start_address, end_address)                           = allocator::align_addresses(start_address1, end_address1);
+        let total_memory                                                        = allocator::total_memory(start_address, end_address);
+        let (total_frames_count, total_buddy_levels)    = BuddyAllocator::frames_and_buddy_levels(start_address, end_address);
+        let (array_sizes, buddy_free_lists_size)                = BuddyAllocator::aux_data_structures_size(total_frames_count, total_buddy_levels, total_memory);
+
+        let this_aux_structures_size = array_sizes + buddy_free_lists_size;
+
+        this_aux_structures_size + free_list::FreeListAllocator::aux_data_structures_size_for(buddy_free_lists_size, BuddyMap::cell_size())
+    }
+
+    fn frames_and_buddy_levels(start_address : usize, end_address : usize) -> (usize, usize) {
         assert!(end_address > start_address, "Cannot create allocator when end address <= start address");
 
-        let total_memory       = end_address - start_address + 1;
+        let total_memory = allocator::total_memory(start_address, end_address);
 
         let total_frames_count = Frame::from_address(total_memory).number();
 
@@ -67,17 +83,32 @@ impl BuddyAllocator {
 
         let total_buddy_levels = BuddyAllocator::total_buddy_levels(total_memory);
 
+        (
+            total_frames_count,
+            total_buddy_levels
+        )
+    }
+
+    fn frames_and_buddy_levels1(total_memory : usize) -> (usize, usize) {
+        let total_frames_count = Frame::from_address(total_memory).number();
+        let total_buddy_levels = BuddyAllocator::total_buddy_levels(total_memory);
+
+        (
+            total_frames_count,
+            total_buddy_levels
+        )
+    }
+
+    fn aux_data_structures_size(total_frames_count : usize, total_buddy_levels : usize, total_memory : usize) -> (usize, usize) {
+
         // compute max memory size for inner allocators to work with
-        let sizes_array_size                                            = Array::<usize>::mem_size_for(total_frames_count);
-        let buddy_free_list_array_size                          = Array::<BuddyFreeList>::mem_size_for(total_buddy_levels);
-        let (buddy_array_size, buddy_free_lists_size) = BuddyAllocator::buddy_free_list_size(
-            total_buddy_levels,
-            total_memory);
+        let sizes_array_size                                                   = Array::<usize>::mem_size_for(total_frames_count);
+        let buddy_free_list_array_size                              = Array::<BuddyFreeList>::mem_size_for(total_buddy_levels);
+        let (buddy_array_size, buddy_free_lists_size) = BuddyAllocator::buddy_free_list_size(total_buddy_levels, total_memory);
 
         let array_sizes = sizes_array_size + buddy_array_size + buddy_free_list_array_size;
-        let this_aux_structures_size = array_sizes + buddy_free_lists_size;
 
-        this_aux_structures_size + free_list::FreeListAllocator::aux_data_structures_size_for(start_address + this_aux_structures_size + 1, end_address, FRAME_SIZE)
+        (array_sizes, buddy_free_lists_size)
     }
 
     pub fn true_allocation_size_for(size : usize) -> usize {
@@ -88,28 +119,60 @@ impl BuddyAllocator {
         }
     }
 
-    pub fn new(start_address1 : usize, end_address1 : usize) -> Self {
-        let start_address      = Frame::address_align_up(start_address1);
-        let end_address        = end_address1;
-
-        assert!(end_address > start_address, "Cannot create allocator when end address <= start address");
-
-        let total_memory       = end_address - start_address + 1;
-
-        let total_frames_count = Frame::from_address(total_memory).number();
-
-        assert!(end_address > start_address, "Cannot create allocator when total memory size < FRAME_SIZE (4096)");
-
-        let total_buddy_levels = BuddyAllocator::total_buddy_levels(total_memory);
+    pub fn new2(start_address : usize, total_memory : usize,  end_address : usize) -> Self {
+        let (total_frames_count, total_buddy_levels) = BuddyAllocator::frames_and_buddy_levels1(total_memory);
 
         // compute max memory size for inner allocators to work with
-        let sizes_array_size                                            = Array::<usize>::mem_size_for(total_frames_count);
-        let buddy_free_list_array_size                          = Array::<BuddyFreeList>::mem_size_for(total_buddy_levels);
-        let (buddy_array_size, buddy_free_lists_size) = BuddyAllocator::buddy_free_list_size(
+        let (array_sizes, buddy_free_lists_size)                = BuddyAllocator::aux_data_structures_size(total_frames_count, total_buddy_levels, total_memory);
+
+        // create inner allocators
+        let mut array_allocator     = bump::BumpAllocator::from_address(start_address, array_sizes);
+        let mut free_list_allocator = free_list::FreeListAllocator::from_size(
+            array_allocator.end_address() + 1,
+            buddy_free_lists_size,
+            BuddyMap::cell_size());
+
+        // create allocate/free data structures
+        let allocation_sizes                            = Array::<usize>::new(total_frames_count, &mut array_allocator);
+        let mut buddy_free_lists_array    = Array::<BuddyFreeList>::new(total_buddy_levels, &mut array_allocator);
+
+        BuddyAllocator::populate_buddy_free_lists(
+            &mut buddy_free_lists_array,
+            &mut array_allocator,
+            &mut free_list_allocator,
             total_buddy_levels,
             total_memory);
-        
-        let array_sizes = sizes_array_size + buddy_array_size + buddy_free_list_array_size;
+
+        // set initial block that covers all memory as free
+        let idx = if total_buddy_levels > 0 { total_buddy_levels - 1} else { 0 };
+        buddy_free_lists_array[idx].set_free(0, &mut free_list_allocator);
+
+        // user space memory start
+        let memory_start_address = Frame::address_align_up(free_list_allocator.end_address() + 1);
+
+        // create page tables allocator
+        let page_tables_allocator = free_list::FreeListAllocator::from_size(free_list_allocator.end_address() + 1, total_memory, FRAME_SIZE);
+        let proper_start_address = page_tables_allocator.object_allocation_start_address();
+
+        BuddyAllocator {
+            allocation_sizes,
+            buddy_free_lists            : buddy_free_lists_array,
+            end_address,
+            array_allocator,
+            free_list_allocator,
+            start_address : proper_start_address,
+            memory_start_address,
+            page_tables_allocator
+        }
+    }
+
+    pub fn new(start_address1 : usize, end_address1 : usize) -> Self {
+        let (start_address, end_address)                           = allocator::align_addresses(start_address1, end_address1);
+        let total_memory                                                        = allocator::total_memory(start_address, end_address);
+        let (total_frames_count, total_buddy_levels)    = BuddyAllocator::frames_and_buddy_levels(start_address, end_address);
+
+        // compute max memory size for inner allocators to work with
+        let (array_sizes, buddy_free_lists_size)                = BuddyAllocator::aux_data_structures_size(total_frames_count, total_buddy_levels, total_memory);
 
         // create inner allocators
         let mut array_allocator     = bump::BumpAllocator::from_address(start_address, array_sizes);
@@ -119,20 +182,21 @@ impl BuddyAllocator {
             BuddyMap::cell_size());
 
         // create allocate/free data structures
-        let allocation_sizes                      = Array::<usize>::new(total_frames_count, &mut array_allocator);
-        let mut buddy_free_lists_array  = Array::<BuddyFreeList>::new(total_buddy_levels, &mut array_allocator);   
+        let allocation_sizes                            = Array::<usize>::new(total_frames_count, &mut array_allocator);
+        let mut buddy_free_lists_array    = Array::<BuddyFreeList>::new(total_buddy_levels, &mut array_allocator);
 
         BuddyAllocator::populate_buddy_free_lists(
             &mut buddy_free_lists_array, 
             &mut array_allocator, 
-            &mut free_list_allocator, 
-            total_memory, 
-            total_buddy_levels);
+            &mut free_list_allocator,
+            total_buddy_levels,
+            total_memory);
 
         // set initial block that covers all memory as free
         let idx = if total_buddy_levels > 0 { total_buddy_levels - 1} else { 0 };
         buddy_free_lists_array[idx].set_free(0, &mut free_list_allocator);
 
+        // user space memory start
         let memory_start_address = Frame::address_align_up(free_list_allocator.end_address() + 1);
 
         // create page tables allocator
@@ -165,8 +229,8 @@ impl BuddyAllocator {
     fn populate_buddy_free_lists(buddy_free_lists : &mut Array<BuddyFreeList>,
         array_allocator : &mut bump::BumpAllocator,
         free_list_allocator : &mut free_list::FreeListAllocator,
-        total_memory : usize,
-        total_buddy_levels : usize)
+        total_buddy_levels : usize,
+        total_memory : usize)
     {        
         for (block_count, i) in block_count_indexed!(total_memory, total_buddy_levels, FRAME_SIZE) {
             let buddy_free_list = BuddyFreeList::new(block_count, array_allocator);            
@@ -174,17 +238,16 @@ impl BuddyAllocator {
         }
     }
 
-    fn buddy_free_list_size(buddy_levels_count : usize, total_memory : usize) -> (usize, usize) {
-        let mut array_size = 0;
-        let mut free_list_size = 0;        
+    fn buddy_free_list_size(total_buddy_levels_count : usize, total_memory : usize) -> (usize, usize) {
+        let total_block_count = total_block_count!(total_memory, total_buddy_levels_count, FRAME_SIZE);
 
-        for block_count in block_count!(total_memory, buddy_levels_count, FRAME_SIZE) {            
-            free_list_size += BuddyMap::mem_size_for_linked_list(block_count);
-            array_size     += BuddyMap::mem_size_for_array(block_count);
-            array_size     += BuddyFreeList::mem_size_for_array(block_count);
-        }
-        
-        (array_size, free_list_size)
+        let array_size      = BuddyMap::mem_size_for_array(total_block_count) + BuddyFreeList::mem_size_for_array(total_block_count);
+        let free_list_size = BuddyMap::mem_size_for_linked_list(total_block_count);
+
+        (
+            array_size,
+            free_list_size
+        )
     }
 
     fn search_free_list_up(&self, size_from : usize) -> Option<usize> {
@@ -323,6 +386,18 @@ impl BuddyAllocator {
             }
         };
     }
+
+    fn free_size(&mut self, pointer : usize, size : usize) {
+        let normalized_pointer = pointer - self.memory_start_address;
+        //let frame_number       = Frame::number_for_address(normalized_pointer);
+        let buddy_list_index   = BuddyAllocator::index_from_size(size);
+
+        self.merge_up(normalized_pointer, buddy_list_index);
+
+        // free page frames
+        let p4_table = paging::p4_table();
+        unsafe { p4_table.unmap_pages(pointer, buddy_list_index); }
+    }
 }
 
 
@@ -379,13 +454,17 @@ impl MemoryAllocator for BuddyAllocator {
                     let p4_table = paging::p4_table();
                     unsafe { p4_table.map_pages_1_to_1(result_address, new_buddy_index as usize , page_table::PRESENT | page_table::WRITABLE, &mut self.page_tables_allocator); }
 
+                    let debug = self.allocation_sizes[Frame::number_for_address(0)];
+
                     Some(result_address)
                 }
                 else {
                     None
                 }
             }
-        }        
+        }
+
+
     }
 
     fn free(&mut self, pointer : usize) {
@@ -399,6 +478,7 @@ impl MemoryAllocator for BuddyAllocator {
         let p4_table = paging::p4_table();
         unsafe { p4_table.unmap_pages(pointer, buddy_list_index); }
     }
+
 
 
 }
