@@ -1,9 +1,7 @@
 #![feature(lang_items)]
 #![feature(asm)]
-#![feature(alloc)]
-#![feature(discriminant_value)]
 #![no_std]
-
+#![feature(abi_x86_interrupt)]
 
 extern crate rlibc;
 extern crate multiboot;
@@ -14,6 +12,7 @@ extern crate alloc;
 extern crate malloc;
 extern crate stdx_memory;
 extern crate stdx;
+extern crate x86_64;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
@@ -41,29 +40,37 @@ use memory::allocator::slab::SlabHelp;
 use memory::allocator::buddy::BuddyAllocator;
 use stdx_memory::heap::RC;
 use stdx_memory::heap::SharedBox;
+
+use hardware::x86_64::interrupts;
+use hardware::x86_64::interrupts::InterruptTableHelp;
+use hardware::x86_64::interrupts::InterruptTable;
+use hardware::x86_64::interrupts::InterruptStackFrameValue;
 use core::ptr;
 use alloc::alloc::Layout;
 use stdx_memory::heap;
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
-static mut vga_writerg : Option<Writer> = None;
+static mut VGA_WRITER: Option<Writer> = None;
 
 #[global_allocator]
 static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : None };
 
+static mut idt : InterruptDescriptorTable = InterruptDescriptorTable::new();
+
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub extern "C" fn rust_main(multiboot_header_address: usize) {    
-    unsafe {        
+pub extern "C" fn rust_main(multiboot_header_address: usize) {
+    unsafe {
 
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
 
-        vga_writerg = Some(Writer::new());
+        VGA_WRITER = Some(Writer::new());
 
-        //print_multiboot_data(multiboot_header, vga_writerg.as_mut().unwrap());
-        
+        //print_multiboot_data(multiboot_header, VGA_WRITERG.as_mut().unwrap());
+
         let mut frame_allocator = FrameAllocator::new(multiboot_header);
 
-        paging::remap_kernel(&mut paging::p4_table(), &mut frame_allocator, multiboot_header);        
+        paging::remap_kernel(&mut paging::p4_table(), &mut frame_allocator, multiboot_header);
 
        let (memory_start, memory_end1) = multiboot_header.biggest_memory_area();
         let memory_end = memory_start + 31457280; //30 mb, something bigger than that produces 0x6 crash
@@ -71,20 +78,37 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let aux_structures_start_address = preallocate_memory_for_allocator_aux_data_structures(memory_start, memory_end);
 
-        let mut slab_allocator = SlabAllocator::new2(aux_structures_start_address, total_memory, memory_end, vga_writerg.as_mut().unwrap());
+        let mut slab_allocator = SlabAllocator::new2(aux_structures_start_address, total_memory, memory_end, VGA_WRITER.as_mut().unwrap());
 
         HEAP_ALLOCATOR.value = ptr::NonNull::new(&mut slab_allocator as *mut SlabAllocator);
 
-        {
-            let us : usize = 128;
-            let sz = core::mem::size_of::<usize>();
-
-            let boxin2 = Box::new(us);
-
-            let bb = boxin2;
-        }
+        memory_allocator_should_properly_allocate_and_free_memory();
 
         let welp = slab_allocator.is_fully_free();
+
+
+        /*idt.breakpoint.set_handler_fn(breakpoint_handler);
+        idt.invalid_opcode.set_handler_fn(breakpoint_handler);
+        idt.double_fault.set_handler_fn(double_fault_handler);
+        idt.load();
+
+        asm!("mov dx, 0; div dx" ::: "ax", "dx" : "volatile", "intel");*/
+
+
+        unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA AFTER"); }
+        let mut interruptTable = InterruptTable::new();
+        //INTERRUPT_TABLE.value = ptr::NonNull::new(&mut interruptTable as *mut InterruptTable);
+
+
+
+        //interruptTable.set_handler(14, breakpoint_handler1);
+        interruptTable.set_handler(14, breakpoint_handler1);
+
+        interrupts::load_interrupt_table(&interruptTable);
+
+        x86_64::instructions::interrupts::int3();
+
+        asm!("mov dx, 0; div dx" ::: "ax", "dx" : "volatile", "intel");
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
@@ -96,6 +120,30 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
     }
     loop {}
+}
+
+extern "x86-interrupt" fn double_fault_handler(
+    stack_frame: &mut InterruptStackFrame, _error_code: u64)
+{
+    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "DOUBLE NIIGGA"); }
+
+    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+}
+
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame)
+{
+    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA"); }
+}
+
+extern "x86-interrupt" fn breakpoint_handler1(s :&InterruptStackFrameValue) {
+
+    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA"); }
+
+}
+
+extern "x86-interrupt" fn double_fault_handler1(s : &InterruptStackFrameValue) {
+
+    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Double NIIGGA"); }
 }
 
 fn memory_allocator_should_properly_allocate_and_free_memory() {
@@ -127,7 +175,7 @@ fn preallocate_memory_for_allocator_aux_data_structures(memory_start : usize, me
 
     for frame in Frame::range_inclusive(aux_structures_start_address, aux_structures_end_address) {
         let p4_table = paging::p4_table();
-        unsafe { p4_table.map_page_1_to_1(frame, page_table::PRESENT | page_table::WRITABLE, &mut premade_bump); }
+        p4_table.map_page_1_to_1(frame, page_table::PRESENT | page_table::WRITABLE, &mut premade_bump);
     }
 
     test_allocator_aux_data_structures_memory(aux_structures_start_address, aux_structures_end_address);
@@ -140,7 +188,7 @@ fn test_allocator_aux_data_structures_memory(aux_structures_start_address : usiz
         let p4_table = paging::p4_table();
         let present = p4_table.is_present(frame);
 
-        unsafe { writeln!(vga_writerg.as_mut().unwrap(), "Is present {}, val {}", frame, present); }
+        unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Is present {}, val {}", frame, present); }
 
         Frame::zero_frame(&frame);
     }
@@ -169,7 +217,6 @@ pub fn slab_allocator_should_be_fully_free(writer: &'static mut Writer, adr: usi
 
     let memory_end = memory_start + 40000;
     let aux_data_structures_size = SlabAllocator::total_aux_data_structures_size(memory_start, memory_end);
-    let mut premade_bump = BumpAllocator::from_address(memory_start, aux_data_structures_size);
 
     let mut slab_allocator = SlabAllocator::new(memory_start, memory_end, writer);
 
@@ -204,31 +251,31 @@ pub extern "C" fn oom(l: Layout) -> ! {
 fn print_multiboot_data(multiboot_header : &MultibootHeader, vga_writer : &mut Writer) {
     writeln!(vga_writer, "---Basic memory info---");
 
-    let memInfo = multiboot_header            
+    let mem_info = multiboot_header
             .read_tag::<memory_map::MemoryMap>()
             .unwrap();
 
     let mut mem_sections =
-            memInfo
+            mem_info
                 .entries()
                 .filter(|e| e.entry_type() == memory_map::MemoryMapEntryType::Available as u32);
 
-    writeln!(vga_writer, "---Available memory {}", memInfo.available_memory());
+    writeln!(vga_writer, "---Available memory {}", mem_info.available_memory());
     writeln!(vga_writer, "---Memory sections---");
     while let Some(e) = mem_sections.next() {
         writeln!(vga_writer, "{}", e);
     }
-    
+
     let elf_sections = multiboot_header
             .read_tag::<elf::ElfSections>()
             .unwrap();
-    let mut elf_sectionsIt = elf_sections.entries();
+    let mut elf_sections_it = elf_sections.entries();
 
     writeln!(vga_writer, "---Elf sections---");
     writeln!(vga_writer, "Elf sections start: {}", elf_sections.entries_start_address().unwrap());
     writeln!(vga_writer, "Elf sections end: {}", elf_sections.entries_end_address().unwrap());
 
-    while let Some(e) = elf_sectionsIt.next() {
+    while let Some(e) = elf_sections_it.next() {
         writeln!(vga_writer, "{}", e);
     }
 }
@@ -237,19 +284,19 @@ unsafe fn paging_map_should_properly_map_pages(page_table : &mut page_table::P4T
 
     let virtual_frame = Frame::from_address(0x400000000000);
     let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
-        
+
     page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT | page_table::WRITABLE, frame_alloc);
 
     // try read whole frame from virtual address, if it succeeds without a segfault then
-    // map function worked correctly    
+    // map function worked correctly
     let virtual_frame_address = virtual_frame.address();
-    
-    for i in 0..FRAME_SIZE {        
-        unsafe {            
-            // reading into var is important to prevent compiler optimizing the read away            
-            let _result = *((virtual_frame_address + i as usize) as *const u8);            
+
+    for i in 0..FRAME_SIZE {
+        unsafe {
+            // reading into var is important to prevent compiler optimizing the read away
+            let _result = *((virtual_frame_address + i as usize) as *const u8);
         }
-    } 
+    }
 
     frame_alloc.free(physical_frame.address());
     page_table.unmap_page(virtual_frame);
@@ -258,7 +305,7 @@ unsafe fn paging_map_should_properly_map_pages(page_table : &mut page_table::P4T
 unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mut page_table::P4Table, frame_alloc : &mut BuddyAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
     let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
-        
+
     page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);
 
     let result = page_table.translate_page(virtual_frame);
@@ -272,20 +319,20 @@ unsafe fn paging_translate_page_should_properly_translate_pages(page_table : &mu
 unsafe fn paging_translate_address_should_properly_translate_virtual_address(page_table : &mut page_table::P4Table, frame_alloc : &mut BuddyAllocator) {
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
     let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
-        
+
     page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);
-    
+
     let virtual_frame_address = virtual_frame.address();
     let physical_frame_address = physical_frame.address();
 
     for frame_offset in 0..FRAME_SIZE {
         let virtual_address  = virtual_frame_address + frame_offset as usize;
         let physical_address = physical_frame_address + frame_offset as usize;
-        let result = page_table.translate(virtual_address);        
-                        
-        sanity_assert_translate_address_result(virtual_address, physical_address, result);        
+        let result = page_table.translate(virtual_address);
+
+        sanity_assert_translate_address_result(virtual_address, physical_address, result);
     }
-    
+
     frame_alloc.free(physical_frame.address());
     page_table.unmap_page(virtual_frame);
 }
@@ -294,8 +341,8 @@ unsafe fn paging_unmap_should_properly_unmap_elements(page_table : &mut page_tab
     let virtual_frame = Frame::from_address(42 * 512 * 512 * 4096);
     let physical_frame = Frame::from_address(frame_alloc.allocate(FRAME_SIZE).expect("No frames for paging test"));
 
-    page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);    
-    page_table.unmap_page(virtual_frame);    
+    page_table.map_page(virtual_frame, physical_frame, page_table::PRESENT, frame_alloc);
+    page_table.unmap_page(virtual_frame);
 
     let result = page_table.translate_page(virtual_frame);
 
@@ -308,13 +355,13 @@ unsafe fn paging_unmap_should_properly_unmap_elements(page_table : &mut page_tab
 }
 
 fn sanity_assert_translate_page_result(virtual_frame : Frame, physical_frame : Frame, result : Option<Frame>) {
-    assert!(result.is_some(), 
-        "Returned empty result for translation of virtual frame {}", 
+    assert!(result.is_some(),
+        "Returned empty result for translation of virtual frame {}",
         virtual_frame);
-        
+
     let result_frame = result.unwrap();
 
-    assert!(physical_frame == result_frame, 
+    assert!(physical_frame == result_frame,
         "Returned invalid translation result for virtual frame {}. Should be frame {} but was {}",
         virtual_frame,
         physical_frame,
@@ -322,8 +369,8 @@ fn sanity_assert_translate_page_result(virtual_frame : Frame, physical_frame : F
 }
 
 fn sanity_assert_translate_address_result(virtual_address : usize, physical_address : usize, result : Option<usize>){
-    assert!(result.is_some(), 
-        "Returned empty result for translation of virtual frame {}", 
+    assert!(result.is_some(),
+        "Returned empty result for translation of virtual frame {}",
         virtual_address);
 
     let result_address = result.unwrap();

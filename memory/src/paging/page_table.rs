@@ -172,19 +172,19 @@ impl PageTable<P4> {
         let mut result : usize = 0;
 
         for entry in self.entries.iter().take(511).filter(|e| e.is_set()) {
-            let p4Page = Frame::from_address(entry.address());
+            let p4page = Frame::from_address(entry.address());
 
-            match self.next_table_opt(p4Page) {
+            match self.next_table_opt(p4page) {
                 Some(p3) => {
                     for p3Entry in p3.entries.iter().filter(|e| e.is_set()){
-                        let p3Page = Frame::from_address(p3Entry.address());
+                        let p3page = Frame::from_address(p3Entry.address());
 
-                        match p3.next_table_opt(p3Page) {
+                        match p3.next_table_opt(p3page) {
                             Some(p2) => {
                                 for p2Entry in p2.entries.iter().filter(|e| e.is_set()){
-                                    let p1Page = Frame::from_address(p3Entry.address());
+                                    let p1page = Frame::from_address(p3Entry.address());
 
-                                    match p2.next_table_opt(p1Page) {
+                                    match p2.next_table_opt(p1page) {
                                         Some(p1) =>{
                                             result += p1.entries.iter().filter(|e| e.is_set()).count();
                                         },

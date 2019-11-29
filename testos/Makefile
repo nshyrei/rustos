@@ -44,4 +44,4 @@ build/%.o: src/%.asm
 
 # compile rust
 kernel:
-	@RUST_TARGET_PATH=$(shell pwd) xargo build --target $(xargo-target-file)
+	@RUST_TARGET_PATH=$(shell pwd) cargo xbuild --target $(xargo-target-file)

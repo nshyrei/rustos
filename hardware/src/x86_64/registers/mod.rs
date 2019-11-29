@@ -6,6 +6,15 @@ pub fn cr3() -> u64 {
     ret
 }
 
+/// Contains code segment register value.
+pub fn cs() -> u16 {
+    let mut result : u16 = 0;
+
+    unsafe { asm!("mov %cs, $0" : "=r" (result)) }
+
+    result
+}
+
 /// Switch page-table PML4 pointer (level 4 page table).
 ///
 /// # Safety

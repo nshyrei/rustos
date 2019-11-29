@@ -386,18 +386,6 @@ impl BuddyAllocator {
             }
         };
     }
-
-    fn free_size(&mut self, pointer : usize, size : usize) {
-        let normalized_pointer = pointer - self.memory_start_address;
-        //let frame_number       = Frame::number_for_address(normalized_pointer);
-        let buddy_list_index   = BuddyAllocator::index_from_size(size);
-
-        self.merge_up(normalized_pointer, buddy_list_index);
-
-        // free page frames
-        let p4_table = paging::p4_table();
-        unsafe { p4_table.unmap_pages(pointer, buddy_list_index); }
-    }
 }
 
 
@@ -452,7 +440,7 @@ impl MemoryAllocator for BuddyAllocator {
 
                     // map page frames
                     let p4_table = paging::p4_table();
-                    unsafe { p4_table.map_pages_1_to_1(result_address, new_buddy_index as usize , page_table::PRESENT | page_table::WRITABLE, &mut self.page_tables_allocator); }
+                    p4_table.map_pages_1_to_1(result_address, new_buddy_index as usize , page_table::PRESENT | page_table::WRITABLE, &mut self.page_tables_allocator);
 
                     let debug = self.allocation_sizes[Frame::number_for_address(0)];
 
@@ -463,8 +451,6 @@ impl MemoryAllocator for BuddyAllocator {
                 }
             }
         }
-
-
     }
 
     fn free(&mut self, pointer : usize) {
@@ -478,9 +464,6 @@ impl MemoryAllocator for BuddyAllocator {
         let p4_table = paging::p4_table();
         unsafe { p4_table.unmap_pages(pointer, buddy_list_index); }
     }
-
-
-
 }
 
 struct BuddyFreeList {
