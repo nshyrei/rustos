@@ -46,7 +46,7 @@ impl InterruptTableEntry {
 
     pub fn empty() -> Self {
 
-        let options             = InterruptOptions::new();
+        let options = InterruptOptions::new();
         let gdt_selector    = GDTSelector::new(0, 0);
 
         InterruptTableEntry {
@@ -61,9 +61,39 @@ impl InterruptTableEntry {
 }
 
 use core::ptr;
+use pic8259_simple::ChainedPics;
 
 pub struct InterruptTableHelp {
     pub value : Option<ptr::NonNull<InterruptTable>>
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(usize)]
+pub enum CPUInterrupts {
+    DivideByZero = 0,
+    Debug  = 1,
+    NonMaskedInterrupt = 2,
+    Breakpoint = 3,
+    Overflow  = 4,
+    BoundOutOfRange = 5,
+    InvalidOpcode = 6,
+    DeviceNotAvailable = 7,
+    DoubleFault = 8,
+    SegmentNotPresent = 11,
+    StackSegmentFault = 12,
+    GeneralProtectionFault = 13,
+    PageFault = 14,
+    SecurityException = 30
+}
+
+const PIC_1_OFFSET: u8 = 32;
+const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
+
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum HardwareInterrupts {
+    Timer = 0,
 }
 
 #[repr(C)]
@@ -71,7 +101,9 @@ pub struct InterruptTable {
     // handlers for cpu exceptions
     cpu_exceptions: [InterruptTableEntry; 32],
     // handlers for user defined interrupts
-    interrupts : [InterruptTableEntry; 256 - 32]
+    interrupts : [InterruptTableEntry; 256 - 32],
+
+    chained_pics : ChainedPics
 }
 
 impl InterruptTable {
@@ -79,10 +111,39 @@ impl InterruptTable {
         let cpu_exceptions = [InterruptTableEntry::empty(); 32];
         let interrupts = [InterruptTableEntry::empty(); 256 - 32];
 
+        let mut chained_pics = unsafe {
+            let mut pic = ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET);
+            pic.initialize();
+
+            pic
+        };
+
+
         InterruptTable {
             cpu_exceptions,
-            interrupts
+            interrupts,
+            chained_pics
         }
+    }
+
+    pub fn enable_hardware_interrupts(&mut self) {
+        unsafe {
+            asm!("sti" :::: "volatile");
+        }
+    }
+
+    pub fn disable_hardware_interrupts(&mut self) {
+        unsafe {
+            asm!("cli" :::: "volatile");
+        }
+    }
+
+    pub fn set_cpu_interrupt_handler(&mut self, interrupt : CPUInterrupts, handler : InterruptHandler) {
+        self.set_handler(interrupt as usize, handler)
+    }
+
+    pub fn set_hardware_interrupt_handler(&mut self, interrupt : HardwareInterrupts, handler : InterruptHandler) {
+        self.set_handler(interrupt as usize, handler)
     }
 
     pub fn set_handler(&mut self, index : usize, handler : InterruptHandler) {

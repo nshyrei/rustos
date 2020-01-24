@@ -30,3 +30,6 @@ path = "../stdx_memory"
 
 [dependencies.stdx]
 path = "../stdx"
+
+[dependencies.multiprocess]
+path = "../multiprocess"

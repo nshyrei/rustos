@@ -4,5 +4,6 @@
 
 #[macro_use]
 extern crate bitflags;
+extern crate pic8259_simple;
 
 pub mod x86_64;

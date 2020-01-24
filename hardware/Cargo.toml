@@ -5,3 +5,5 @@ authors = ["charlolizard <nikitas2209@gmail.com>"]
 
 [dependencies]
 bitflags = "0.9.1"
+pic8259_simple = "0.1.1"
+

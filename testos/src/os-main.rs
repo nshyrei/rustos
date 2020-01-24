@@ -13,6 +13,7 @@ extern crate malloc;
 extern crate stdx_memory;
 extern crate stdx;
 extern crate x86_64;
+extern crate multiprocess;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
@@ -42,14 +43,12 @@ use stdx_memory::heap::RC;
 use stdx_memory::heap::SharedBox;
 
 use hardware::x86_64::interrupts;
-use hardware::x86_64::interrupts::InterruptTableHelp;
-use hardware::x86_64::interrupts::InterruptTable;
-use hardware::x86_64::interrupts::InterruptStackFrameValue;
+use hardware::x86_64::interrupts::{InterruptTableHelp, InterruptTable, InterruptStackFrameValue, HardwareInterrupts};
 use core::ptr;
 use alloc::alloc::Layout;
 use stdx_memory::heap;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-
+use multiprocess::executor;
 static mut VGA_WRITER: Option<Writer> = None;
 
 #[global_allocator]
@@ -87,6 +86,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         let welp = slab_allocator.is_fully_free();
 
 
+
         /*idt.breakpoint.set_handler_fn(breakpoint_handler);
         idt.invalid_opcode.set_handler_fn(breakpoint_handler);
         idt.double_fault.set_handler_fn(double_fault_handler);
@@ -102,13 +102,16 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
 
         //interruptTable.set_handler(14, breakpoint_handler1);
-        interruptTable.set_handler(14, breakpoint_handler1);
-
+        //interruptTable.set_handler(14, breakpoint_handler1);
+        interruptTable.set_hardware_interrupt_handler(HardwareInterrupts::Timer, breakpoint_handler1);
         interrupts::load_interrupt_table(&interruptTable);
 
-        x86_64::instructions::interrupts::int3();
 
-        asm!("mov dx, 0; div dx" ::: "ax", "dx" : "volatile", "intel");
+        interruptTable.enable_hardware_interrupts();
+
+        //x86_64::instructions::interrupts::int3();
+
+        //asm!("mov dx, 0; div dx" ::: "ax", "dx" : "volatile", "intel");
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
 
         // run pre-init tests
@@ -149,12 +152,16 @@ extern "x86-interrupt" fn double_fault_handler1(s : &InterruptStackFrameValue) {
 fn memory_allocator_should_properly_allocate_and_free_memory() {
     // everything inside inner block will get deleted after block exit
     {
-        let us : usize = 128;
-        let sz = core::mem::size_of::<usize>();
+        let mut test_array : [u64;6] = [0 ;6];
 
-        let boxin2 = Box::new(us);
+        {
+            let boxin = Box::new(test_array);
 
-        let bb = boxin2;
+            let b = boxin;
+        }
+
+
+
     }
 
     let result = unsafe { HEAP_ALLOCATOR.is_fully_free() };

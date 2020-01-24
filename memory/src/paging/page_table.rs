@@ -182,7 +182,7 @@ impl PageTable<P4> {
                         match p3.next_table_opt(p3page) {
                             Some(p2) => {
                                 for p2Entry in p2.entries.iter().filter(|e| e.is_set()){
-                                    let p1page = Frame::from_address(p3Entry.address());
+                                    let p1page = Frame::from_address(p2Entry.address());
 
                                     match p2.next_table_opt(p1page) {
                                         Some(p1) =>{
