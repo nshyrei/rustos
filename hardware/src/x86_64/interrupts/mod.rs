@@ -1,4 +1,7 @@
-pub type InterruptHandler = extern "x86-interrupt" fn (&InterruptStackFrameValue);
+//use super_x86::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+
+pub type InterruptHandler = extern "x86-interrupt" fn (&mut InterruptStackFrameValue);
+pub type InterruptHandlerWithErrorCode = extern "x86-interrupt" fn (&mut InterruptStackFrameValue, u64);
 
 #[derive(Clone)]
 #[repr(C)]
@@ -14,8 +17,9 @@ pub struct InterruptStackFrameValue {
     pub stack_segment: u64,
 }
 
-#[repr(C)]
+
 #[derive(Clone, Copy)]
+#[repr(C)]
 pub struct InterruptTableEntry {
     lower_pointer_bits : u16,
     gdt_selector : GDTSelector,
@@ -26,13 +30,13 @@ pub struct InterruptTableEntry {
 }
 
 impl InterruptTableEntry {
-    pub fn new(gdt_selector : GDTSelector, handler : InterruptHandler) -> Self {
-        let handler_address = handler as u64;
+    pub fn new(gdt_selector : GDTSelector, handler_address : u64) -> Self {
 
         let lower_pointer_bits              = handler_address as u16;
-        let middle_pointer_bits             = (handler_address >> 16) as u16;
+        let middle_pointer_bits            = (handler_address >> 16) as u16;
         let remaining_pointer_bits      = (handler_address >> 32) as u32;
-        let options                                     = InterruptOptions::new();
+        let options           = InterruptOptions::new();
+        let gdt_selector= GDTSelector::minimal();
 
         InterruptTableEntry {
             lower_pointer_bits,
@@ -44,10 +48,10 @@ impl InterruptTableEntry {
         }
     }
 
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
 
-        let options = InterruptOptions::new();
-        let gdt_selector    = GDTSelector::new(0, 0);
+        let options = InterruptOptions::minimal();
+        let gdt_selector = GDTSelector::empty();
 
         InterruptTableEntry {
             lower_pointer_bits : 0,
@@ -97,13 +101,12 @@ pub enum HardwareInterrupts {
 }
 
 #[repr(C)]
+#[repr(align(16))]
 pub struct InterruptTable {
     // handlers for cpu exceptions
     cpu_exceptions: [InterruptTableEntry; 32],
     // handlers for user defined interrupts
-    interrupts : [InterruptTableEntry; 256 - 32],
-
-    chained_pics : ChainedPics
+    interrupts : [InterruptTableEntry; 256 - 32]
 }
 
 impl InterruptTable {
@@ -111,18 +114,9 @@ impl InterruptTable {
         let cpu_exceptions = [InterruptTableEntry::empty(); 32];
         let interrupts = [InterruptTableEntry::empty(); 256 - 32];
 
-        let mut chained_pics = unsafe {
-            let mut pic = ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET);
-            pic.initialize();
-
-            pic
-        };
-
-
         InterruptTable {
             cpu_exceptions,
             interrupts,
-            chained_pics
         }
     }
 
@@ -139,22 +133,28 @@ impl InterruptTable {
     }
 
     pub fn set_cpu_interrupt_handler(&mut self, interrupt : CPUInterrupts, handler : InterruptHandler) {
-        self.set_handler(interrupt as usize, handler)
+        let entry  = self.create_entry(handler as u64);
+
+        self.cpu_exceptions[interrupt as usize] = entry;
+    }
+
+    pub fn set_cpu_interrupt_handler_with_error_code(&mut self, interrupt : CPUInterrupts, handler : InterruptHandlerWithErrorCode) {
+        let entry = self.create_entry(handler as u64);
+
+        self.cpu_exceptions[interrupt as usize] = entry;
     }
 
     pub fn set_hardware_interrupt_handler(&mut self, interrupt : HardwareInterrupts, handler : InterruptHandler) {
-        self.set_handler(interrupt as usize, handler)
+        let entry = self.create_entry(handler as u64);
+
+        self.interrupts[interrupt as usize] = entry
     }
 
-    pub fn set_handler(&mut self, index : usize, handler : InterruptHandler) {
-        let mut entry = InterruptTableEntry::new(GDTSelector::new(0, 0), handler);
+    fn create_entry(&mut self, handler_address : u64) -> InterruptTableEntry {
+        let mut entry = InterruptTableEntry::new(GDTSelector::new(0, 0), handler_address);
         entry.options.set_present();
 
-        self.set_entry(index, entry)
-    }
-
-    pub fn set_entry(&mut self, index : usize, entry : InterruptTableEntry) {
-        self.cpu_exceptions[index] = entry
+        entry
     }
 
     fn pointer(&self) -> InterruptTablePointer {
@@ -189,6 +189,16 @@ pub struct GDTSelector {
 }
 
 impl GDTSelector {
+    pub fn minimal() -> Self {
+        use x86_64::registers;
+
+        let cs_value = registers::cs();
+
+        GDTSelector {
+            value : cs_value
+        }
+    }
+
     pub fn new(index : u16, privilege_level : u16) -> Self {
         use x86_64::registers;
 
@@ -198,6 +208,12 @@ impl GDTSelector {
 
         GDTSelector {
             value : cs_value
+        }
+    }
+
+    pub const fn empty() -> Self {
+        GDTSelector {
+            value : 0
         }
     }
 }
@@ -210,7 +226,7 @@ pub struct InterruptOptions {
 
 impl InterruptOptions {
 
-    pub fn minimal() -> Self {
+    pub const fn minimal() -> Self {
         let validValue = 0b1110_0000_0000; // bits 9-11 must be set to 1 according to spec
 
         InterruptOptions {
@@ -222,7 +238,7 @@ impl InterruptOptions {
         let mut minimal = InterruptOptions::minimal();
 
         minimal.set_present();
-        minimal.disable_interrupts();
+        //minimal.disable_interrupts();
 
         minimal
     }

@@ -13,6 +13,7 @@ extern crate malloc;
 extern crate stdx_memory;
 extern crate stdx;
 extern crate x86_64;
+extern crate pic8259_simple;
 extern crate multiprocess;
 
 use multiboot::multiboot_header::MultibootHeader;
@@ -43,18 +44,24 @@ use stdx_memory::heap::RC;
 use stdx_memory::heap::SharedBox;
 
 use hardware::x86_64::interrupts;
-use hardware::x86_64::interrupts::{InterruptTableHelp, InterruptTable, InterruptStackFrameValue, HardwareInterrupts};
+use hardware::x86_64::interrupts::{InterruptTableHelp, InterruptTable, HardwareInterrupts, CPUInterrupts, InterruptStackFrameValue};
 use core::ptr;
 use alloc::alloc::Layout;
 use stdx_memory::heap;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultHandlerFunc, PageFaultErrorCode};
 use multiprocess::executor;
 static mut VGA_WRITER: Option<Writer> = None;
+
+use pic8259_simple::ChainedPics;
 
 #[global_allocator]
 static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : None };
 
 static mut idt : InterruptDescriptorTable = InterruptDescriptorTable::new();
+
+//static mut interruptTable : InterruptTable = InterruptTable::new();
+
+static mut chained_pics : ChainedPics = unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) } ;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -83,33 +90,19 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         memory_allocator_should_properly_allocate_and_free_memory();
 
-        let welp = slab_allocator.is_fully_free();
+       let mut interruptTable = InterruptTable::new();
 
+        interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::DoubleFault, double_fault_handler2);
+        interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::PageFault, page_fault_handler);
+       // interruptTable.set_cpu_interrupt_handler(CPUInterrupts::DivideByZero, div_handler);
 
-
-        /*idt.breakpoint.set_handler_fn(breakpoint_handler);
-        idt.invalid_opcode.set_handler_fn(breakpoint_handler);
-        idt.double_fault.set_handler_fn(double_fault_handler);
-        idt.load();
-
-        asm!("mov dx, 0; div dx" ::: "ax", "dx" : "volatile", "intel");*/
-
-
-        unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA AFTER"); }
-        let mut interruptTable = InterruptTable::new();
-        //INTERRUPT_TABLE.value = ptr::NonNull::new(&mut interruptTable as *mut InterruptTable);
-
-
-
-        //interruptTable.set_handler(14, breakpoint_handler1);
-        //interruptTable.set_handler(14, breakpoint_handler1);
-        interruptTable.set_hardware_interrupt_handler(HardwareInterrupts::Timer, breakpoint_handler1);
+        //interruptTable.set_cpu_interrupt_handler(CPUInterrupts::InvalidOpcode, breakpoint_handler1);
+        interruptTable.set_hardware_interrupt_handler(HardwareInterrupts::Timer, timer_interrupt_handler);
         interrupts::load_interrupt_table(&interruptTable);
 
+        chained_pics.initialize();
 
         interruptTable.enable_hardware_interrupts();
-
-        //x86_64::instructions::interrupts::int3();
 
         //asm!("mov dx, 0; div dx" ::: "ax", "dx" : "volatile", "intel");
         //writeln!(&mut vga_writer, "{}", predefined_p4_table);
@@ -125,28 +118,37 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     loop {}
 }
 
-extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: &mut InterruptStackFrame, _error_code: u64)
-{
+pub const PIC_1_OFFSET: u8 = 32;
+pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum InterruptIndex {
+    Timer = PIC_1_OFFSET,
+    Keyboard,
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrameValue) {
+    unsafe {
+        writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA TIMER STOOOP");
+        chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+    }
+}
+
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrameValue) {
+    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "BREAK NIIGGA"); }
+}
+
+extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut InterruptStackFrameValue) {
+    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "OPCODE NIIGGA"); }
+}
+
+extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrameValue, code : u64) {
+    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "PAGE NIIGGA"); }
+}
+
+extern "x86-interrupt" fn double_fault_handler2(stack_frame: &mut InterruptStackFrameValue, error_code : u64) {
     unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "DOUBLE NIIGGA"); }
-
-    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
-}
-
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame)
-{
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA"); }
-}
-
-extern "x86-interrupt" fn breakpoint_handler1(s :&InterruptStackFrameValue) {
-
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA"); }
-
-}
-
-extern "x86-interrupt" fn double_fault_handler1(s : &InterruptStackFrameValue) {
-
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Double NIIGGA"); }
 }
 
 fn memory_allocator_should_properly_allocate_and_free_memory() {
@@ -159,9 +161,6 @@ fn memory_allocator_should_properly_allocate_and_free_memory() {
 
             let b = boxin;
         }
-
-
-
     }
 
     let result = unsafe { HEAP_ALLOCATOR.is_fully_free() };
