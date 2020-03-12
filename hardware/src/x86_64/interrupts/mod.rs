@@ -1,5 +1,3 @@
-//use super_x86::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-
 pub type InterruptHandler = extern "x86-interrupt" fn (&mut InterruptStackFrameValue);
 pub type InterruptHandlerWithErrorCode = extern "x86-interrupt" fn (&mut InterruptStackFrameValue, u64);
 
@@ -110,7 +108,7 @@ pub struct InterruptTable {
 }
 
 impl InterruptTable {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         let cpu_exceptions = [InterruptTableEntry::empty(); 32];
         let interrupts = [InterruptTableEntry::empty(); 256 - 32];
 
@@ -238,7 +236,6 @@ impl InterruptOptions {
         let mut minimal = InterruptOptions::minimal();
 
         minimal.set_present();
-        //minimal.disable_interrupts();
 
         minimal
     }
@@ -286,6 +283,5 @@ bitflags! {
         const ALWAYS_PRESENT1 = 1 << 10;
         const ALWAYS_PRESENT2 = 1 << 11;
         const IS_PRESENT =      1 << 15;
-
     }
 }

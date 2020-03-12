@@ -440,7 +440,9 @@ impl MemoryAllocator for BuddyAllocator {
 
                     // map page frames
                     let p4_table = paging::p4_table();
-                    p4_table.map_pages_1_to_1(result_address, new_buddy_index as usize , page_table::PRESENT | page_table::WRITABLE, &mut self.page_tables_allocator);
+                    let frame_count = Frame::number_for_address(allocation_size_rounded);
+                    let proper_frame_count =  if frame_count == 0 { 1 } else { frame_count };
+                    p4_table.map_pages_1_to_1(result_address, proper_frame_count , page_table::PRESENT | page_table::WRITABLE, &mut self.page_tables_allocator);
 
                     let debug = self.allocation_sizes[Frame::number_for_address(0)];
 

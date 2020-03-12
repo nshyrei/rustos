@@ -5,6 +5,7 @@ use alloc::boxed::Box;
 use alloc::rc::Rc;
 use core::marker;
 use core::cell;
+use core::ptr;
 
 use crate::Process;
 use crate::Message;
@@ -12,6 +13,10 @@ use crate::ProcessBox;
 use crate::process::ProcessRef;
 
 pub type ExecutorRef = Rc<cell::RefCell<Executor>>;
+
+pub struct ExecutorHelp {
+    pub value : ptr::NonNull<Executor>
+}
 
 pub struct Executor {
 
@@ -36,7 +41,7 @@ impl Executor {
         }
     }
 
-    pub(crate) fn post_message(&mut self, id : u64, message : Message) {
+    pub fn post_message(&mut self, id : u64, message : Message) {
         if let Some(process) = self.existing.get_mut(&id) {
             process.mailbox.push_back(message)
         }
@@ -80,7 +85,7 @@ impl Executor {
         }
     }
 
-    fn schedule_next(&mut self) {
+    pub fn schedule_next(&mut self) {
         // Round robin algorithm: consecutively execute processes without any regard to priorities or round-trip time
         // pick one process to execute from execution line,
         // execute it and put it back into the queue

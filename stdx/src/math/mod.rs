@@ -14,6 +14,12 @@ pub fn log_align_up(base : usize, x : usize) -> usize {
     }
 }
 
+pub fn log(base : usize, x : usize) -> usize {
+    match log_inner(base, x) {        
+        (result, _) => result
+    }
+}
+
 pub fn log2_align_down(x : usize) -> usize { log_align_down(2, x) }
 
 pub fn log2_align_up(x : usize) -> usize {

@@ -348,7 +348,7 @@ impl SlabAllocator {
     }
 
     fn allocation_size_rounded(size : usize) -> usize {
-        let allocation_size_rounded0 = (2 as usize).pow(math::log2_align_up(size) as u32);
+        let allocation_size_rounded0 = (2 as usize).pow(math::log(2, size) as u32);
 
         if allocation_size_rounded0 < MIN_ALLOCATION_SIZE {
             MIN_ALLOCATION_SIZE

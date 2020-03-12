@@ -12,7 +12,6 @@ extern crate alloc;
 extern crate malloc;
 extern crate stdx_memory;
 extern crate stdx;
-extern crate x86_64;
 extern crate pic8259_simple;
 extern crate multiprocess;
 
@@ -30,7 +29,6 @@ use memory::paging::page_table;
 use memory::paging::page_table::P4Table;
 use stdx_memory::MemoryAllocator;
 use stdx_memory::MemoryAllocatorMeta;
-use hardware::x86_64::registers;
 use core::clone::Clone;
 use core::fmt::Write;
 use alloc::boxed::Box;
@@ -40,28 +38,33 @@ use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use memory::allocator::slab::SlabAllocator;
 use memory::allocator::slab::SlabHelp;
 use memory::allocator::buddy::BuddyAllocator;
-use stdx_memory::heap::RC;
-use stdx_memory::heap::SharedBox;
 
+use hardware::x86_64::registers;
 use hardware::x86_64::interrupts;
 use hardware::x86_64::interrupts::{InterruptTableHelp, InterruptTable, HardwareInterrupts, CPUInterrupts, InterruptStackFrameValue};
 use core::ptr;
+use core::ops::DerefMut;
+use core::cell;
 use alloc::alloc::Layout;
+use alloc::rc::Rc;
 use stdx_memory::heap;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultHandlerFunc, PageFaultErrorCode};
+use multiprocess::{Process, Message};
 use multiprocess::executor;
-static mut VGA_WRITER: Option<Writer> = None;
-
+use multiprocess::process;
 use pic8259_simple::ChainedPics;
+
+static mut VGA_WRITER: Option<Writer> = None;
 
 #[global_allocator]
 static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : None };
 
-static mut idt : InterruptDescriptorTable = InterruptDescriptorTable::new();
-
-//static mut interruptTable : InterruptTable = InterruptTable::new();
+static mut interruptTable : InterruptTable = InterruptTable::new();
 
 static mut chained_pics : ChainedPics = unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) } ;
+
+static mut process_executor : ptr::NonNull<executor::ExecutorRef> = ptr::NonNull::dangling();
+
+static mut process_system : ptr::NonNull<process::ProcessSystemRef> = ptr::NonNull::dangling();
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -84,13 +87,11 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let aux_structures_start_address = preallocate_memory_for_allocator_aux_data_structures(memory_start, memory_end);
 
-        let mut slab_allocator = SlabAllocator::new2(aux_structures_start_address, total_memory, memory_end, VGA_WRITER.as_mut().unwrap());
+        let mut slab_allocator = SlabAllocator::new2(aux_structures_start_address + 4096, total_memory, memory_end, VGA_WRITER.as_mut().unwrap());
 
         HEAP_ALLOCATOR.value = ptr::NonNull::new(&mut slab_allocator as *mut SlabAllocator);
 
         memory_allocator_should_properly_allocate_and_free_memory();
-
-       let mut interruptTable = InterruptTable::new();
 
         interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::DoubleFault, double_fault_handler2);
         interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::PageFault, page_fault_handler);
@@ -101,6 +102,26 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         interrupts::load_interrupt_table(&interruptTable);
 
         chained_pics.initialize();
+
+        let mut executor = Rc::new(cell::RefCell::new(executor::Executor::new()));
+
+        process_executor =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
+
+        let mut process_system_0 = Rc::new(cell::RefCell::new(process::ProcessSystem::new(Rc::clone(process_executor.as_ref()))));
+
+        process_system =  ptr::NonNull::new_unchecked(&mut process_system_0 as *mut process::ProcessSystemRef);
+
+        let sample_process = SampleProcess {
+            executor :  Rc::clone(process_system.as_ref()),
+
+            child : None
+        };
+
+        let sample_process_box = Box::new(sample_process);
+
+        let mut sample_ref = process::ProcessSystem::fork(Rc::clone(process_system.as_ref()), sample_process_box);
+
+        sample_ref.post_message(Box::new(process::StartProcess {} ));
 
         interruptTable.enable_hardware_interrupts();
 
@@ -118,6 +139,31 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     loop {}
 }
 
+pub struct SampleProcess {
+
+    pub executor : process::ProcessSystemRef,
+
+    pub child : Option<process::ProcessRef>
+}
+
+impl Process for SampleProcess {
+    fn process_message(&mut self, message: Message) -> () {
+        if message.is::<process::StartProcess>() {
+
+            unsafe {
+                writeln!(VGA_WRITER.as_mut().unwrap(), "Thats funny I am creating a process!");
+            }
+
+
+            /*let msg = message.downcast::<process::StartProcess>().unwrap();
+
+            let new_child = process::ProcessSystem::fork(Rc::clone(&self.executor), msg.process_message);
+
+            self.child = Some(new_child);*/
+        }
+    }
+}
+
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
 
@@ -131,6 +177,9 @@ pub enum InterruptIndex {
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrameValue) {
     unsafe {
         writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA TIMER STOOOP");
+
+        process_executor.as_ref().borrow_mut().schedule_next();
+
         chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
     }
 }
