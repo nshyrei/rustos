@@ -64,8 +64,6 @@ static mut chained_pics : ChainedPics = unsafe { ChainedPics::new(PIC_1_OFFSET, 
 
 static mut process_executor : ptr::NonNull<executor::ExecutorRef> = ptr::NonNull::dangling();
 
-static mut process_system : ptr::NonNull<process::ProcessSystemRef> = ptr::NonNull::dangling();
-
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub extern "C" fn rust_main(multiboot_header_address: usize) {
@@ -107,21 +105,31 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         process_executor =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
 
-        let mut process_system_0 = Rc::new(cell::RefCell::new(process::ProcessSystem::new(Rc::clone(process_executor.as_ref()))));
-
-        process_system =  ptr::NonNull::new_unchecked(&mut process_system_0 as *mut process::ProcessSystemRef);
+        let mut root_process = process::RootProcess::new(Rc::clone(process_executor.as_ref()));
 
         let sample_process = SampleProcess {
-            executor :  Rc::clone(process_system.as_ref()),
+            root :  process::ProcessRef::clone(&root_process),
 
-            child : None
+            child : None,
+
+            ctr : 0
         };
 
         let sample_process_box = Box::new(sample_process);
 
-        let mut sample_ref = process::ProcessSystem::fork(Rc::clone(process_system.as_ref()), sample_process_box);
+        let mut sample_ref = root_process.fork(sample_process_box);
 
         sample_ref.post_message(Box::new(process::StartProcess {} ));
+
+        let sender_process = SenderProcess {
+            root : process::ProcessRef::clone(&root_process),
+
+            child : process::ProcessRef::clone(&sample_ref),
+        };
+
+        let sender_process_box = Box::new(sender_process);
+
+        let mut sender_ref = root_process.fork(sender_process_box);
 
         interruptTable.enable_hardware_interrupts();
 
@@ -139,11 +147,33 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
     loop {}
 }
 
+pub struct IncreaseCtr {}
+
+
+pub struct SenderProcess {
+
+    pub root : process::ProcessRef,
+
+    pub child : process::ProcessRef,
+}
+
+impl Process for SenderProcess {
+    fn process_message(&mut self, message: Message) -> () {
+        unsafe {
+            writeln!(VGA_WRITER.as_mut().unwrap(), "Sending inc to Id = {}!", self.child.id());
+
+            self.child.post_message(Box::new(IncreaseCtr {}));
+        }
+    }
+}
+
 pub struct SampleProcess {
 
-    pub executor : process::ProcessSystemRef,
+    pub root : process::ProcessRef,
 
-    pub child : Option<process::ProcessRef>
+    pub child : Option<process::ProcessRef>,
+
+    pub ctr : usize
 }
 
 impl Process for SampleProcess {
@@ -151,15 +181,40 @@ impl Process for SampleProcess {
         if message.is::<process::StartProcess>() {
 
             unsafe {
-                writeln!(VGA_WRITER.as_mut().unwrap(), "Thats funny I am creating a process!");
+                writeln!(VGA_WRITER.as_mut().unwrap(), "Thats funny I am creating a process Id = {}!", 1);
             }
+        }
 
+        if message.is::<IncreaseCtr>() {
 
-            /*let msg = message.downcast::<process::StartProcess>().unwrap();
+            unsafe {
 
-            let new_child = process::ProcessSystem::fork(Rc::clone(&self.executor), msg.process_message);
+                if (self.ctr > 3) {
 
-            self.child = Some(new_child);*/
+                    let sample_process = SampleProcess {
+                        root :  process::ProcessRef::clone(&self.root),
+
+                        child : None,
+
+                        ctr : 0
+                    };
+
+                    let sample_process_box = Box::new(sample_process);
+
+                    let mut child_ref = self.root.fork(sample_process_box);
+
+                    child_ref.post_message(Box::new(IncreaseCtr {} ));
+
+                    self.child = Some(child_ref);
+                    self.ctr = 0;
+                }
+                else {
+
+                    writeln!(VGA_WRITER.as_mut().unwrap(), "Got inc ctr!");
+
+                    self.ctr += 1;
+                }
+            }
         }
     }
 }
@@ -174,11 +229,24 @@ pub enum InterruptIndex {
     Keyboard,
 }
 
+static mut timer_ctr : usize = 0;
+
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrameValue) {
     unsafe {
-        writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA TIMER STOOOP");
 
-        process_executor.as_ref().borrow_mut().schedule_next();
+        if timer_ctr > 50 { // emulates tick every 3 secs
+
+            timer_ctr = 0;
+
+            writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA TICK");
+
+            process_executor.as_ref().borrow_mut().schedule_next();
+
+            process_executor.as_ref().borrow_mut().post_message(2, Box::new(IncreaseCtr {}))
+        }
+        else {
+            timer_ctr += 1;
+        }
 
         chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
     }
