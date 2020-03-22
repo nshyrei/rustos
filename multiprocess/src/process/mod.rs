@@ -24,17 +24,18 @@ impl ProcessRef {
     }
 
     pub fn fork(&mut self, process : ProcessBox) -> ProcessRef {
+unsafe {
+    let id = self.executor.get().as_mut().unwrap()/*.borrow_mut()*/.fork(self.id, process);
 
-        let id = self.executor.borrow_mut().fork(self.id, process);
-
-        ProcessRef {
-            id,
-            executor: Rc::clone(&self.executor)
-        }
+    ProcessRef {
+        id,
+        executor: Rc::clone(&self.executor)
+    }
+}
     }
 
     pub fn post_message(&mut self, message : Message) {
-        self.executor.borrow_mut().post_message(self.id, message)
+        unsafe { self.executor.get().as_mut().unwrap().post_message(self.id, message) }
     }
 }
 
@@ -66,14 +67,16 @@ pub struct RootProcess {
 
 impl RootProcess {
     pub fn new(executor : ExecutorRef) -> ProcessRef {
-        let root_process = RootProcess { executor : Rc::clone(&executor) };
-        let root_process_box = Box::new(root_process);
+        unsafe {
+            let root_process = RootProcess { executor: Rc::clone(&executor) };
+            let root_process_box = Box::new(root_process);
 
-        let id = executor.borrow_mut().create_process(root_process_box);
+            let id = executor.get().as_mut().unwrap().create_process(root_process_box);
 
-        ProcessRef {
-            id,
-            executor: Rc::clone(&executor)
+            ProcessRef {
+                id,
+                executor: Rc::clone(&executor)
+            }
         }
     }
 }
@@ -81,14 +84,16 @@ impl RootProcess {
 impl Process for RootProcess {
 
     fn process_message(&mut self, message: Message) -> () {
-        if message.is::<CreateProcess>() {
-            let msg = message.downcast::<CreateProcess>().unwrap();
+        unsafe {
+            if message.is::<CreateProcess>() {
+                let msg = message.downcast::<CreateProcess>().unwrap();
 
-            self.executor.borrow_mut().create_process(msg.process_message);
-        } else if message.is::<RemoveProcess>() {
-            let msg = message.downcast::<RemoveProcess>().unwrap();
+                self.executor.get().as_mut().unwrap().create_process(msg.process_message);
+            } else if message.is::<RemoveProcess>() {
+                let msg = message.downcast::<RemoveProcess>().unwrap();
 
-            self.executor.borrow_mut().remove_process_with_children(msg.id);
+                self.executor.get().as_mut().unwrap().remove_process_with_children(msg.id);
+            }
         }
     }
 }

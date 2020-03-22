@@ -1,7 +1,21 @@
 pub type InterruptHandler = extern "x86-interrupt" fn (&mut InterruptStackFrameValue);
 pub type InterruptHandlerWithErrorCode = extern "x86-interrupt" fn (&mut InterruptStackFrameValue, u64);
 
-#[derive(Clone)]
+#[inline(always)]
+pub fn disable_interrupts() {
+    unsafe {
+        asm!("cli" :::: "volatile");
+    }
+}
+
+#[inline(always)]
+pub fn enable_interrupts() {
+    unsafe {
+        asm!("sti" :::: "volatile");
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct InterruptStackFrameValue {
     pub instruction_pointer: u64,

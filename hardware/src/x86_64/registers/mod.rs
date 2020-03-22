@@ -23,3 +23,15 @@ pub fn cs() -> u16 {
 pub unsafe fn cr3_write(val: u64) {
     asm!("mov $0, %cr3" :: "r" (val) : "memory");
 }
+
+#[inline(always)]
+pub unsafe fn rflags_write(val : u64) { asm!("pushq $0; popfq" :: "r"(val) : "memory" "flags") }
+
+#[inline(always)]
+pub unsafe fn sp_write(val : u32) { asm!("mov $0, %esp" :: "r" (val) : "memory") }
+
+#[inline(always)]
+pub unsafe fn jump(val : u64) {
+    asm!("pushq $0" :: "r" (val) : "memory");
+    asm!("ret" :::);
+}

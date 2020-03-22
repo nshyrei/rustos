@@ -101,11 +101,11 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         chained_pics.initialize();
 
-        let mut executor = Rc::new(cell::RefCell::new(executor::Executor::new()));
+        let mut executor = Rc::new(cell::UnsafeCell::new(executor::Executor::new()));
 
         process_executor =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
 
-        let mut root_process = process::RootProcess::new(Rc::clone(process_executor.as_ref()));
+        let mut root_process = process::RootProcess::new(Rc::clone(&executor));
 
         let sample_process = SampleProcess {
             root :  process::ProcessRef::clone(&root_process),
@@ -119,17 +119,21 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let mut sample_ref = root_process.fork(sample_process_box);
 
-        sample_ref.post_message(Box::new(process::StartProcess {} ));
+        {
+            sample_ref.post_message(Box::new(process::StartProcess {} ));
+        }
 
         let sender_process = SenderProcess {
             root : process::ProcessRef::clone(&root_process),
 
-            child : process::ProcessRef::clone(&sample_ref),
+            child : sample_ref,
         };
 
         let sender_process_box = Box::new(sender_process);
 
-        let mut sender_ref = root_process.fork(sender_process_box);
+        {
+            root_process.fork(sender_process_box);
+        }
 
         interruptTable.enable_hardware_interrupts();
 
@@ -191,6 +195,8 @@ impl Process for SampleProcess {
 
                 if (self.ctr > 3) {
 
+                    writeln!(VGA_WRITER.as_mut().unwrap(), "Thats funny I am creating a new child!");
+
                     let sample_process = SampleProcess {
                         root :  process::ProcessRef::clone(&self.root),
 
@@ -203,7 +209,7 @@ impl Process for SampleProcess {
 
                     let mut child_ref = self.root.fork(sample_process_box);
 
-                    child_ref.post_message(Box::new(IncreaseCtr {} ));
+                    child_ref.post_message(Box::new(process::StartProcess {} ));
 
                     self.child = Some(child_ref);
                     self.ctr = 0;
@@ -231,24 +237,39 @@ pub enum InterruptIndex {
 
 static mut timer_ctr : usize = 0;
 
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrameValue) {
+extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptStackFrameValue) {
     unsafe {
 
-        if timer_ctr > 50 { // emulates tick every 3 secs
+        if timer_ctr > 40 { // emulates tick every 3 secs
 
             timer_ctr = 0;
 
             writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA TICK");
 
-            process_executor.as_ref().borrow_mut().schedule_next();
+            writeln!(VGA_WRITER.as_mut().unwrap(), "Tick interrupt frame {:?}", stack_frame);
 
-            process_executor.as_ref().borrow_mut().post_message(2, Box::new(IncreaseCtr {}))
+            let interrupted_process_registers = executor::ProcessRegisters {
+                code_pointer : stack_frame.instruction_pointer,
+                stack_pointer : stack_frame.stack_pointer,
+                cpu_flags :  stack_frame.cpu_flags
+            };
+
+            let executor = process_executor.as_ref().get().as_mut().unwrap();
+
+            executor.post_message(2, Box::new(IncreaseCtr {}));
+
+            if let Some(next_process) = executor.schedule_next(interrupted_process_registers) {
+
+                chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+
+                executor::Executor::switch_to(next_process);
+            }
         }
         else {
             timer_ctr += 1;
-        }
 
-        chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+            chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+        }
     }
 }
 
@@ -363,6 +384,9 @@ extern "C" fn eh_personality() {}
 #[lang = "panic_impl"]
 #[no_mangle]
 pub extern "C" fn panic_impl(pi: &PanicInfo) -> ! {
+
+    //unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Rust code panicked with {}", pi.message()); }
+
     loop {}
 }
 #[lang = "oom"]
