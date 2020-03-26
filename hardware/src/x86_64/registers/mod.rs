@@ -31,7 +31,18 @@ pub unsafe fn rflags_write(val : u64) { asm!("pushq $0; popfq" :: "r"(val) : "me
 pub unsafe fn sp_write(val : u32) { asm!("mov $0, %esp" :: "r" (val) : "memory") }
 
 #[inline(always)]
+pub unsafe fn pushq(val : u64) {
+    asm!("pushq $0" :: "r" (val) : "memory");
+}
+
+#[inline(always)]
 pub unsafe fn jump(val : u64) {
     asm!("pushq $0" :: "r" (val) : "memory");
     asm!("ret" :::);
+}
+
+#[inline(always)]
+pub unsafe fn iret(val : u64) {
+    //asm!("pushq $0" :: "r" (val) : "memory");
+    asm!("iret" :::);
 }

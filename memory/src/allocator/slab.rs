@@ -494,20 +494,20 @@ unsafe impl Alloc for SlabAllocator {
 }
 
 pub struct SlabHelp {
-    pub value : Option<ptr::NonNull<SlabAllocator>>
+    pub value : ptr::NonNull<SlabAllocator>
 }
 
 impl SlabHelp {
 
     pub fn is_fully_free(&self) -> bool {
-        unsafe { self.value.unwrap().as_ref().is_fully_free() }
+        unsafe { self.value.as_ref().is_fully_free() }
     }
 }
 
 unsafe impl GlobalAlloc for SlabHelp {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // escape immutable self
-        let mut  v = self.value.clone().unwrap();
+        let mut  v = self.value.clone();
         let mut escape = v.as_mut();
 
         escape.allocate(layout.size())
@@ -517,7 +517,7 @@ unsafe impl GlobalAlloc for SlabHelp {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         // escape immutable self
-        let mut  v = self.value.clone().unwrap();
+        let mut  v = self.value.clone();
         let mut escape = v.as_mut();
 
         escape.free(ptr as usize)

@@ -56,13 +56,15 @@ use pic8259_simple::ChainedPics;
 static mut VGA_WRITER: Option<Writer> = None;
 
 #[global_allocator]
-static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : None };
+static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : ptr::NonNull::dangling() };
 
 static mut interruptTable : InterruptTable = InterruptTable::new();
 
 static mut chained_pics : ChainedPics = unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) } ;
 
-static mut process_executor : ptr::NonNull<executor::ExecutorRef> = ptr::NonNull::dangling();
+static mut process_executor : executor::ExecutorHelp = executor::ExecutorHelp { value : ptr::NonNull::dangling() };
+
+static mut DummyAddr : u64 = 0;
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -87,7 +89,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let mut slab_allocator = SlabAllocator::new2(aux_structures_start_address + 4096, total_memory, memory_end, VGA_WRITER.as_mut().unwrap());
 
-        HEAP_ALLOCATOR.value = ptr::NonNull::new(&mut slab_allocator as *mut SlabAllocator);
+        HEAP_ALLOCATOR.value = ptr::NonNull::new_unchecked(&mut slab_allocator as *mut SlabAllocator);
 
         memory_allocator_should_properly_allocate_and_free_memory();
 
@@ -103,9 +105,27 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let mut executor = Rc::new(cell::UnsafeCell::new(executor::Executor::new()));
 
-        process_executor =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
+        process_executor.value =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
 
-        let mut root_process = process::RootProcess::new(Rc::clone(&executor));
+        use core::mem;
+        use core::ops::Deref;
+
+        let dummy_process = DummyProcess { value : 1000 };
+        let dummy_process_state_box = Box::new(dummy_process);
+        DummyAddr = DummyProcess::process as *const fn() as u64;
+       /* let dummy_process_ptr = DummyProcess::process;
+        let dummy_process_box = mem::transmute::<fn(&mut DummyProcess), fn(&mut Process)>(dummy_process_ptr);
+        let dummy_addr = dummy_process_box as u64;
+
+        use hardware::x86_64::registers;
+        let addr = dummy_process_state_box.deref() as *const _ as u64;
+        registers::pushq(addr);
+        registers::jump(dummy_addr);
+*/
+        process_executor.create_process( dummy_process_state_box);
+        process_executor.post_message(0, Box::new(IncreaseCtr {}));
+
+        /*let mut root_process = process::RootProcess::new(Rc::clone(&executor));
 
         let sample_process = SampleProcess {
             root :  process::ProcessRef::clone(&root_process),
@@ -133,7 +153,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         {
             root_process.fork(sender_process_box);
-        }
+        }*/
 
         interruptTable.enable_hardware_interrupts();
 
@@ -148,7 +168,46 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_unmap_should_properly_unmap_elements(p4_table, slab_allocator.frame_allocator());
         paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
     }
-    loop {}
+    loop {
+        unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Main thread end loop!"); };
+    }
+}
+
+#[repr(C)]
+pub struct DummyProcess {
+
+    value : usize
+}
+
+impl DummyProcess {
+
+    fn process() -> () {
+        unsafe {
+
+            writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!, with value ");
+
+            //loop {}
+        }
+    }
+
+    fn process_message(message: Message) -> () {
+        unsafe {
+            writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!");
+
+            loop {}
+        }
+    }
+}
+
+
+impl Process for DummyProcess {
+    fn process_message(&mut self, message: Message) -> () {
+        unsafe {
+            writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!");
+
+            loop {}
+        }
+    }
 }
 
 pub struct IncreaseCtr {}
@@ -171,7 +230,7 @@ impl Process for SenderProcess {
     }
 }
 
-pub struct SampleProcess {
+/*pub struct SampleProcess {
 
     pub root : process::ProcessRef,
 
@@ -223,7 +282,7 @@ impl Process for SampleProcess {
             }
         }
     }
-}
+}*/
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
@@ -237,6 +296,22 @@ pub enum InterruptIndex {
 
 static mut timer_ctr : usize = 0;
 
+fn switch_to_running_process(new_process : &executor::ProcessDescriptor, interrupted: &mut InterruptStackFrameValue) {
+    let new_process_registers = new_process.registers();
+
+    interrupted.instruction_pointer = new_process_registers.instruction_pointer;
+    interrupted.stack_pointer           = new_process_registers.stack_pointer;
+    interrupted.cpu_flags                 = new_process_registers.cpu_flags;
+}
+
+fn switch_to_new_process(new_process : &mut executor::ProcessDescriptor) {
+    if let Some(mail) = new_process.mailbox_mut().pop_front() {
+        let process_func = new_process.process();
+
+        process_func.process_message(mail);
+    }
+}
+
 extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptStackFrameValue) {
     unsafe {
 
@@ -244,28 +319,42 @@ extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptSta
 
             timer_ctr = 0;
 
-            writeln!(VGA_WRITER.as_mut().unwrap(), "YO NIIGGA TICK");
+            writeln!(VGA_WRITER.as_mut().unwrap(), "TICK");
 
             writeln!(VGA_WRITER.as_mut().unwrap(), "Tick interrupt frame {:?}", stack_frame);
 
             let interrupted_process_registers = executor::ProcessRegisters {
-                code_pointer : stack_frame.instruction_pointer,
-                stack_pointer : stack_frame.stack_pointer,
-                cpu_flags :  stack_frame.cpu_flags
+                instruction_pointer: stack_frame.instruction_pointer,
+                stack_pointer: stack_frame.stack_pointer,
+                cpu_flags: stack_frame.cpu_flags,
             };
 
-            let executor = process_executor.as_ref().get().as_mut().unwrap();
+            process_executor.post_message(2, Box::new(IncreaseCtr {}));
 
-            executor.post_message(2, Box::new(IncreaseCtr {}));
+            process_executor.update_current_process(interrupted_process_registers);
 
-            if let Some(next_process) = executor.schedule_next(interrupted_process_registers) {
+            if let Some(next) = process_executor.schedule_next() {
 
-                chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+                 match next.state() {
+                     executor::ProcessState::Running => {
 
-                executor::Executor::switch_to(next_process);
+                         switch_to_running_process(next, stack_frame);
+
+                         chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+                     },
+                     executor::ProcessState::New => {
+                         hardware::x86_64::interrupts::disable_interrupts();
+
+                         hardware::x86_64::interrupts::enable_interrupts();
+
+                         chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+
+                         switch_to_new_process(next);
+                     },
+                     _ => ()
+                 }
             }
-        }
-        else {
+        } else {
             timer_ctr += 1;
 
             chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);

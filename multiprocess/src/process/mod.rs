@@ -23,16 +23,16 @@ impl ProcessRef {
         self.id
     }
 
-    pub fn fork(&mut self, process : ProcessBox) -> ProcessRef {
+    /*pub fn fork(&mut self, process : ProcessBox) -> ProcessRef {
 unsafe {
-    let id = self.executor.get().as_mut().unwrap()/*.borrow_mut()*/.fork(self.id, process);
+    let id = self.executor.get().as_mut().unwrap()*//*.borrow_mut()*//*.fork(self.id, process);
 
     ProcessRef {
         id,
         executor: Rc::clone(&self.executor)
     }
 }
-    }
+    }*/
 
     pub fn post_message(&mut self, message : Message) {
         unsafe { self.executor.get().as_mut().unwrap().post_message(self.id, message) }
@@ -66,7 +66,7 @@ pub struct RootProcess {
 }
 
 impl RootProcess {
-    pub fn new(executor : ExecutorRef) -> ProcessRef {
+    /*pub fn new(executor : ExecutorRef) -> ProcessRef {
         unsafe {
             let root_process = RootProcess { executor: Rc::clone(&executor) };
             let root_process_box = Box::new(root_process);
@@ -78,10 +78,10 @@ impl RootProcess {
                 executor: Rc::clone(&executor)
             }
         }
-    }
+    }*/
 }
 
-impl Process for RootProcess {
+/*impl Process for RootProcess {
 
     fn process_message(&mut self, message: Message) -> () {
         unsafe {
@@ -96,4 +96,4 @@ impl Process for RootProcess {
             }
         }
     }
-}
+}*/
