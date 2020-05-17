@@ -102,7 +102,12 @@ impl Executor {
 
     pub fn update_current_process(&mut self, interrupted_process_state: ProcessRegisters) {
         if let Some(existing_process) = self.existing.get_mut(&self.currently_executing) {
-            existing_process.registers = interrupted_process_state;
+
+            if existing_process.state == ProcessState::Running {
+                existing_process.registers = interrupted_process_state;
+            }
+
+
         }
     }
 
@@ -122,7 +127,7 @@ impl Executor {
     }
 }
 
-
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ProcessState {
     New,
     Running,
@@ -161,9 +166,12 @@ impl ProcessDescriptor {
         let state = ProcessState::New;
         let stack = Box::new([0 as u8; 4096]);
 
+        use core::ops::Deref;
+        let stack_pointer = stack.deref() as *const _ as u64;
+
         let registers = ProcessRegisters {
-            instruction_pointer: 0,
-            stack_pointer: 0,
+            instruction_pointer: 0, // process function will be called directly and this value will be populated after interrupt
+            stack_pointer,
             cpu_flags: 0,
         };
 
@@ -181,6 +189,10 @@ impl ProcessDescriptor {
         &mut self.mailbox
     }
 
+    pub fn mailbox(&self) -> &VecDeque<Message> {
+        &self.mailbox
+    }
+
     pub fn registers(&self) -> &ProcessRegisters {
         &self.registers
     }
@@ -189,7 +201,34 @@ impl ProcessDescriptor {
         &self.state
     }
 
+    pub fn stack_address(&self) -> u64 {
+        &self.stack as *const _ as u64
+    }
+
     pub fn process(&mut self) -> &mut ProcessBox {
         &mut self.process
+    }
+pub fn pop_pront(&mut self) -> () {
+    self.mailbox.pop_front();
+    }
+    pub fn switch(&mut self) -> () {
+        if let Some(message) = self.mailbox.pop_front() {
+            self.state = ProcessState::Running;
+            self.process.process_message(message);
+        }
+    }
+
+    pub unsafe fn unsafe_box(&mut self) -> *mut Process {
+        use core::mem;
+        use core::ptr;
+        let rawNull = ptr::read_unaligned(&mut self.process);
+
+        let raw = Box::into_raw(rawNull);
+
+        raw
+    }
+
+    pub fn process_addr(&self) -> &ProcessBox {
+        &self.process
     }
 }

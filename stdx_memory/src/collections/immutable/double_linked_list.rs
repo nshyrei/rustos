@@ -70,30 +70,6 @@ impl<T, A> DoubleLinkedList<T, A> where A : MemoryAllocator {
         self.next = Some(arg)
     }
 
-    /// Deletes this DoubleLinkedList from memory. Returns `prev` and `next` pointers if this was a
-    /// DoubleLinkedList::Cell, returns None otherwise.    
-    /// # Arguments
-    /// * `memory_allocator` - memory allocator
-    /// # Warning : modifies cells pointed by `self.next` and `self.prev`
-    /*pub fn remove(mut self) -> (Option<ListPointer<T, A>>, Option<ListPointer<T, A>>) {
-        if let Some(mut next) = self.next.as_mut() {
-
-            next.prev.take();
-            next.prev = Some(heap::WeakBox::from_pointer(&self.prev.take().unwrap()));
-        }
-
-        if let Some(mut prev) = self.prev.as_mut() {
-
-            let b = prev.next.take();
-            let bv = b;
-            prev.next = Some(heap::WeakBox::from_pointer(&self.next.take().unwrap()));
-        }
-
-        let result =(self.prev, self.next);
-
-        result
-    }*/
-
     pub fn modify_neighbour_connections(mut a : RCPointer<T,A>)  {
         let prev_addr = a.prev();
         let next_addr = a.next();

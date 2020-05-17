@@ -91,13 +91,11 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         HEAP_ALLOCATOR.value = ptr::NonNull::new_unchecked(&mut slab_allocator as *mut SlabAllocator);
 
-        memory_allocator_should_properly_allocate_and_free_memory();
+        //memory_allocator_should_properly_allocate_and_free_memory();
 
         interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::DoubleFault, double_fault_handler2);
         interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::PageFault, page_fault_handler);
-       // interruptTable.set_cpu_interrupt_handler(CPUInterrupts::DivideByZero, div_handler);
 
-        //interruptTable.set_cpu_interrupt_handler(CPUInterrupts::InvalidOpcode, breakpoint_handler1);
         interruptTable.set_hardware_interrupt_handler(HardwareInterrupts::Timer, timer_interrupt_handler);
         interrupts::load_interrupt_table(&interruptTable);
 
@@ -112,7 +110,6 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let dummy_process = DummyProcess { value : 1000 };
         let dummy_process_state_box = Box::new(dummy_process);
-        DummyAddr = DummyProcess::process as *const fn() as u64;
        /* let dummy_process_ptr = DummyProcess::process;
         let dummy_process_box = mem::transmute::<fn(&mut DummyProcess), fn(&mut Process)>(dummy_process_ptr);
         let dummy_addr = dummy_process_box as u64;
@@ -123,7 +120,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         registers::jump(dummy_addr);
 */
         process_executor.create_process( dummy_process_state_box);
-        process_executor.post_message(0, Box::new(IncreaseCtr {}));
+        process_executor.post_message(0, Box::new(IncreaseCtr { some : 299}));
 
         /*let mut root_process = process::RootProcess::new(Rc::clone(&executor));
 
@@ -180,37 +177,70 @@ pub struct DummyProcess {
 }
 
 impl DummyProcess {
+    fn process_message1(&mut self, message : Message) -> () {
 
-    fn process() -> () {
-        unsafe {
+        if message.is::<IncreaseCtr>() {
 
-            writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!, with value ");
+            let msg= message.downcast::<IncreaseCtr>().unwrap();
+            let vl = msg.some;
+            let x = vl;
 
-            //loop {}
-        }
-    }
-
-    fn process_message(message: Message) -> () {
-        unsafe {
-            writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!");
-
-            loop {}
+           unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy! inside process 1 {}", x); }
         }
     }
 }
-
 
 impl Process for DummyProcess {
+
+
+
     fn process_message(&mut self, message: Message) -> () {
         unsafe {
-            writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!");
 
-            loop {}
+            self.process_message1(message);
+loop   {
+    // unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Inside dummy end"); }
+}
+            /*use core::any::Any;
+            core::ptr::write(2961408 as *mut u64, self as *mut _ as u64);
+
+            let raw_msg_pointer = Box::into_raw(message);
+            core::ptr::write(2961416 as *mut *mut Any, raw_msg_pointer);
+
+            //core::ptr::write(2961416 as *mut Message, message);
+
+            // stack now points to process stack
+            registers::sp_write(2961416 as u32);
+
+            let stack_address_reread = registers::sp_read() - 8;
+            // reread &self and message from new stack
+            let self_addr = stack_address_reread;
+            let msg_addr = stack_address_reread + 8;
+
+            let mut new_self = (self_addr as *mut Self).as_mut().unwrap();
+
+            let raw_msg = msg_addr as *const *mut Any;
+            let new_message = Box::from_raw(*raw_msg);
+
+            //let new_message = core::ptr::read::<Message>((stack_address_reread + 8) as *const Message);
+
+            new_self.process_message1(new_message);
+
+            loop {
+                let some_var_for_Stack_test = 0;
+                let mut some_other = some_var_for_Stack_test + 20;
+                writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!");
+                writeln!(VGA_WRITER.as_mut().unwrap(), "Stack value {}", some_other);
+
+                some_other += 1;
+            }*/
         }
     }
 }
 
-pub struct IncreaseCtr {}
+pub struct IncreaseCtr {
+    pub some : usize
+}
 
 
 pub struct SenderProcess {
@@ -225,64 +255,10 @@ impl Process for SenderProcess {
         unsafe {
             writeln!(VGA_WRITER.as_mut().unwrap(), "Sending inc to Id = {}!", self.child.id());
 
-            self.child.post_message(Box::new(IncreaseCtr {}));
+            self.child.post_message(Box::new(IncreaseCtr { some : 1488 }));
         }
     }
 }
-
-/*pub struct SampleProcess {
-
-    pub root : process::ProcessRef,
-
-    pub child : Option<process::ProcessRef>,
-
-    pub ctr : usize
-}
-
-impl Process for SampleProcess {
-    fn process_message(&mut self, message: Message) -> () {
-        if message.is::<process::StartProcess>() {
-
-            unsafe {
-                writeln!(VGA_WRITER.as_mut().unwrap(), "Thats funny I am creating a process Id = {}!", 1);
-            }
-        }
-
-        if message.is::<IncreaseCtr>() {
-
-            unsafe {
-
-                if (self.ctr > 3) {
-
-                    writeln!(VGA_WRITER.as_mut().unwrap(), "Thats funny I am creating a new child!");
-
-                    let sample_process = SampleProcess {
-                        root :  process::ProcessRef::clone(&self.root),
-
-                        child : None,
-
-                        ctr : 0
-                    };
-
-                    let sample_process_box = Box::new(sample_process);
-
-                    let mut child_ref = self.root.fork(sample_process_box);
-
-                    child_ref.post_message(Box::new(process::StartProcess {} ));
-
-                    self.child = Some(child_ref);
-                    self.ctr = 0;
-                }
-                else {
-
-                    writeln!(VGA_WRITER.as_mut().unwrap(), "Got inc ctr!");
-
-                    self.ctr += 1;
-                }
-            }
-        }
-    }
-}*/
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
@@ -304,12 +280,69 @@ fn switch_to_running_process(new_process : &executor::ProcessDescriptor, interru
     interrupted.cpu_flags                 = new_process_registers.cpu_flags;
 }
 
-fn switch_to_new_process(new_process : &mut executor::ProcessDescriptor) {
-    if let Some(mail) = new_process.mailbox_mut().pop_front() {
-        let process_func = new_process.process();
+unsafe fn switch_to_new_process(new_process : &mut executor::ProcessDescriptor) {
 
-        process_func.process_message(mail);
-    }
+    let stack_address = new_process.registers().stack_pointer as u32;
+    let to_write = new_process as *const _ as u64;
+    //new_process.pop_pront();
+
+    core::ptr::write_unaligned(stack_address as *mut u64, to_write);
+
+    let process_stack_start = stack_address + 8;
+
+    registers::sp_write(process_stack_start);
+
+    let stack_address_reread = registers::sp_read() - 8;
+
+    let descr_addr = *(stack_address_reread as *mut u64);
+
+    let descr_ptr = core::mem::transmute::<u64, &mut executor::ProcessDescriptor>(descr_addr);
+    descr_ptr.switch();
+
+loop{}
+
+
+    /*f let Some(message) = new_process.mailbox_mut().pop_front() {
+
+        //new_process.process().process_message(message);
+        let process_func = new_process.process_addr();
+
+        use multiprocess::ProcessBox;
+        use core::mem;
+        use core::any::Any;
+
+        let msg_addr = &message;
+        let ptr_size = (mem::size_of::<*mut &ProcessBox>()  + mem::size_of::<*mut &ProcessBox>()) as u32;
+
+        core::ptr::write_unaligned(stack_address as *mut &ProcessBox, process_func);
+        let msg_address = stack_address + ptr_size;
+
+        core::ptr::write_unaligned(msg_address as *mut &Message, msg_addr);
+
+        let process_stack_start = stack_address + ptr_size + ptr_size;
+        // stack now points to process stack
+        registers::sp_write(process_stack_start);
+
+        //
+        // after switching stack out var above 'stack_address' will be void,
+        // so immediately read it again from sp register
+        let ptr_size1 = (mem::size_of::<*mut &ProcessBox>()  + mem::size_of::<*mut &ProcessBox>()) as u32 ;
+
+        let stack_address_reread = registers::sp_read() - ptr_size1 - ptr_size1;
+
+        // reread &self and message from new stack
+        let self_addr = stack_address_reread;
+        let msg_addr = stack_address_reread + ptr_size1;
+
+        let mut new_self_raw = (self_addr as *mut *mut ProcessBox);
+
+        let raw_msg = msg_addr as *const *const Message;
+
+         let mut new_self = (*new_self_raw).as_mut().unwrap();
+         let new_message = (*raw_msg).as_ref().unwrap();
+
+        new_self.process_message(new_message);
+    }*/
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptStackFrameValue) {
@@ -329,7 +362,13 @@ extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptSta
                 cpu_flags: stack_frame.cpu_flags,
             };
 
-            process_executor.post_message(2, Box::new(IncreaseCtr {}));
+            {
+                Box::new(IncreaseCtr { some : 3782});
+            }
+            {
+                Box::new(IncreaseCtr { some : 3782});
+            }
+            process_executor.post_message(2, Box::new(IncreaseCtr { some : 3782}));
 
             process_executor.update_current_process(interrupted_process_registers);
 

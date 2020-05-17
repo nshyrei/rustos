@@ -31,6 +31,18 @@ pub unsafe fn rflags_write(val : u64) { asm!("pushq $0; popfq" :: "r"(val) : "me
 pub unsafe fn sp_write(val : u32) { asm!("mov $0, %esp" :: "r" (val) : "memory") }
 
 #[inline(always)]
+pub unsafe fn sp_read() -> u32 {
+    let mut result : u32 = 0;
+
+    unsafe { asm!("mov %esp, $0" : "=r" (result)) }
+
+    result
+}
+
+#[inline(always)]
+pub unsafe fn mov_sp_bp() { asm!("mov %esp, %ebp" ::::) }
+
+#[inline(always)]
 pub unsafe fn pushq(val : u64) {
     asm!("pushq $0" :: "r" (val) : "memory");
 }
