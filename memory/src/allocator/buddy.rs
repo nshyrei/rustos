@@ -386,6 +386,10 @@ impl BuddyAllocator {
             }
         };
     }
+
+    pub fn allocate_frame(&mut self) -> Option<usize> {
+        self.allocate(FRAME_SIZE)
+    }
 }
 
 

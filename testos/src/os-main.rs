@@ -164,9 +164,9 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_translate_page_should_properly_translate_pages(p4_table, slab_allocator.frame_allocator());
         paging_unmap_should_properly_unmap_elements(p4_table, slab_allocator.frame_allocator());
         paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
-    }
-    loop {
-        unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Main thread end loop!"); };
+        loop {
+            unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Main thread end loop!"); };
+        }
     }
 }
 
@@ -178,6 +178,8 @@ pub struct DummyProcess {
 
 impl DummyProcess {
     fn process_message1(&mut self, message : Message) -> () {
+
+        let x = 10;
 
         if message.is::<IncreaseCtr>() {
 
@@ -191,49 +193,12 @@ impl DummyProcess {
 }
 
 impl Process for DummyProcess {
-
-
-
     fn process_message(&mut self, message: Message) -> () {
         unsafe {
-
             self.process_message1(message);
-loop   {
-    // unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Inside dummy end"); }
-}
-            /*use core::any::Any;
-            core::ptr::write(2961408 as *mut u64, self as *mut _ as u64);
-
-            let raw_msg_pointer = Box::into_raw(message);
-            core::ptr::write(2961416 as *mut *mut Any, raw_msg_pointer);
-
-            //core::ptr::write(2961416 as *mut Message, message);
-
-            // stack now points to process stack
-            registers::sp_write(2961416 as u32);
-
-            let stack_address_reread = registers::sp_read() - 8;
-            // reread &self and message from new stack
-            let self_addr = stack_address_reread;
-            let msg_addr = stack_address_reread + 8;
-
-            let mut new_self = (self_addr as *mut Self).as_mut().unwrap();
-
-            let raw_msg = msg_addr as *const *mut Any;
-            let new_message = Box::from_raw(*raw_msg);
-
-            //let new_message = core::ptr::read::<Message>((stack_address_reread + 8) as *const Message);
-
-            new_self.process_message1(new_message);
-
             loop {
-                let some_var_for_Stack_test = 0;
-                let mut some_other = some_var_for_Stack_test + 20;
-                writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy!");
-                writeln!(VGA_WRITER.as_mut().unwrap(), "Stack value {}", some_other);
-
-                some_other += 1;
-            }*/
+                // unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Inside dummy end"); }
+            }
         }
     }
 }
@@ -282,13 +247,13 @@ fn switch_to_running_process(new_process : &executor::ProcessDescriptor, interru
 
 unsafe fn switch_to_new_process(new_process : &mut executor::ProcessDescriptor) {
 
-    let stack_address = new_process.registers().stack_pointer as u32;
+    let stack_address = new_process.stack_address()/*.registers().stack_pointer*/ as u32;
     let to_write = new_process as *const _ as u64;
     //new_process.pop_pront();
 
-    core::ptr::write_unaligned(stack_address as *mut u64, to_write);
+    core::ptr::write_unaligned((stack_address - 8) as *mut u64, to_write);
 
-    let process_stack_start = stack_address + 8;
+    let process_stack_start = stack_address;
 
     registers::sp_write(process_stack_start);
 
@@ -362,13 +327,13 @@ extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptSta
                 cpu_flags: stack_frame.cpu_flags,
             };
 
-            {
+            /*{
                 Box::new(IncreaseCtr { some : 3782});
             }
             {
                 Box::new(IncreaseCtr { some : 3782});
             }
-            process_executor.post_message(2, Box::new(IncreaseCtr { some : 3782}));
+            process_executor.post_message(2, Box::new(IncreaseCtr { some : 3782}));*/
 
             process_executor.update_current_process(interrupted_process_registers);
 

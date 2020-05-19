@@ -167,7 +167,7 @@ impl ProcessDescriptor {
         let stack = Box::new([0 as u8; 4096]);
 
         use core::ops::Deref;
-        let stack_pointer = stack.deref() as *const _ as u64;
+        let stack_pointer = (&stack as *const _ as u64 + 4096);
 
         let registers = ProcessRegisters {
             instruction_pointer: 0, // process function will be called directly and this value will be populated after interrupt
@@ -202,7 +202,8 @@ impl ProcessDescriptor {
     }
 
     pub fn stack_address(&self) -> u64 {
-        &self.stack as *const _ as u64
+        use core::ops::Deref;
+        self.stack.deref() as *const _ as u64 + 4096
     }
 
     pub fn process(&mut self) -> &mut ProcessBox {

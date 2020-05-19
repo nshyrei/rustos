@@ -17,6 +17,10 @@ pub struct FreeListAllocator {
 
 impl FreeListAllocator {
 
+    pub fn free_blocks_allocator(&self) -> &ConstSizeBumpAllocator {
+        &self.free_blocks_allocator
+    }
+
     pub fn aux_data_structures_size_for(total_memory : usize, block_size : usize) -> usize {
         let bump_allocator   = ConstSizeBumpAllocator::from_size(0, total_memory, block_size);
         let blocks_count        = bump_allocator.total_blocks_count() + 1;
@@ -43,11 +47,32 @@ impl FreeListAllocator {
         }
     }
 
+    fn from_allocators(resulting_bump : ConstSizeBumpAllocator, mut free_blocks_allocator : ConstSizeBumpAllocator) -> FreeListAllocator {
+        let free_blocks = heap::Box::new(LinkedList::Nil, &mut free_blocks_allocator);
+        let blocks_count = resulting_bump.total_blocks_count();
+
+        FreeListAllocator {
+            bump_allocator : resulting_bump,
+            free_blocks,
+            free_blocks_allocator,
+            free_blocks_count :blocks_count
+        }
+    }
 
     pub fn from_size(address: usize, size : usize, block_size : usize) -> FreeListAllocator {
         let bump_allocator = ConstSizeBumpAllocator::from_size(address, size, block_size);
 
         FreeListAllocator::new(bump_allocator)
+    }
+
+    pub fn from_size_with_separate_free_list(bump_allocator : ConstSizeBumpAllocator, free_blocks_start_address : usize) -> FreeListAllocator {
+        let blocks_count = bump_allocator.total_blocks_count();
+
+        let mut free_blocks_allocator = ConstSizeBumpAllocator::from_address_for_type_multiple::<LinkedListBlock>(
+            free_blocks_start_address,
+            blocks_count + 1); // +1 for LinkedList::Nil
+
+        FreeListAllocator::from_allocators(bump_allocator, free_blocks_allocator)
     }
 
     pub fn from_address(address: usize, end_address : usize, block_size : usize) -> FreeListAllocator {
