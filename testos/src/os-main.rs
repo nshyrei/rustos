@@ -41,7 +41,10 @@ use memory::allocator::buddy::BuddyAllocator;
 
 use hardware::x86_64::registers;
 use hardware::x86_64::interrupts;
-use hardware::x86_64::interrupts::{InterruptTableHelp, InterruptTable, HardwareInterrupts, CPUInterrupts, InterruptStackFrameValue};
+use hardware::x86_64::interrupts::idt::{InterruptTable, HardwareInterrupts, CPUInterrupts};
+use hardware::x86_64::interrupts::InterruptTableHelp;
+use hardware::x86_64::interrupts::handler::{InterruptHandler, InterruptHandlerWithErrorCode, InterruptStackFrameValue};
+use hardware::x86_64::interrupts::pic;
 use core::ptr;
 use core::ops::DerefMut;
 use core::cell;
@@ -60,7 +63,7 @@ static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : ptr::NonNull::dangling(
 
 static mut interruptTable : InterruptTable = InterruptTable::new();
 
-static mut chained_pics : ChainedPics = unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) } ;
+static mut chained_pics : ChainedPics = unsafe { pic::new() } ;
 
 static mut process_executor : executor::ExecutorHelp = executor::ExecutorHelp { value : ptr::NonNull::dangling() };
 
@@ -91,7 +94,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         HEAP_ALLOCATOR.value = ptr::NonNull::new_unchecked(&mut slab_allocator as *mut SlabAllocator);
 
-        //memory_allocator_should_properly_allocate_and_free_memory();
+        memory_allocator_should_properly_allocate_and_free_memory();
 
         interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::DoubleFault, double_fault_handler2);
         interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::PageFault, page_fault_handler);
@@ -110,15 +113,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let dummy_process = DummyProcess { value : 1000 };
         let dummy_process_state_box = Box::new(dummy_process);
-       /* let dummy_process_ptr = DummyProcess::process;
-        let dummy_process_box = mem::transmute::<fn(&mut DummyProcess), fn(&mut Process)>(dummy_process_ptr);
-        let dummy_addr = dummy_process_box as u64;
-
-        use hardware::x86_64::registers;
-        let addr = dummy_process_state_box.deref() as *const _ as u64;
-        registers::pushq(addr);
-        registers::jump(dummy_addr);
-*/
+       
         process_executor.create_process( dummy_process_state_box);
         process_executor.post_message(0, Box::new(IncreaseCtr { some : 299}));
 
@@ -152,10 +147,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
             root_process.fork(sender_process_box);
         }*/
 
-        interruptTable.enable_hardware_interrupts();
-
-        //asm!("mov dx, 0; div dx" ::: "ax", "dx" : "volatile", "intel");
-        //writeln!(&mut vga_writer, "{}", predefined_p4_table);
+        hardware::x86_64::interrupts::enable_interrupts();
 
         // run pre-init tests
         let p4_table = paging::p4_table();
@@ -225,16 +217,6 @@ impl Process for SenderProcess {
     }
 }
 
-pub const PIC_1_OFFSET: u8 = 32;
-pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
-
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum InterruptIndex {
-    Timer = PIC_1_OFFSET,
-    Keyboard,
-}
-
 static mut timer_ctr : usize = 0;
 
 fn switch_to_running_process(new_process : &executor::ProcessDescriptor, interrupted: &mut InterruptStackFrameValue) {
@@ -247,9 +229,8 @@ fn switch_to_running_process(new_process : &executor::ProcessDescriptor, interru
 
 unsafe fn switch_to_new_process(new_process : &mut executor::ProcessDescriptor) {
 
-    let stack_address = new_process.stack_address()/*.registers().stack_pointer*/ as u32;
+    let stack_address = new_process.stack_address() as u32;
     let to_write = new_process as *const _ as u64;
-    //new_process.pop_pront();
 
     core::ptr::write_unaligned((stack_address - 8) as *mut u64, to_write);
 
@@ -264,50 +245,7 @@ unsafe fn switch_to_new_process(new_process : &mut executor::ProcessDescriptor) 
     let descr_ptr = core::mem::transmute::<u64, &mut executor::ProcessDescriptor>(descr_addr);
     descr_ptr.switch();
 
-loop{}
-
-
-    /*f let Some(message) = new_process.mailbox_mut().pop_front() {
-
-        //new_process.process().process_message(message);
-        let process_func = new_process.process_addr();
-
-        use multiprocess::ProcessBox;
-        use core::mem;
-        use core::any::Any;
-
-        let msg_addr = &message;
-        let ptr_size = (mem::size_of::<*mut &ProcessBox>()  + mem::size_of::<*mut &ProcessBox>()) as u32;
-
-        core::ptr::write_unaligned(stack_address as *mut &ProcessBox, process_func);
-        let msg_address = stack_address + ptr_size;
-
-        core::ptr::write_unaligned(msg_address as *mut &Message, msg_addr);
-
-        let process_stack_start = stack_address + ptr_size + ptr_size;
-        // stack now points to process stack
-        registers::sp_write(process_stack_start);
-
-        //
-        // after switching stack out var above 'stack_address' will be void,
-        // so immediately read it again from sp register
-        let ptr_size1 = (mem::size_of::<*mut &ProcessBox>()  + mem::size_of::<*mut &ProcessBox>()) as u32 ;
-
-        let stack_address_reread = registers::sp_read() - ptr_size1 - ptr_size1;
-
-        // reread &self and message from new stack
-        let self_addr = stack_address_reread;
-        let msg_addr = stack_address_reread + ptr_size1;
-
-        let mut new_self_raw = (self_addr as *mut *mut ProcessBox);
-
-        let raw_msg = msg_addr as *const *const Message;
-
-         let mut new_self = (*new_self_raw).as_mut().unwrap();
-         let new_message = (*raw_msg).as_ref().unwrap();
-
-        new_self.process_message(new_message);
-    }*/
+    loop{}
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptStackFrameValue) {
@@ -344,14 +282,14 @@ extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptSta
 
                          switch_to_running_process(next, stack_frame);
 
-                         chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+                         chained_pics.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
                      },
                      executor::ProcessState::New => {
                          hardware::x86_64::interrupts::disable_interrupts();
 
                          hardware::x86_64::interrupts::enable_interrupts();
 
-                         chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+                         chained_pics.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
 
                          switch_to_new_process(next);
                      },
@@ -361,7 +299,7 @@ extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptSta
         } else {
             timer_ctr += 1;
 
-            chained_pics.notify_end_of_interrupt(InterruptIndex::Timer as u8);
+            chained_pics.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
         }
     }
 }

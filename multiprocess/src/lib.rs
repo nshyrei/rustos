@@ -4,6 +4,7 @@
 
 extern crate alloc;
 extern crate hardware;
+extern crate memory;
 extern crate pic8259_simple;
 
 pub mod executor;

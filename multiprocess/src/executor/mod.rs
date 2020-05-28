@@ -75,7 +75,8 @@ impl Executor {
     }
 
     pub fn create_process(&mut self, process_message: ProcessBox) -> u64 {
-        let node = ProcessDescriptor::new(process_message);
+        let mut node = ProcessDescriptor::new(process_message);
+        //node.create_guard();
         let id = self.id_counter;
 
         self.existing.insert(id, node);
@@ -138,8 +139,12 @@ pub enum ProcessState {
 pub struct ProcessDescriptor {
     process: ProcessBox,
 
+    stack_overflow_guard : [u8; 4096],
+
     // 1 page frame
-    stack : Box<[u8; 4096]>,
+    stack : [u8; 4096],
+
+    guard : [u8; 100],
 
     mailbox: VecDeque<Message>,
 
@@ -164,25 +169,33 @@ impl ProcessDescriptor {
         let mailbox: VecDeque<Message> = VecDeque::new();
         let children: Vec<u64> = Vec::new();
         let state = ProcessState::New;
-        let stack = Box::new([0 as u8; 4096]);
-
-        use core::ops::Deref;
-        let stack_pointer = (&stack as *const _ as u64 + 4096);
+        let stack_overflow_guard = [0 as u8; 4096];
+        let stack = [0 as u8; 4096];
+        let guard = [0 as u8; 100];
 
         let registers = ProcessRegisters {
             instruction_pointer: 0, // process function will be called directly and this value will be populated after interrupt
-            stack_pointer,
+            stack_pointer : 0,
             cpu_flags: 0,
         };
 
         ProcessDescriptor {
             process,
+            stack_overflow_guard,
             stack,
+            guard,
             mailbox,
             children,
             state,
             registers,
         }
+    }
+
+    pub fn create_guard(&mut self) {
+        use memory::paging;
+        use memory::frame::Frame;
+        let table = paging::p4_table();
+        unsafe { table.unmap_page(Frame::from_address(&self.stack_overflow_guard as *const _ as usize)) };
     }
 
     pub fn mailbox_mut(&mut self) -> &mut VecDeque<Message> {
@@ -202,8 +215,7 @@ impl ProcessDescriptor {
     }
 
     pub fn stack_address(&self) -> u64 {
-        use core::ops::Deref;
-        self.stack.deref() as *const _ as u64 + 4096
+        (&self.stack as *const _ as u64)// + 4096
     }
 
     pub fn process(&mut self) -> &mut ProcessBox {
