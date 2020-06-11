@@ -14,6 +14,7 @@ extern crate stdx_memory;
 extern crate stdx;
 extern crate pic8259_simple;
 extern crate multiprocess;
+extern crate setup;
 
 use multiboot::multiboot_header::MultibootHeader;
 use multiboot::multiboot_header::tags::{basic_memory_info, elf, memory_map};
@@ -51,23 +52,20 @@ use core::cell;
 use alloc::alloc::Layout;
 use alloc::rc::Rc;
 use stdx_memory::heap;
-use multiprocess::{Process, Message};
+use multiprocess::process::{Process, Message};
 use multiprocess::executor;
 use multiprocess::process;
 use pic8259_simple::ChainedPics;
 
-static mut VGA_WRITER: Option<Writer> = None;
-
-#[global_allocator]
-static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : ptr::NonNull::dangling() };
-
-static mut interruptTable : InterruptTable = InterruptTable::new();
-
-static mut chained_pics : ChainedPics = unsafe { pic::new() } ;
-
-static mut process_executor : executor::ExecutorHelp = executor::ExecutorHelp { value : ptr::NonNull::dangling() };
-
-static mut DummyAddr : u64 = 0;
+use setup::interrupts::handlers;
+use setup::globals;
+use setup::globals::{
+    VGA_WRITER,
+    PROCESS_EXECUTOR,
+    INTERRUPT_TABLE,
+    CHAINED_PICS,
+    HEAP_ALLOCATOR
+};
 
 #[no_mangle]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -84,29 +82,19 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         paging::remap_kernel(&mut paging::p4_table(), &mut frame_allocator, multiboot_header);
 
-       let (memory_start, memory_end1) = multiboot_header.biggest_memory_area();
-        let memory_end = memory_start + 31457280; //30 mb, something bigger than that produces 0x6 crash
-        let total_memory = memory_end - memory_start + 1;
-
-        let aux_structures_start_address = preallocate_memory_for_allocator_aux_data_structures(memory_start, memory_end);
-
-        let mut slab_allocator = SlabAllocator::new2(aux_structures_start_address + 4096, total_memory, memory_end, VGA_WRITER.as_mut().unwrap());
+        let mut slab_allocator = globals::initialize_memory_allocator(&multiboot_header);
 
         HEAP_ALLOCATOR.value = ptr::NonNull::new_unchecked(&mut slab_allocator as *mut SlabAllocator);
 
         memory_allocator_should_properly_allocate_and_free_memory();
 
-        interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::DoubleFault, double_fault_handler2);
-        interruptTable.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::PageFault, page_fault_handler);
+        globals::initialize_interrupt_table();
 
-        interruptTable.set_hardware_interrupt_handler(HardwareInterrupts::Timer, timer_interrupt_handler);
-        interrupts::load_interrupt_table(&interruptTable);
-
-        chained_pics.initialize();
+        interrupts::load_interrupt_table(&INTERRUPT_TABLE);
 
         let mut executor = Rc::new(cell::UnsafeCell::new(executor::Executor::new()));
 
-        process_executor.value =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
+        PROCESS_EXECUTOR.value =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
 
         use core::mem;
         use core::ops::Deref;
@@ -114,8 +102,8 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         let dummy_process = DummyProcess { value : 1000 };
         let dummy_process_state_box = Box::new(dummy_process);
        
-        process_executor.create_process( dummy_process_state_box);
-        process_executor.post_message(0, Box::new(IncreaseCtr { some : 299}));
+        PROCESS_EXECUTOR.create_process( dummy_process_state_box);
+        PROCESS_EXECUTOR.post_message(0, Box::new(IncreaseCtr { some : 299}));
 
         /*let mut root_process = process::RootProcess::new(Rc::clone(&executor));
 
@@ -199,7 +187,6 @@ pub struct IncreaseCtr {
     pub some : usize
 }
 
-
 pub struct SenderProcess {
 
     pub root : process::ProcessRef,
@@ -215,109 +202,6 @@ impl Process for SenderProcess {
             self.child.post_message(Box::new(IncreaseCtr { some : 1488 }));
         }
     }
-}
-
-static mut timer_ctr : usize = 0;
-
-fn switch_to_running_process(new_process : &executor::ProcessDescriptor, interrupted: &mut InterruptStackFrameValue) {
-    let new_process_registers = new_process.registers();
-
-    interrupted.instruction_pointer = new_process_registers.instruction_pointer;
-    interrupted.stack_pointer           = new_process_registers.stack_pointer;
-    interrupted.cpu_flags                 = new_process_registers.cpu_flags;
-}
-
-unsafe fn switch_to_new_process(new_process : &mut executor::ProcessDescriptor) {
-
-    let stack_address = new_process.stack_address() as u32;
-    let to_write = new_process as *const _ as u64;
-
-    core::ptr::write_unaligned((stack_address - 8) as *mut u64, to_write);
-
-    let process_stack_start = stack_address;
-
-    registers::sp_write(process_stack_start);
-
-    let stack_address_reread = registers::sp_read() - 8;
-
-    let descr_addr = *(stack_address_reread as *mut u64);
-
-    let descr_ptr = core::mem::transmute::<u64, &mut executor::ProcessDescriptor>(descr_addr);
-    descr_ptr.switch();
-
-    loop{}
-}
-
-extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe {
-
-        if timer_ctr > 40 { // emulates tick every 3 secs
-
-            timer_ctr = 0;
-
-            writeln!(VGA_WRITER.as_mut().unwrap(), "TICK");
-
-            writeln!(VGA_WRITER.as_mut().unwrap(), "Tick interrupt frame {:?}", stack_frame);
-
-            let interrupted_process_registers = executor::ProcessRegisters {
-                instruction_pointer: stack_frame.instruction_pointer,
-                stack_pointer: stack_frame.stack_pointer,
-                cpu_flags: stack_frame.cpu_flags,
-            };
-
-            /*{
-                Box::new(IncreaseCtr { some : 3782});
-            }
-            {
-                Box::new(IncreaseCtr { some : 3782});
-            }
-            process_executor.post_message(2, Box::new(IncreaseCtr { some : 3782}));*/
-
-            process_executor.update_current_process(interrupted_process_registers);
-
-            if let Some(next) = process_executor.schedule_next() {
-
-                 match next.state() {
-                     executor::ProcessState::Running => {
-
-                         switch_to_running_process(next, stack_frame);
-
-                         chained_pics.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
-                     },
-                     executor::ProcessState::New => {
-                         hardware::x86_64::interrupts::disable_interrupts();
-
-                         hardware::x86_64::interrupts::enable_interrupts();
-
-                         chained_pics.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
-
-                         switch_to_new_process(next);
-                     },
-                     _ => ()
-                 }
-            }
-        } else {
-            timer_ctr += 1;
-
-            chained_pics.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
-        }
-    }
-}
-
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "BREAK NIIGGA"); }
-}
-
-extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "OPCODE NIIGGA"); }
-}
-
-extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrameValue, code : u64) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "PAGE NIIGGA"); }
-}
-
-extern "x86-interrupt" fn double_fault_handler2(stack_frame: &mut InterruptStackFrameValue, error_code : u64) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "DOUBLE NIIGGA"); }
 }
 
 fn memory_allocator_should_properly_allocate_and_free_memory() {
@@ -367,45 +251,6 @@ fn test_allocator_aux_data_structures_memory(aux_structures_start_address : usiz
 
         Frame::zero_frame(&frame);
     }
-}
-
-pub fn slab_allocator_should_be_fully_free(writer: &'static mut Writer, adr: usize) -> SlabAllocator {
-    use memory::frame::Frame;
-    use memory::frame::FRAME_SIZE;
-    use stdx::iterator::IteratorExt;
-    use stdx::Sequence;
-    use stdx::Iterable;
-    use stdx_memory::MemoryAllocator;
-    use stdx_memory::collections::double_linked_list::{DoubleLinkedList, DoubleLinkedListIterator, BuddyMap};
-    use memory::allocator::bump::BumpAllocator;
-    use memory::allocator::buddy::BuddyAllocator;
-    use memory::allocator::free_list::FreeListAllocator;
-    use core::mem;
-    use core::ptr;
-    use stdx_memory::heap;
-
-    let size = 32768;
-    let heap: [u8; 80000] = [0; 80000];
-    let heap_addr = heap.as_ptr() as usize;
-
-    let memory_start = Frame::address_align_up(heap_addr);
-
-    let memory_end = memory_start + 40000;
-    let aux_data_structures_size = SlabAllocator::total_aux_data_structures_size(memory_start, memory_end);
-
-    let mut slab_allocator = SlabAllocator::new(memory_start, memory_end, writer);
-
-   let result = slab_allocator.allocate(2048);
-    let result1 = slab_allocator.allocate(2048);
-    let result2 = slab_allocator.allocate(2048);
-
-    slab_allocator.free(result1.unwrap());
-    slab_allocator.free(result.unwrap());
-    slab_allocator.free(result2.unwrap());
-
-    let result = slab_allocator.is_fully_free();
-
-    slab_allocator
 }
 
 use core::panic::PanicInfo;

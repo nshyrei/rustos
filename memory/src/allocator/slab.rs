@@ -338,9 +338,9 @@ impl SlabAllocator {
          slabs_are_empty// && tree_is_empty
     }
 
-    pub fn new2(start_address : usize,  total_memory : usize, end_address : usize, printer : &'static mut  Writer) -> Self {
+    pub fn new(start_address : usize, total_memory : usize, end_address : usize) -> Self {
 
-        let mut frame_allocator = BuddyAllocator::new2(start_address, total_memory, end_address);
+        let mut frame_allocator = BuddyAllocator::new(start_address, total_memory, end_address);
 
         let total_slab_count = SlabAllocator::total_slab_count(total_memory);
 
@@ -357,38 +357,6 @@ impl SlabAllocator {
 
         // create frame allocator
         //let frame_allocator = BuddyAllocator::new2(linked_list_allocator.end_address() + 1, total_memory, end_address);
-
-        SlabAllocator {
-            size_to_slab,
-            //address_to_size,
-            start_address,
-            end_address,
-            array_allocator,
-            tree_allocator,
-            linked_list_allocator,
-            frame_allocator
-        }
-    }
-
-    pub fn new(start_address1 : usize, end_address1 : usize, printer : &'static mut  Writer) -> Self {
-        // compute max memory size for inner allocators to work with
-
-        let (start_address, end_address)                        = allocator::align_addresses(start_address1, end_address1);
-        let total_slab_count                                                = SlabAllocator::slab_count(start_address, end_address);
-
-        let (array_size, avl_tree_size, linked_list_size)   = SlabAllocator::aux_data_structures_size(total_slab_count);
-
-        // create inner allocators
-        let mut array_allocator             = bump::BumpAllocator::from_address(start_address, array_size);
-        let tree_allocator               = FreeListAllocator::from_size(array_allocator.end_address() + 1, avl_tree_size, SlabAllocator::avl_tree_cell_size());
-        let linked_list_allocator    = FreeListAllocator::from_size(tree_allocator.end_address() + 1, linked_list_size, SlabAllocator::linked_list_cell_size());
-
-        // create allocate/free data structures
-        let size_to_slab            = Array::<Option<Slab>>::new(total_slab_count, &mut array_allocator);
-        let address_to_size     = avl::AVLTree::<(usize, usize), FreeListAllocator>::new_empty();
-
-        // create frame allocator
-        let frame_allocator = BuddyAllocator::new(linked_list_allocator.end_address() + 1, end_address);
 
         SlabAllocator {
             size_to_slab,

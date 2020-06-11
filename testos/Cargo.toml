@@ -33,3 +33,6 @@ path = "../stdx"
 
 [dependencies.multiprocess]
 path = "../multiprocess"
+
+[dependencies.setup]
+path = "../setup"

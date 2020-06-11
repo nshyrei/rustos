@@ -1,14 +1,24 @@
-use crate::Process;
-use crate::Message;
-use crate::ProcessBox;
+
 use crate::executor::Executor;
 use crate::executor::ExecutorRef;
 
 use alloc::rc::Rc;
-use alloc::boxed::Box;
 use core::cell;
 use core::ops::Deref;
 use core::clone::Clone;
+use core::any::Any;
+use core::default::Default;
+use alloc::boxed::Box;
+
+pub type Message = Box<dyn Any>;
+
+pub type ProcessBox = Box<dyn Process>;
+
+pub trait Process {
+
+    fn process_message(&mut self, message : Message) -> ();
+
+}
 
 pub struct ProcessRef {
 

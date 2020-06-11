@@ -8,9 +8,9 @@ use core::cell;
 use core::ptr;
 use core::ops;
 
-use crate::Message;
-use crate::ProcessBox;
-use crate::Process;
+use crate::process::Message;
+use crate::process::ProcessBox;
+use crate::process::Process;
 
 pub type ExecutorRef = Rc<cell::UnsafeCell<Executor>>;
 
@@ -107,8 +107,6 @@ impl Executor {
             if existing_process.state == ProcessState::Running {
                 existing_process.registers = interrupted_process_state;
             }
-
-
         }
     }
 
@@ -198,14 +196,6 @@ impl ProcessDescriptor {
         unsafe { table.unmap_page(Frame::from_address(&self.stack_overflow_guard as *const _ as usize)) };
     }
 
-    pub fn mailbox_mut(&mut self) -> &mut VecDeque<Message> {
-        &mut self.mailbox
-    }
-
-    pub fn mailbox(&self) -> &VecDeque<Message> {
-        &self.mailbox
-    }
-
     pub fn registers(&self) -> &ProcessRegisters {
         &self.registers
     }
@@ -218,30 +208,10 @@ impl ProcessDescriptor {
         (&self.stack as *const _ as u64)// + 4096
     }
 
-    pub fn process(&mut self) -> &mut ProcessBox {
-        &mut self.process
-    }
-pub fn pop_pront(&mut self) -> () {
-    self.mailbox.pop_front();
-    }
-    pub fn switch(&mut self) -> () {
+    pub fn process_front_message(&mut self) -> () {
         if let Some(message) = self.mailbox.pop_front() {
             self.state = ProcessState::Running;
             self.process.process_message(message);
         }
-    }
-
-    pub unsafe fn unsafe_box(&mut self) -> *mut Process {
-        use core::mem;
-        use core::ptr;
-        let rawNull = ptr::read_unaligned(&mut self.process);
-
-        let raw = Box::into_raw(rawNull);
-
-        raw
-    }
-
-    pub fn process_addr(&self) -> &ProcessBox {
-        &self.process
     }
 }
