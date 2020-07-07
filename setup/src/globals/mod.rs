@@ -6,8 +6,8 @@ use display::vga::writer::Writer;
 use multiprocess::executor;
 use hardware::x86_64::interrupts::idt::{
     InterruptTable,
-    CPUInterrupts,
-    HardwareInterrupts
+    HardwareInterrupts,
+    InterruptTableEntry
 };
 use hardware::x86_64::interrupts::pic;
 use memory::allocator::slab::{
@@ -24,6 +24,7 @@ use memory::paging::page_table;
 use multiboot::multiboot_header::MultibootHeader;
 use crate::interrupts::handlers;
 
+
 pub static mut VGA_WRITER: Option<Writer> = None;
 
 pub static mut PROCESS_EXECUTOR: executor::ExecutorHelp = executor::ExecutorHelp { value : ptr::NonNull::dangling() };
@@ -36,10 +37,12 @@ pub static mut CHAINED_PICS: ChainedPics = unsafe { pic::new() } ;
 pub static mut HEAP_ALLOCATOR: SlabHelp = SlabHelp { value : ptr::NonNull::dangling() };
 
 pub unsafe fn initialize_interrupt_table() {
-    INTERRUPT_TABLE.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::DoubleFault, handlers::double_fault_handler);
-    INTERRUPT_TABLE.set_cpu_interrupt_handler_with_error_code(CPUInterrupts::PageFault, handlers::page_fault_handler);
 
-    INTERRUPT_TABLE.set_hardware_interrupt_handler(HardwareInterrupts::Timer, handlers::timer_interrupt_handler);
+    INTERRUPT_TABLE.double_fault = InterruptTableEntry::create_present_entry1(handlers::double_fault_handler);
+    INTERRUPT_TABLE.page_fault = InterruptTableEntry::create_present_entry1(handlers::page_fault_handler);
+    INTERRUPT_TABLE.divide_by_zero = InterruptTableEntry::create_present_entry(handlers::divide_by_zero_handler);
+
+    INTERRUPT_TABLE.set_interrupt_handler(HardwareInterrupts::Timer as usize, handlers::timer_interrupt_handler);
 
     CHAINED_PICS.initialize();
 }

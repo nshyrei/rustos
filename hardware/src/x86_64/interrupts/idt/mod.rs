@@ -1,45 +1,28 @@
 use ::x86_64::interrupts::handler::{InterruptHandler, InterruptHandlerWithErrorCode};
 use ::x86_64::interrupts::pic::PIC_1_OFFSET;
-
-#[derive(Debug, Clone, Copy)]
-#[repr(usize)]
-pub enum CPUInterrupts {
-    DivideByZero = 0,
-    Debug  = 1,
-    NonMaskedInterrupt = 2,
-    Breakpoint = 3,
-    Overflow  = 4,
-    BoundOutOfRange = 5,
-    InvalidOpcode = 6,
-    DeviceNotAvailable = 7,
-    DoubleFault = 8,
-    SegmentNotPresent = 11,
-    StackSegmentFault = 12,
-    GeneralProtectionFault = 13,
-    PageFault = 14,
-    SecurityException = 30
-}
+use core::marker::PhantomData;
+use core::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum HardwareInterrupts {
-    Timer = PIC_1_OFFSET,
+    Timer = 0,
 }
-
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-struct InterruptTableEntry {
+pub struct InterruptTableEntry<HandlerFunc> {
     lower_pointer_bits : u16,
     gdt_selector : GDTSelector,
     options : InterruptOptions,
     middle_pointer_bits : u16,
     remaining_pointer_bits : u32,
-    reserved : u32
+    reserved : u32,
+    ph : PhantomData<HandlerFunc>
 }
 
-impl InterruptTableEntry {
-    fn new(gdt_selector : GDTSelector, handler_address : u64) -> Self {
+impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
+    fn new(handler_address : u64) -> Self {
 
         let lower_pointer_bits              = handler_address as u16;
         let middle_pointer_bits            = (handler_address >> 16) as u16;
@@ -53,8 +36,23 @@ impl InterruptTableEntry {
             options,
             middle_pointer_bits,
             remaining_pointer_bits,
-            reserved : 0
+            reserved : 0,
+            ph : PhantomData
         }
+    }
+
+    pub fn create_present_entry(handler : InterruptHandler) -> Self {
+        let mut result = InterruptTableEntry::<HandlerFunc>::new(handler as u64);
+        result.options.set_present();
+
+        result
+    }
+
+    pub fn create_present_entry1(handler : InterruptHandlerWithErrorCode) -> Self {
+        let mut result = InterruptTableEntry::<HandlerFunc>::new( handler as u64);
+        result.options.set_present();
+
+        result
     }
 
     const fn empty() -> Self {
@@ -68,7 +66,8 @@ impl InterruptTableEntry {
             options,
             middle_pointer_bits : 0,
             remaining_pointer_bits : 0,
-            reserved : 0
+            reserved : 0,
+            ph : PhantomData
         }
     }
 }
@@ -76,39 +75,95 @@ impl InterruptTableEntry {
 #[repr(C)]
 #[repr(align(16))]
 pub struct InterruptTable {
+
     // handlers for cpu exceptions
-    cpu_exceptions: [InterruptTableEntry; 32],
-    // handlers for user defined interrupts
-    interrupts : [InterruptTableEntry; 256 - 32]
+    pub divide_by_zero : InterruptTableEntry<InterruptHandler>,
+
+    pub debug : InterruptTableEntry<InterruptHandler>,
+
+    pub non_maskable_interrupt : InterruptTableEntry<InterruptHandler>,
+
+    pub breakpoint : InterruptTableEntry<InterruptHandler>,
+
+    pub overflow : InterruptTableEntry<InterruptHandler>,
+
+    pub bound_range_exceed : InterruptTableEntry<InterruptHandler>,
+
+    pub invalid_opcode : InterruptTableEntry<InterruptHandler>,
+
+    pub device_not_available : InterruptTableEntry<InterruptHandler>,
+
+    pub double_fault : InterruptTableEntry<InterruptHandler>,
+
+    coprocessor_segment_overrun : InterruptTableEntry<InterruptHandler>,
+
+    pub invalid_tss : InterruptTableEntry<InterruptHandler>,
+
+    pub segment_not_present : InterruptTableEntry<InterruptHandler>,
+
+    pub stack_segment_fault : InterruptTableEntry<InterruptHandler>,
+
+    pub general_protection_fault : InterruptTableEntry<InterruptHandler>,
+
+    pub page_fault : InterruptTableEntry<InterruptHandler>,
+
+    reserved_0 : InterruptTableEntry<InterruptHandler>,
+
+    pub x87_floating_point_exception : InterruptTableEntry<InterruptHandler>,
+
+    pub aligment_check : InterruptTableEntry<InterruptHandler>,
+
+    pub machine_check : InterruptTableEntry<InterruptHandler>,
+
+    pub simd_floating_point_exception : InterruptTableEntry<InterruptHandler>,
+
+    pub virtualization_exception : InterruptTableEntry<InterruptHandler>,
+
+    reserved_1 : [InterruptTableEntry<InterruptHandler>; 9],
+
+    pub security_exception : InterruptTableEntry<InterruptHandler>,
+
+    reserved_10 : InterruptTableEntry<InterruptHandler>,
+
+    // handlers for user defined and hardware interrupts
+    interrupts : [InterruptTableEntry<InterruptHandler>; 256 - 32]
 }
 
 impl InterruptTable {
     pub const fn new() -> Self {
-        let cpu_exceptions = [InterruptTableEntry::empty(); 32];
-        let interrupts = [InterruptTableEntry::empty(); 256 - 32];
-
         InterruptTable {
-            cpu_exceptions,
-            interrupts,
+            divide_by_zero: InterruptTableEntry::empty(),
+            debug: InterruptTableEntry::empty(),
+            non_maskable_interrupt: InterruptTableEntry::empty(),
+            breakpoint: InterruptTableEntry::empty(),
+            overflow: InterruptTableEntry::empty(),
+            bound_range_exceed: InterruptTableEntry::empty(),
+            invalid_opcode: InterruptTableEntry::empty(),
+            device_not_available: InterruptTableEntry::empty(),
+            double_fault: InterruptTableEntry::empty(),
+            coprocessor_segment_overrun: InterruptTableEntry::empty(),
+            invalid_tss: InterruptTableEntry::empty(),
+            segment_not_present: InterruptTableEntry::empty(),
+            stack_segment_fault: InterruptTableEntry::empty(),
+            general_protection_fault: InterruptTableEntry::empty(),
+            page_fault: InterruptTableEntry::empty(),
+            reserved_0: InterruptTableEntry::empty(),
+            x87_floating_point_exception: InterruptTableEntry::empty(),
+            aligment_check: InterruptTableEntry::empty(),
+            machine_check: InterruptTableEntry::empty(),
+            simd_floating_point_exception: InterruptTableEntry::empty(),
+            virtualization_exception: InterruptTableEntry::empty(),
+            reserved_1: [InterruptTableEntry::empty(); 9],
+            security_exception: InterruptTableEntry::empty(),
+            reserved_10: InterruptTableEntry::empty(),
+            interrupts :  [InterruptTableEntry::empty(); 256 - 32]
         }
     }
 
-    pub fn set_cpu_interrupt_handler(&mut self, interrupt : CPUInterrupts, handler : InterruptHandler) {
-        let entry  = self.create_entry(handler as u64);
+    pub fn set_interrupt_handler(&mut self, idx : usize, handler : InterruptHandler) {
+        let entry = InterruptTableEntry::create_present_entry(handler);
 
-        self.cpu_exceptions[interrupt as usize] = entry;
-    }
-
-    pub fn set_cpu_interrupt_handler_with_error_code(&mut self, interrupt : CPUInterrupts, handler : InterruptHandlerWithErrorCode) {
-        let entry = self.create_entry(handler as u64);
-
-        self.cpu_exceptions[interrupt as usize] = entry;
-    }
-
-    pub fn set_hardware_interrupt_handler(&mut self, interrupt : HardwareInterrupts, handler : InterruptHandler) {
-        let entry = self.create_entry(handler as u64);
-
-        self.interrupts[interrupt as usize] = entry
+        self[idx] = entry
     }
 
     pub(crate) fn pointer(&self) -> InterruptTablePointer {
@@ -122,12 +177,25 @@ impl InterruptTable {
             base
         }
     }
+}
 
-    fn create_entry(&mut self, handler_address : u64) -> InterruptTableEntry {
-        let mut entry = InterruptTableEntry::new(GDTSelector::new(0, 0), handler_address);
-        entry.options.set_present();
+impl Index<usize> for InterruptTable {
+    type Output = InterruptTableEntry<InterruptHandler>;
 
-        entry
+    fn index(&self, index: usize) -> &InterruptTableEntry<InterruptHandler> {
+        match index {
+            i @ 32 ..=255 => &self.interrupts[i - 32],
+            _ => panic!("Interrupt table index out of range")
+        }
+    }
+}
+
+impl IndexMut<usize> for InterruptTable {
+    fn index_mut(&mut self, index: usize) -> &mut InterruptTableEntry<InterruptHandler> {
+        match index {
+            i @ 32 ..=255 => &mut self.interrupts[i - 32],
+            _ => panic!("Interrupt table index out of range")
+        }
     }
 }
 

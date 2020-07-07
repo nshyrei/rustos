@@ -2,7 +2,7 @@
 #![feature(asm)]
 #![no_std]
 #![feature(abi_x86_interrupt)]
-
+#![feature(core_intrinsics)]
 extern crate rlibc;
 extern crate multiboot;
 extern crate display;
@@ -42,7 +42,7 @@ use memory::allocator::buddy::BuddyAllocator;
 
 use hardware::x86_64::registers;
 use hardware::x86_64::interrupts;
-use hardware::x86_64::interrupts::idt::{InterruptTable, HardwareInterrupts, CPUInterrupts};
+use hardware::x86_64::interrupts::idt::{InterruptTable, HardwareInterrupts};
 use hardware::x86_64::interrupts::InterruptTableHelp;
 use hardware::x86_64::interrupts::handler::{InterruptHandler, InterruptHandlerWithErrorCode, InterruptStackFrameValue};
 use hardware::x86_64::interrupts::pic;

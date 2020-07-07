@@ -115,7 +115,6 @@ impl Executor {
         // pick one process to execute from execution line,
         // execute it and put it back into the queue
 
-        // put process to the back the queue for next round of scheduling
         self.execution_line.push_back(self.currently_executing);
 
         self.execution_line.pop_front().and_then(move |head_id| {
