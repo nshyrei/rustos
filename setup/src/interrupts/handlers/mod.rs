@@ -2,9 +2,16 @@ use core::fmt::Write;
 
 use hardware::x86_64::registers;
 use hardware::x86_64::interrupts;
-use hardware::x86_64::interrupts::idt::{InterruptTable, HardwareInterrupts};
+use hardware::x86_64::interrupts::idt::{
+    InterruptTable,
+    HardwareInterrupts
+};
 use hardware::x86_64::interrupts::InterruptTableHelp;
-use hardware::x86_64::interrupts::handler::{InterruptHandler, InterruptHandlerWithErrorCode, InterruptStackFrameValue};
+use hardware::x86_64::interrupts::handler::{
+    InterruptHandler,
+    InterruptHandlerWithErrorCode,
+    InterruptStackFrameValue
+};
 use hardware::x86_64::interrupts::pic;
 use multiprocess::executor;
 use crate::globals::{
@@ -62,14 +69,14 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
 
                         multiprocess::switch_to_running_process(next, stack_frame);
 
-                        CHAINED_PICS.notify_end_of_interrupt(32 as u8);
+                        CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
                     },
                     executor::ProcessState::New => {
                         hardware::x86_64::interrupts::disable_interrupts();
 
                         hardware::x86_64::interrupts::enable_interrupts();
 
-                        CHAINED_PICS.notify_end_of_interrupt(32 as u8);
+                        CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
 
                         multiprocess::start_new_process(next);
                     },
@@ -79,7 +86,7 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
         } else {
             timer_ctr += 1;
 
-            CHAINED_PICS.notify_end_of_interrupt(32 as u8);
+            CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
         }
     }
 }

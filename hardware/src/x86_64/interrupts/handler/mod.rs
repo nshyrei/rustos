@@ -1,10 +1,14 @@
+/// Interrupt handler prototype.
 pub type InterruptHandler                               = extern "x86-interrupt" fn (&mut InterruptStackFrameValue);
 
+/// Interrupt handler prototype that also contains error code.
 pub type InterruptHandlerWithErrorCode  = extern "x86-interrupt" fn (&mut InterruptStackFrameValue, u64);
 
+/// Interrupt meta info that is placed on stack by processor.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct InterruptStackFrameValue {
+    /// The instruction pointer at the time of the interrupt.
     pub instruction_pointer: u64,
     /// The code segment selector, padded with zeros.
     pub code_segment: u64,

@@ -6,29 +6,40 @@ use core::ops::{Index, IndexMut};
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum HardwareInterrupts {
-    Timer = 0,
+    Timer = PIC_1_OFFSET,
 }
 
+/// Describes entry of interrupt descriptor table (IDT).
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct InterruptTableEntry<HandlerFunc> {
+    // first 16 bits of interrupt handler address
     lower_pointer_bits : u16,
+    // the GDT selector value
     gdt_selector : GDTSelector,
+    // interrupt handler options
     options : InterruptOptions,
+    // bits 16-32 (excl) of interrupt handler address
     middle_pointer_bits : u16,
+    // high 32 bits of interrupt handler address
     remaining_pointer_bits : u32,
+    // reserved field according to processor spec
     reserved : u32,
     ph : PhantomData<HandlerFunc>
 }
 
 impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
+    /// Creates minimal working table entry. The newly created entry is not visible for interrupt controller,
+    /// to make it visible you need to change visibility in `options` field.
+    /// # Arguments
+    /// `handler_address` - address of interrupt handling function
     fn new(handler_address : u64) -> Self {
 
         let lower_pointer_bits              = handler_address as u16;
         let middle_pointer_bits            = (handler_address >> 16) as u16;
         let remaining_pointer_bits      = (handler_address >> 32) as u32;
-        let options           = InterruptOptions::new();
-        let gdt_selector = GDTSelector::minimal();
+        let options           = InterruptOptions::new_present();
+        let gdt_selector = GDTSelector::new();
 
         InterruptTableEntry {
             lower_pointer_bits,
@@ -55,9 +66,11 @@ impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
         result
     }
 
+    /// Creates empty table entry.
+    /// This entry is not visible to controller and doesnt point to valid handler function, it is used only for initial table initialization.
     const fn empty() -> Self {
 
-        let options = InterruptOptions::minimal();
+        let options = MINIMAL_INTERRUPT_OPTIONS;
         let gdt_selector = GDTSelector::empty();
 
         InterruptTableEntry {
@@ -72,11 +85,12 @@ impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
     }
 }
 
+/// Interrupt table, contains entries describing how processor handles  interrupt signals.
 #[repr(C)]
 #[repr(align(16))]
 pub struct InterruptTable {
 
-    // handlers for cpu exceptions
+    // 32 handlers for cpu exceptions
     pub divide_by_zero : InterruptTableEntry<InterruptHandler>,
 
     pub debug : InterruptTableEntry<InterruptHandler>,
@@ -130,6 +144,8 @@ pub struct InterruptTable {
 }
 
 impl InterruptTable {
+    
+    /// Creates new table filed with empty entries.
     pub const fn new() -> Self {
         InterruptTable {
             divide_by_zero: InterruptTableEntry::empty(),
@@ -160,12 +176,19 @@ impl InterruptTable {
         }
     }
 
+    /// Creates entry for interrupt handler denoted by idx.
+    /// # Arguments
+    /// `idx` - handler index
+    /// `handler` - interrupt handler function
+    /// # Panic
+    ///  Panics if `idx` is out of range or points to reserved entry.
     pub fn set_interrupt_handler(&mut self, idx : usize, handler : InterruptHandler) {
         let entry = InterruptTableEntry::create_present_entry(handler);
 
         self[idx] = entry
     }
 
+    /// Creates a pointer for this table. Used only for `load_table` function.
     pub(crate) fn pointer(&self) -> InterruptTablePointer {
         use core::mem;
 
@@ -199,24 +222,23 @@ impl IndexMut<usize> for InterruptTable {
     }
 }
 
+/// Describes interrupt entry options.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct InterruptOptions {
     value : u16
 }
 
+/// A minimal valid options record.
+const MINIMAL_INTERRUPT_OPTIONS : InterruptOptions = InterruptOptions {
+    value : 0b1110_0000_0000
+};
+
 impl InterruptOptions {
 
-    pub const fn minimal() -> Self {
-        let validValue = 0b1110_0000_0000; // bits 9-11 must be set to 1 according to spec
-
-        InterruptOptions {
-            value : validValue
-        }
-    }
-
-    pub fn new() -> Self {
-        let mut minimal = InterruptOptions::minimal();
+    /// Creates minimal options record and sets it to present.
+    pub fn new_present() -> Self {
+        let mut minimal = MINIMAL_INTERRUPT_OPTIONS;
 
         minimal.set_present();
 
@@ -235,14 +257,7 @@ impl InterruptOptions {
         self.value = new_flags.bits();
     }
 
-    pub fn disable_interrupt(&mut self) {
-        let mut flags = self.flags();
-
-        flags.remove(DISABLE_INTERRUPT);
-
-        self.value = flags.bits();
-    }
-
+    /// Sets this interrupt handler as present.
     pub fn set_present(&mut self) {
         let mut flags = self.flags();
 
@@ -251,6 +266,7 @@ impl InterruptOptions {
         self.value = flags.bits();
     }
 
+    /// Sets this entry as hidden. No interrupts will get handled for that handler.
     pub fn set_unused(&mut self) {
         let mut flags = self.flags();
         flags.remove(IS_PRESENT);
@@ -262,20 +278,22 @@ impl InterruptOptions {
 bitflags! {
     pub struct InterruptOptionsFlags : u16 {
         const DISABLE_INTERRUPT = 1 << 8;
-        const ALWAYS_PRESENT = 1 << 9;
-        const ALWAYS_PRESENT1 = 1 << 10;
-        const ALWAYS_PRESENT2 = 1 << 11;
-        const IS_PRESENT =      1 << 15;
+        const ALWAYS_PRESENT =      1 << 9;
+        const ALWAYS_PRESENT1 =    1 << 10;
+        const ALWAYS_PRESENT2 =    1 << 11;
+        const IS_PRESENT =                 1 << 15;
     }
 }
 
-
+/// Describes a pointer to descriptor table.
+/// Used only for `load_interrupt_table` function
 #[repr(C, packed)]
 pub(crate) struct InterruptTablePointer {
     limit : u16,
     base : u64
 }
 
+/// Describes segment selector for descriptor table.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub(crate) struct GDTSelector {
@@ -283,7 +301,8 @@ pub(crate) struct GDTSelector {
 }
 
 impl GDTSelector {
-    pub fn minimal() -> Self {
+    /// Creates new valid segment selector.
+    pub fn new() -> Self {
         use x86_64::registers;
 
         let cs_value = registers::cs();
@@ -293,18 +312,7 @@ impl GDTSelector {
         }
     }
 
-    fn new(index : u16, privilege_level : u16) -> Self {
-        use x86_64::registers;
-
-        let cs_value = registers::cs();
-
-        //let new_value = index << 3 | privilege_level;
-
-        GDTSelector {
-            value : cs_value
-        }
-    }
-
+    /// Empty selector pointing to invalid memory area. Used only for table initialization
     const fn empty() -> Self {
         GDTSelector {
             value : 0
