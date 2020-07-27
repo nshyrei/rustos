@@ -1,9 +1,9 @@
-
 use crate::executor::Executor;
 use crate::executor::ExecutorRef;
 
 use alloc::rc::Rc;
 use core::cell;
+use core::ptr;
 use core::ops::Deref;
 use core::clone::Clone;
 use core::any::Any;
@@ -24,7 +24,7 @@ pub struct ProcessRef {
 
     id : u64,
 
-    executor: ExecutorRef
+    executor: ptr::NonNull<Executor>
 }
 
 impl ProcessRef {
@@ -33,19 +33,19 @@ impl ProcessRef {
         self.id
     }
 
-    /*pub fn fork(&mut self, process : ProcessBox) -> ProcessRef {
-unsafe {
-    let id = self.executor.get().as_mut().unwrap()*//*.borrow_mut()*//*.fork(self.id, process);
+    pub fn fork(&mut self, process: ProcessBox) -> ProcessRef {
+        unsafe {
+            let id = self.executor.as_mut().fork(self.id, process);
 
-    ProcessRef {
-        id,
-        executor: Rc::clone(&self.executor)
+                ProcessRef {
+                    id,
+                    executor: self.executor,
+                }
+        }
     }
-}
-    }*/
 
     pub fn post_message(&mut self, message : Message) {
-        unsafe { self.executor.get().as_mut().unwrap().post_message(self.id, message) }
+        unsafe { self.executor.as_mut().post_message(self.id, message) }
     }
 }
 
@@ -53,48 +53,35 @@ impl Clone for ProcessRef {
     fn clone(&self) -> Self {
         ProcessRef {
             id : self.id,
-            executor: Rc::clone(&self.executor)
+            executor: self.executor
         }
     }
 }
 
-pub struct RemoveProcess {
-    id : u64
-}
-
-pub struct StartProcess {}
-
-pub struct CreateProcess {
-
-    pub parent : u64,
-
-    pub process_message : ProcessBox
-}
-
 pub struct RootProcess {
-    executor : ExecutorRef,
+
 }
 
 impl RootProcess {
-    /*pub fn new(executor : ExecutorRef) -> ProcessRef {
+    pub fn new(executor : &mut Executor) -> ProcessRef {
         unsafe {
-            let root_process = RootProcess { executor: Rc::clone(&executor) };
+            let root_process = RootProcess {  };
             let root_process_box = Box::new(root_process);
 
-            let id = executor.get().as_mut().unwrap().create_process(root_process_box);
+            let id = executor.create_process(root_process_box);
 
             ProcessRef {
                 id,
-                executor: Rc::clone(&executor)
+                executor: ptr::NonNull::new_unchecked(executor)
             }
         }
-    }*/
+    }
 }
 
-/*impl Process for RootProcess {
+impl Process for RootProcess {
 
     fn process_message(&mut self, message: Message) -> () {
-        unsafe {
+        /*unsafe {
             if message.is::<CreateProcess>() {
                 let msg = message.downcast::<CreateProcess>().unwrap();
 
@@ -104,6 +91,6 @@ impl RootProcess {
 
                 self.executor.get().as_mut().unwrap().remove_process_with_children(msg.id);
             }
-        }
+        }*/
     }
-}*/
+}

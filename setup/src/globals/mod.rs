@@ -75,7 +75,6 @@ global_fields! {
     CHAINED_PICS: ChainedPics = unsafe { pic::new() } ;
 }
 
-use core::borrow::Borrow;
 pub struct Accessor<T> {
     value : cell::Cell<Option<T>>,
 }

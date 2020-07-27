@@ -14,24 +14,6 @@ use crate::process::Process;
 
 pub type ExecutorRef = Rc<cell::UnsafeCell<Executor>>;
 
-pub struct ExecutorHelp {
-    pub value: ptr::NonNull<ExecutorRef>
-}
-
-impl ops::Deref for ExecutorHelp {
-    type Target = Executor;
-
-    fn deref(&self) -> &Executor {
-        unsafe { self.value.as_ref().get().as_ref().unwrap() }
-    }
-}
-
-impl ops::DerefMut for ExecutorHelp {
-    fn deref_mut(&mut self) -> & mut Executor {
-        unsafe { self.value.as_mut().get().as_mut().unwrap() }
-    }
-}
-
 pub struct Executor {
     id_counter: u64,
 
@@ -86,7 +68,7 @@ impl Executor {
         id
     }
 
-    /*pub (crate) fn fork(&mut self, parent_id : u64, process_message : ProcessBox) -> u64 {
+    pub (crate) fn fork(&mut self, parent_id : u64, process_message : ProcessBox) -> u64 {
         if self.existing.contains_key(&parent_id) {
             let child_id = self.create_process(process_message);
 
@@ -99,7 +81,7 @@ impl Executor {
         else {
             0
         }
-    }*/
+    }
 
     pub fn update_current_process(&mut self, interrupted_process_state: ProcessRegisters) {
         if let Some(existing_process) = self.existing.get_mut(&self.currently_executing) {
@@ -170,8 +152,9 @@ impl ProcessDescriptor {
         let stack = [0 as u8; 4096];
         let guard = [0 as u8; 100];
 
+        // process function will be called directly and those values will be populated after interrupt
         let registers = ProcessRegisters {
-            instruction_pointer: 0, // process function will be called directly and this value will be populated after interrupt
+            instruction_pointer: 0,
             stack_pointer : 0,
             cpu_flags: 0,
         };
@@ -204,7 +187,7 @@ impl ProcessDescriptor {
     }
 
     pub fn stack_address(&self) -> u64 {
-        (&self.stack as *const _ as u64)// + 4096
+        (&self.stack as *const _ as u64)
     }
 
     pub fn process_front_message(&mut self) -> () {
