@@ -574,18 +574,18 @@ unsafe impl Alloc for SlabAllocator {
     }
 }
 
-pub struct SlabHelp {
+pub struct SlabAllocatorGlobalAlloc {
     pub value : ptr::NonNull<SlabAllocator>
 }
 
-impl SlabHelp {
+impl SlabAllocatorGlobalAlloc {
 
     pub fn is_fully_free(&self) -> bool {
         unsafe { self.value.as_ref().is_fully_free() }
     }
 }
 
-unsafe impl GlobalAlloc for SlabHelp {
+unsafe impl GlobalAlloc for SlabAllocatorGlobalAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // escape immutable self
         let mut  v = self.value.clone();

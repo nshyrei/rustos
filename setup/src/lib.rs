@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
+#![feature(trace_macros)]
 
 extern crate hardware;
 extern crate multiprocess;

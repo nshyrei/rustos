@@ -9,7 +9,6 @@ extern crate display;
 extern crate memory;
 extern crate hardware;
 extern crate alloc;
-extern crate malloc;
 extern crate stdx_memory;
 extern crate stdx;
 extern crate pic8259_simple;
@@ -34,10 +33,9 @@ use core::clone::Clone;
 use core::fmt::Write;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use malloc::TestAllocator;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
 use memory::allocator::slab::SlabAllocator;
-use memory::allocator::slab::SlabHelp;
+use memory::allocator::slab::SlabAllocatorGlobalAlloc;
 use memory::allocator::buddy::BuddyAllocator;
 
 use hardware::x86_64::registers;
@@ -74,8 +72,6 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
 
-        VGA_WRITER = Some(Writer::new());
-
         //print_multiboot_data(multiboot_header, VGA_WRITERG.as_mut().unwrap());
 
         let mut frame_allocator = FrameAllocator::new(multiboot_header);
@@ -92,9 +88,9 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         interrupts::load_interrupt_table(&INTERRUPT_TABLE);
 
-        let mut executor = Rc::new(cell::UnsafeCell::new(executor::Executor::new()));
+        //let mut executor = Rc::new(cell::UnsafeCell::new(executor::Executor::new()));
 
-        PROCESS_EXECUTOR.value =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
+        //PROCESS_EXECUTOR.value =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
 
         use core::mem;
         use core::ops::Deref;
@@ -145,7 +141,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_unmap_should_properly_unmap_elements(p4_table, slab_allocator.frame_allocator());
         paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
         loop {
-            unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Main thread end loop!"); };
+            unsafe { writeln!(VGA_WRITER, "Main thread end loop!"); };
         }
     }
 }
@@ -167,7 +163,7 @@ impl DummyProcess {
             let vl = msg.some;
             let x = vl;
 
-           unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "I am dummy! inside process 1 {}", x); }
+           unsafe { writeln!(VGA_WRITER, "I am dummy! inside process 1 {}", x); }
         }
     }
 }
@@ -197,7 +193,7 @@ pub struct SenderProcess {
 impl Process for SenderProcess {
     fn process_message(&mut self, message: Message) -> () {
         unsafe {
-            writeln!(VGA_WRITER.as_mut().unwrap(), "Sending inc to Id = {}!", self.child.id());
+            writeln!(VGA_WRITER, "Sending inc to Id = {}!", self.child.id());
 
             self.child.post_message(Box::new(IncreaseCtr { some : 1488 }));
         }
@@ -247,7 +243,7 @@ fn test_allocator_aux_data_structures_memory(aux_structures_start_address : usiz
         let p4_table = paging::p4_table();
         let present = p4_table.is_present(frame);
 
-        unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Is present {}, val {}", frame, present); }
+        unsafe { writeln!(VGA_WRITER, "Is present {}, val {}", frame, present); }
 
         Frame::zero_frame(&frame);
     }

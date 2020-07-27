@@ -5,7 +5,6 @@ use core::ops::Deref;
 use core::mem;
 use core::cmp;
 use core::cell;
-use core::convert;
 
 pub type RCBox<T, A> = RC<Box<T, A>, A>;
 

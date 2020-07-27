@@ -1,19 +1,7 @@
-use core::marker;
-use core::mem;
-use core::ops;
-use core::iter;
-use core::ptr;
 use core::cmp;
 use core::cmp::Ordering;
 use MemoryAllocator;
 use heap;
-use stdx::Sequence;
-use stdx::Iterable;
-use core::ops::Deref;
-use core::ops::DerefMut;
-use display::vga::writer::Writer;
-use core::fmt::Write;
-use core::fmt::Display;
 
 type NodeBox<T, M>         = heap::RC<AVLNode<T, M>, M>;
 type OptNodeBox<T, M>  = Option<NodeBox<T, M>>;

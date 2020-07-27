@@ -1,9 +1,6 @@
 use core::fmt;
-use core::iter;
-use core::marker;
 use core::mem;
 use MemoryAllocator;
-use heap::SharedBox;
 use heap::Box;
 use heap::WeakBox;
 

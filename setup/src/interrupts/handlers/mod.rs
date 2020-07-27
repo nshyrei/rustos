@@ -22,23 +22,23 @@ use crate::globals::{
 use crate::globals::VGA_WRITER;
 
 pub extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Divide by zero occured"); }
+    unsafe { writeln!(VGA_WRITER, "Divide by zero occured"); }
 }
 
 pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "BREAKPOINT"); }
+    unsafe { writeln!(VGA_WRITER, "BREAKPOINT"); }
 }
 
 pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "INVALID OPCODE OCCURED"); }
+    unsafe { writeln!(VGA_WRITER, "INVALID OPCODE OCCURED"); }
 }
 
 pub extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrameValue, code : u64) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "PAGE FAULT OCCURED"); }
+    unsafe { writeln!(VGA_WRITER, "PAGE FAULT OCCURED"); }
 }
 
 pub extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackFrameValue, error_code : u64) {
-    unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "DOUBLE FAULT OCCURED"); }
+    unsafe { writeln!(VGA_WRITER, "DOUBLE FAULT OCCURED"); }
 }
 
 static mut timer_ctr : usize = 0;
@@ -50,9 +50,9 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
 
             timer_ctr = 0;
 
-            writeln!(VGA_WRITER.as_mut().unwrap(), "TICK");
+            writeln!(VGA_WRITER, "TICK");
 
-            writeln!(VGA_WRITER.as_mut().unwrap(), "Tick interrupt frame {:?}", stack_frame);
+            writeln!(VGA_WRITER, "Tick interrupt frame {:?}", stack_frame);
 
             let interrupted_process_registers = executor::ProcessRegisters {
                 instruction_pointer: stack_frame.instruction_pointer,

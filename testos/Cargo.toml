@@ -22,9 +22,6 @@ path = "../memory"
 [dependencies.hardware]
 path = "../hardware"
 
-[dependencies.malloc]
-path = "../malloc"
-
 [dependencies.stdx_memory]
 path = "../stdx_memory"
 

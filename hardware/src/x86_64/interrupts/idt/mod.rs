@@ -52,19 +52,7 @@ impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
         }
     }
 
-    pub fn create_present_entry(handler : InterruptHandler) -> Self {
-        let mut result = InterruptTableEntry::<HandlerFunc>::new(handler as u64);
-        result.options.set_present();
 
-        result
-    }
-
-    pub fn create_present_entry1(handler : InterruptHandlerWithErrorCode) -> Self {
-        let mut result = InterruptTableEntry::<HandlerFunc>::new( handler as u64);
-        result.options.set_present();
-
-        result
-    }
 
     /// Creates empty table entry.
     /// This entry is not visible to controller and doesnt point to valid handler function, it is used only for initial table initialization.
@@ -82,6 +70,24 @@ impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
             reserved : 0,
             ph : PhantomData
         }
+    }
+}
+
+impl InterruptTableEntry<InterruptHandler> {
+    pub fn create_present_entry(handler : InterruptHandler) -> Self {
+        let mut result = InterruptTableEntry::<InterruptHandler>::new(handler as u64);
+        result.options.set_present();
+
+        result
+    }
+}
+
+impl InterruptTableEntry<InterruptHandlerWithErrorCode> {
+    pub fn create_present_entry(handler : InterruptHandlerWithErrorCode) -> Self {
+        let mut result = InterruptTableEntry::<InterruptHandlerWithErrorCode>::new( handler as u64);
+        result.options.set_present();
+
+        result
     }
 }
 
@@ -107,7 +113,7 @@ pub struct InterruptTable {
 
     pub device_not_available : InterruptTableEntry<InterruptHandler>,
 
-    pub double_fault : InterruptTableEntry<InterruptHandler>,
+    pub double_fault : InterruptTableEntry<InterruptHandlerWithErrorCode>,
 
     coprocessor_segment_overrun : InterruptTableEntry<InterruptHandler>,
 
@@ -119,7 +125,7 @@ pub struct InterruptTable {
 
     pub general_protection_fault : InterruptTableEntry<InterruptHandler>,
 
-    pub page_fault : InterruptTableEntry<InterruptHandler>,
+    pub page_fault : InterruptTableEntry<InterruptHandlerWithErrorCode>,
 
     reserved_0 : InterruptTableEntry<InterruptHandler>,
 
@@ -183,7 +189,7 @@ impl InterruptTable {
     /// # Panic
     ///  Panics if `idx` is out of range or points to reserved entry.
     pub fn set_interrupt_handler(&mut self, idx : usize, handler : InterruptHandler) {
-        let entry = InterruptTableEntry::create_present_entry(handler);
+        let entry = InterruptTableEntry::<InterruptHandler>::create_present_entry(handler);
 
         self[idx] = entry
     }

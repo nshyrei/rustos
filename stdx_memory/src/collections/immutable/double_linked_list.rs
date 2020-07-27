@@ -1,13 +1,9 @@
 use heap;
 use MemoryAllocator;
 use stdx::iterator;
-use core::ops;
-use core::ops::Deref;
 use core::iter;
-use core::ptr;
 use core::cmp;
 use core::marker;
-use stdx::Iterable;
 
 type ListPointer<T, A> = heap::RCBox<DoubleLinkedList<T,A>, A>;
 type RCPointer<T, A> = heap::RC<DoubleLinkedList<T, A>, A>;
