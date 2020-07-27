@@ -562,18 +562,6 @@ impl MemoryAllocatorMeta for SlabAllocator {
     }
 }
 
-unsafe impl Alloc for SlabAllocator {
-    unsafe fn alloc(&mut self, layout: Layout) -> Result<ptr::NonNull<u8>, AllocErr> {
-        self.allocate(layout.size())
-            .map(|a| Ok(ptr::NonNull::new_unchecked(a as * mut u8)))
-            .unwrap_or(Err(AllocErr))
-    }
-
-    unsafe fn dealloc(&mut self, ptr : ptr::NonNull<u8>, layout: Layout) {
-        self.free(*ptr.as_ref() as usize)
-    }
-}
-
 pub struct SlabAllocatorGlobalAlloc {
     pub value : ptr::NonNull<SlabAllocator>
 }
@@ -587,20 +575,16 @@ impl SlabAllocatorGlobalAlloc {
 
 unsafe impl GlobalAlloc for SlabAllocatorGlobalAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // escape immutable self
-        let mut  v = self.value.clone();
-        let mut escape = v.as_mut();
+        let mut  v = &mut *(self.value.as_ptr());
 
-        escape.allocate(layout.size())
+        v.allocate(layout.size())
             .map(|a| a as * mut u8)
             .unwrap_or(0 as * mut u8)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // escape immutable self
-        let mut  v = self.value.clone();
-        let mut escape = v.as_mut();
+        let mut  v = &mut *(self.value.as_ptr());
 
-        escape.free_with_size_hint(ptr as usize, layout.size())
+        v.free_with_size_hint(ptr as usize, layout.size())
     }
 }
