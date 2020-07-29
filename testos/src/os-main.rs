@@ -29,8 +29,6 @@ use memory::paging::page_table;
 use memory::paging::page_table::P4Table;
 use stdx_memory::MemoryAllocator;
 use stdx_memory::MemoryAllocatorMeta;
-use core::clone::Clone;
-use core::fmt::Write;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use stdx_memory::collections::immutable::double_linked_list::DoubleLinkedList;
@@ -45,8 +43,12 @@ use hardware::x86_64::interrupts::InterruptTableHelp;
 use hardware::x86_64::interrupts::handler::{InterruptHandler, InterruptHandlerWithErrorCode, InterruptStackFrameValue};
 use hardware::x86_64::interrupts::pic;
 use core::ptr;
+use core::mem;
+use core::ops::Deref;
 use core::ops::DerefMut;
 use core::cell;
+use core::clone::Clone;
+use core::fmt::Write;
 use alloc::alloc::Layout;
 use alloc::rc::Rc;
 use stdx_memory::heap;
@@ -88,48 +90,14 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         interrupts::load_interrupt_table(&INTERRUPT_TABLE);
 
-        //let mut executor = Rc::new(cell::UnsafeCell::new(executor::Executor::new()));
-
-        //PROCESS_EXECUTOR.value =  ptr::NonNull::new_unchecked(&mut executor as *mut executor::ExecutorRef);
-
-        use core::mem;
-        use core::ops::Deref;
+        let mut root_process = process::RootProcess::new(&mut PROCESS_EXECUTOR);
 
         let dummy_process = DummyProcess { value : 1000 };
         let dummy_process_state_box = Box::new(dummy_process);
-       
-        PROCESS_EXECUTOR.create_process( dummy_process_state_box);
-        PROCESS_EXECUTOR.post_message(0, Box::new(IncreaseCtr { some : 299}));
 
-        /*let mut root_process = process::RootProcess::new(Rc::clone(&executor));
+        let mut dummy_process_ref = root_process.fork(dummy_process_state_box);
 
-        let sample_process = SampleProcess {
-            root :  process::ProcessRef::clone(&root_process),
-
-            child : None,
-
-            ctr : 0
-        };
-
-        let sample_process_box = Box::new(sample_process);
-
-        let mut sample_ref = root_process.fork(sample_process_box);
-
-        {
-            sample_ref.post_message(Box::new(process::StartProcess {} ));
-        }
-
-        let sender_process = SenderProcess {
-            root : process::ProcessRef::clone(&root_process),
-
-            child : sample_ref,
-        };
-
-        let sender_process_box = Box::new(sender_process);
-
-        {
-            root_process.fork(sender_process_box);
-        }*/
+        dummy_process_ref.post_message(Box::new(IncreaseCtr { some : 299}));
 
         hardware::x86_64::interrupts::enable_interrupts();
 
@@ -141,7 +109,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_unmap_should_properly_unmap_elements(p4_table, slab_allocator.frame_allocator());
         paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
         loop {
-            unsafe { writeln!(VGA_WRITER, "Main thread end loop!"); };
+            unsafe { writeln!(VGA_WRITER, "rust_main() end loop!"); };
         }
     }
 }
@@ -255,9 +223,22 @@ use core::panic::PanicInfo;
 extern "C" fn eh_personality() {}
 #[lang = "panic_impl"]
 #[no_mangle]
+// This is a predefined Rust function that is called when panic occurs.
+// Array index out of range or calling `unwrap` on `None` are common examples.
 pub extern "C" fn panic_impl(pi: &PanicInfo) -> ! {
 
-    //unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Rust code panicked with {}", pi.message()); }
+    let message_as_string = pi.payload().downcast_ref::<&str>();
+    let location_is_present = pi.location().is_some();
+
+    unsafe {
+        if message_as_string.is_some() && location_is_present {
+            writeln!(VGA_WRITER, "Rust code panicked with {}, at {}", message_as_string.unwrap(), pi.location().unwrap());
+        } else if location_is_present {
+            writeln!(VGA_WRITER, "Rust code panicked at {}", pi.location().unwrap());
+        } else {
+            writeln!(VGA_WRITER, "Rust code panicked");
+        }
+    }
 
     loop {}
 }
