@@ -39,7 +39,6 @@ use memory::allocator::buddy::BuddyAllocator;
 use hardware::x86_64::registers;
 use hardware::x86_64::interrupts;
 use hardware::x86_64::interrupts::idt::{InterruptTable, HardwareInterrupts};
-use hardware::x86_64::interrupts::InterruptTableHelp;
 use hardware::x86_64::interrupts::handler::{InterruptHandler, InterruptHandlerWithErrorCode, InterruptStackFrameValue};
 use hardware::x86_64::interrupts::pic;
 use core::ptr;
@@ -137,6 +136,10 @@ impl DummyProcess {
 }
 
 impl Process for DummyProcess {
+    fn description(&self) -> &'static str {
+        unimplemented!()
+    }
+
     fn process_message(&mut self, message: Message) -> () {
         unsafe {
             self.process_message1(message);
@@ -159,6 +162,10 @@ pub struct SenderProcess {
 }
 
 impl Process for SenderProcess {
+    fn description(&self) -> &'static str {
+        unimplemented!()
+    }
+
     fn process_message(&mut self, message: Message) -> () {
         unsafe {
             writeln!(VGA_WRITER, "Sending inc to Id = {}!", self.child.id());

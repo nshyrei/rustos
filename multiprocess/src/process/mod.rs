@@ -1,5 +1,4 @@
 use crate::executor::Executor;
-use crate::executor::ExecutorRef;
 
 use alloc::rc::Rc;
 use core::cell;
@@ -14,10 +13,13 @@ pub type Message = Box<dyn Any>;
 
 pub type ProcessBox = Box<dyn Process>;
 
+pub struct Terminate { }
+
 pub trait Process {
 
-    fn process_message(&mut self, message : Message) -> ();
+    fn description(&self) -> &'static str;
 
+    fn process_message(&mut self, message : Message) -> ();
 }
 
 pub struct ProcessRef {
@@ -79,6 +81,10 @@ impl RootProcess {
 }
 
 impl Process for RootProcess {
+
+    fn description(&self) -> &'static str {
+        "Root process."
+    }
 
     fn process_message(&mut self, message: Message) -> () {
         /*unsafe {

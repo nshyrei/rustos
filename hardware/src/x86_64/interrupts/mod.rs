@@ -29,9 +29,3 @@ pub fn load_interrupt_table(table : &InterruptTable){
     unsafe { asm!("lidt ($0)" :: "r" (ptr) : "memory") };
 }
 
-use core::ptr;
-
-pub struct InterruptTableHelp {
-    pub value : Option<ptr::NonNull<InterruptTable>>
-}
-

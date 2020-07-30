@@ -60,7 +60,7 @@ pub unsafe fn start_new_process(new_process : &mut executor::ProcessDescriptor) 
     let new_process0 = mem::transmute::<u64, &mut executor::ProcessDescriptor>(descriptor_pointer_raw);
 
     // execute process code
-    new_process0.process_front_message();
+    new_process0.run_process();
 
     loop{}
 }
