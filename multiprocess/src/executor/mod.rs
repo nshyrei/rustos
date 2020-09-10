@@ -1,6 +1,7 @@
 use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::vec_deque::VecDeque;
 use alloc::collections::binary_heap::BinaryHeap;
+use alloc::collections::binary_heap::PeekMut;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -21,9 +22,9 @@ use crate::process::{
 pub struct Executor {
     id_counter: u64,
 
-    currently_executing: u64,
-
     execution_line: BinaryHeap<ProcessorTimeWithProcessKey>,
+
+    new : Vec<u64>,
 
     existing: BTreeMap<u64, ProcessDescriptor>,
 }
@@ -33,11 +34,12 @@ impl Executor {
         let id_counter = 0;
         let execution_line: BinaryHeap<ProcessorTimeWithProcessKey> = BinaryHeap::new();
         let existing: BTreeMap<u64, ProcessDescriptor> = BTreeMap::new();
+        let new : Vec<u64> = Vec::new();
 
         Executor {
             id_counter,
-            currently_executing: 0,
             execution_line,
+            new,
             existing,
         }
     }
@@ -46,6 +48,31 @@ impl Executor {
         if let Some(process) = self.existing.get_mut(&id) {
             process.mailbox.push_back(message)
         }
+    }
+
+    pub fn remove_currently_executing(&mut self) {
+        let queue_top = self.currently_executing_id();
+
+        queue_top.map(|id| self.remove_process(id));
+    }
+
+    pub fn currently_executing_mut(&mut self) -> Option<&mut ProcessDescriptor> {
+        let execution_line = &self.execution_line;
+        let existing = &mut self.existing;
+
+        execution_line.peek().and_then(move |e| existing.get_mut(&e.process_key))
+    }
+
+    pub fn currently_executing(&self) -> Option<&ProcessDescriptor> {
+        let execution_line = &self.execution_line;
+        let existing = &self.existing;
+
+        execution_line.peek().and_then(move |e| existing.get(&e.process_key))
+    }
+
+    pub fn currently_executing_id(&self) -> Option<u64> {
+
+        self.execution_line.peek().map(|e| e.process_key)
     }
 
     pub(crate) fn remove_process_with_children(&mut self, id: u64) {
@@ -60,32 +87,15 @@ impl Executor {
         self.existing.remove(&id);
     }
 
-    pub fn remove_currently_executing(&mut self) {
-        self.remove_process(self.currently_executing);
-    }
-
-    pub fn currently_executing_descriptor(&self) -> &ProcessDescriptor {
-        self.existing.get(&self.currently_executing).unwrap()
-    }
-
-    pub fn currently_executing(&self) -> u64 {
-        self.currently_executing
-    }
-
     pub(crate) fn create_process(&mut self, process_message: ProcessBox) -> u64 {
 
-        let mut node = ProcessDescriptor::new(process_message, self.existing.len() as u64);
+        let mut node = ProcessDescriptor::new(process_message);
         //node.create_guard();
         let id = self.id_counter;
 
         self.existing.insert(id, node);
+        self.new.push(id);
 
-        let new_entry = ProcessorTimeWithProcessKey {
-            processor_time : 0,
-            process_key: id
-        };
-
-        self.execution_line.push(new_entry);
         self.id_counter += 1;
 
         id
@@ -107,59 +117,113 @@ impl Executor {
     }
 
     pub fn save_interrupted_process_return_point(&mut self, interrupted_process_registers: ProcessRegisters) {
-        if let Some(existing_process) = self.existing.get_mut(&self.currently_executing) {
 
-            if existing_process.state == ProcessState::Running {
-                existing_process.registers = interrupted_process_registers;
-            }
+        let currently_executing_opt = self.currently_executing_mut();
+
+        if let Some(ProcessDescriptor { state : ProcessState::Running, registers, .. }) = currently_executing_opt {
+            *registers = interrupted_process_registers;
         }
     }
 
-    pub fn schedule_next(&mut self, time : u64) -> Option<&mut ProcessDescriptor> {
-        let process = self.existing.get(&self.currently_executing).unwrap();
+    pub fn schedule_next(&mut self, current_time : u64) -> Option<&mut ProcessDescriptor> {
+        // remove any process that is terminated of crashed
+        self.remove_terminated();
 
-        let execution_period = time - process.execution_start_time;
+        let total_processes = self.execution_line.len() as u64;
 
-        match process.state() {
-            ProcessState::AskedToTerminate => {
-                self.existing.remove(&self.currently_executing);
-            },
-            ProcessState::Running if execution_period < process.maximum_execution_time => {
-                let processor_time = if execution_period < process.maximum_execution_time {
-                    execution_period
-                }
-                else {
-                    // add some execution time, so finished process wont get bumped back into the top of queue
-                    process.maximum_execution_time / (self.existing.len() as u64)
-                };
+        // set new processor time for currently executing process
+        self.update_current_process_time(current_time, total_processes);
 
-                let new_entry = ProcessorTimeWithProcessKey {
-                    processor_time,
-                    process_key: self.currently_executing
-                };
+        // put new process if we have any into the execution queue
+        self.put_new_process_to_execute(current_time, total_processes);
 
-                self.execution_line.push(new_entry)
-            }
-            _ => ()
-        }
-
-        self.set_queue_front_as_executing()
+        // pick the top of the queue
+        self.currently_executing_mut()
     }
 
-    fn set_queue_front_as_executing(&mut self) -> Option<&mut ProcessDescriptor> {
-        self.execution_line.pop().and_then(move |head| {
-            let head_id = head.process_key;
+    fn process_info(& self) -> Option<(&ProcessorTimeWithProcessKey, &ProcessDescriptor)> {
+        //extract top of the queue and attach it to corresponding process descriptor
+        let execution_line = &self.execution_line;
+        let existing = & self.existing;
 
-            self.currently_executing = head_id;
+        let queue_top = execution_line.peek();
 
-            self.existing.get_mut(&head_id)
+        queue_top.and_then(move |e| {
+            let process_descriptor = existing.get(&e.process_key);
+
+            process_descriptor.map(|d| (e, d))
         })
+    }
+
+    fn currenty_executing_state(&self) -> Option<ProcessState> {
+        self.currently_executing().map(|p| p.state)
+    }
+
+    fn remove_terminated(&mut self) {
+        let mut process_state = self.process_info();
+
+        while let Some((time_description, ProcessDescriptor { state : ProcessState::AskedToTerminate, .. })) = process_state {
+            let process_key = time_description.process_key;
+
+            self.execution_line.pop();
+            self.existing.remove(&process_key);
+
+            process_state = self.process_info();
+        }
+    }
+
+    fn update_current_process_time(&mut self, current_time : u64, total_processes: u64) {
+        let queue_top = self.execution_line.peek_mut();
+
+        // currently executing process sits at the top of the queue
+        if let Some(mut process_time_descriptor) = queue_top {
+            // time spent executing since last interrupt
+            let processor_time = current_time - process_time_descriptor.interrupt_time;
+
+            let total_processor_time = process_time_descriptor.processor_time + processor_time;
+
+            let new_processor_time = if total_processor_time < process_time_descriptor.maximum_execution_time {
+                // the bigger the processor time is, the lowest priority the process will get in the queue
+                total_processor_time
+            } else {
+                // process has exhausted all its time and needs to make space for other processes
+                // to make sure that it doesnt wind up into the front of the queue we add some artificial processor
+                // time to it
+                process_time_descriptor.maximum_execution_time / total_processes
+            };
+
+            process_time_descriptor.processor_time = new_processor_time;
+            process_time_descriptor.interrupt_time = current_time;
+        }
+    }
+
+    fn put_new_process_to_execute(&mut self, current_time : u64, existing_count : u64) {
+        // pick one (for now) new process and put it into the front of the queue
+        let new_process = self.new.pop();
+
+        // 1000 here is a processor time `quant`
+        let maximum_execution_time = 1000 / existing_count;
+
+        new_process.map(|id| {
+            let new_entry = ProcessorTimeWithProcessKey {
+                processor_time : 0,
+                interrupt_time : current_time,
+                maximum_execution_time,
+                process_key: id
+            };
+
+            self.execution_line.push(new_entry);
+        });
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 struct ProcessorTimeWithProcessKey {
     processor_time: u64,
+
+    interrupt_time : u64,
+
+    maximum_execution_time : u64,
 
     process_key : u64
 }
@@ -205,8 +269,6 @@ pub struct ProcessDescriptor {
 
     registers: ProcessRegisters,
 
-    maximum_execution_time : u64,
-
     execution_start_time : u64
 }
 
@@ -220,14 +282,13 @@ pub struct ProcessRegisters {
 }
 
 impl ProcessDescriptor {
-    fn new(process: ProcessBox, existing_count : u64) -> Self {
+    fn new(process: ProcessBox) -> Self {
         let mailbox: VecDeque<Message> = VecDeque::new();
         let children: Vec<u64> = Vec::new();
         let state = ProcessState::New;
         let stack_overflow_guard = [0 as u8; 4096];
         let stack = [0 as u8; 4096];
         let guard = [0 as u8; 100];
-        let maximum_execution_time = 1000 / existing_count;
 
         // process function will be called directly and those values will be populated after interrupt
         let registers = ProcessRegisters {
@@ -247,7 +308,6 @@ impl ProcessDescriptor {
             children,
             state,
             registers,
-            maximum_execution_time,
             execution_start_time
         }
     }

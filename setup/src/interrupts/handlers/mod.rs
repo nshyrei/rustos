@@ -22,8 +22,8 @@ use crate::globals::VGA_WRITER;
 
 pub extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut InterruptStackFrameValue) {
     unsafe {
-        let currently_executing_id =  PROCESS_EXECUTOR.currently_executing();
-        let process_description = PROCESS_EXECUTOR.currently_executing_descriptor().description();
+        let currently_executing_id =  PROCESS_EXECUTOR.currently_executing_id().unwrap();
+        let process_description = PROCESS_EXECUTOR.currently_executing().unwrap().description();
 
         PROCESS_EXECUTOR.remove_currently_executing();
 
@@ -45,8 +45,8 @@ pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut Interrupt
 
 pub extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrameValue, code : u64) {
     unsafe {
-        let currently_executing_id =  PROCESS_EXECUTOR.currently_executing();
-        let process_description = PROCESS_EXECUTOR.currently_executing_descriptor().description();
+        let currently_executing_id =  PROCESS_EXECUTOR.currently_executing_id().unwrap();
+        let process_description = PROCESS_EXECUTOR.currently_executing().unwrap().description();
 
         PROCESS_EXECUTOR.remove_currently_executing();
 
