@@ -1,5 +1,5 @@
 # rustos
-Operating system written in rust language. Used for learning purposes only.
+Operating system written in Rust language. Used for learning purposes only.
 
 # Materials used
 https://os.phil-opp.com/  
