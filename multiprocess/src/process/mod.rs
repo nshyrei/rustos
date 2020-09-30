@@ -15,6 +15,10 @@ pub type ProcessBox = Box<dyn Process>;
 
 pub struct Terminate { }
 
+pub struct Crashed {
+    reason : &'static str
+}
+
 pub trait Process {
 
     fn description(&self) -> &'static str;
@@ -87,16 +91,6 @@ impl Process for RootProcess {
     }
 
     fn process_message(&mut self, message: Message) -> () {
-        /*unsafe {
-            if message.is::<CreateProcess>() {
-                let msg = message.downcast::<CreateProcess>().unwrap();
 
-                self.executor.get().as_mut().unwrap().create_process(msg.process_message);
-            } else if message.is::<RemoveProcess>() {
-                let msg = message.downcast::<RemoveProcess>().unwrap();
-
-                self.executor.get().as_mut().unwrap().remove_process_with_children(msg.id);
-            }
-        }*/
     }
 }

@@ -19,6 +19,8 @@ use crate::process::{
     Process
 };
 
+pub const TIME_QUANT : u64  = 1000;
+
 pub struct Executor {
     id_counter: u64,
 
@@ -44,16 +46,14 @@ impl Executor {
         }
     }
 
+    /// Posts message to process
+    /// # Arguments
+    ///  `id` - process id
+    ///  `message` - the message
     pub fn post_message(&mut self, id: u64, message: Message) {
         if let Some(process) = self.existing.get_mut(&id) {
             process.mailbox.push_back(message)
         }
-    }
-
-    pub fn remove_currently_executing(&mut self) {
-        let queue_top = self.currently_executing_id();
-
-        queue_top.map(|id| self.remove_process(id));
     }
 
     pub fn currently_executing_mut(&mut self) -> Option<&mut ProcessDescriptor> {
@@ -75,7 +75,7 @@ impl Executor {
         self.execution_line.peek().map(|e| e.process_key)
     }
 
-    pub(crate) fn remove_process_with_children(&mut self, id: u64) {
+    fn remove_process_with_children(&mut self, id: u64) {
         if let Some(node) = self.existing.remove(&id) {
             for child_id in node.children {
                 self.remove_process_with_children(child_id);
@@ -83,14 +83,14 @@ impl Executor {
         }
     }
 
-    pub(crate) fn remove_process(&mut self, id: u64) {
+    fn remove_process(&mut self, id: u64) {
         self.existing.remove(&id);
     }
 
     pub(crate) fn create_process(&mut self, process_message: ProcessBox) -> u64 {
 
         let mut node = ProcessDescriptor::new(process_message);
-        //node.create_guard();
+
         let id = self.id_counter;
 
         self.existing.insert(id, node);
@@ -134,20 +134,20 @@ impl Executor {
         // set new processor time for currently executing process
         self.update_current_process_time(current_time, total_processes);
 
-        // put new process if we have any into the execution queue
+        // put new process (if we have any) into the execution queue
         self.put_new_process_to_execute(current_time, total_processes);
 
         // pick the top of the queue
         self.currently_executing_mut()
     }
 
-    fn process_info(& self) -> Option<(&ProcessorTimeWithProcessKey, &ProcessDescriptor)> {
-        //extract top of the queue and attach it to corresponding process descriptor
+    fn current_process_info(& self) -> Option<(&ProcessorTimeWithProcessKey, &ProcessDescriptor)> {
         let execution_line = &self.execution_line;
         let existing = & self.existing;
 
         let queue_top = execution_line.peek();
 
+        //extract top of the queue and attach it to corresponding process descriptor
         queue_top.and_then(move |e| {
             let process_descriptor = existing.get(&e.process_key);
 
@@ -155,12 +155,8 @@ impl Executor {
         })
     }
 
-    fn currenty_executing_state(&self) -> Option<ProcessState> {
-        self.currently_executing().map(|p| p.state)
-    }
-
     fn remove_terminated(&mut self) {
-        let mut process_state = self.process_info();
+        let mut process_state = self.current_process_info();
 
         while let Some((time_description, ProcessDescriptor { state : ProcessState::AskedToTerminate, .. })) = process_state {
             let process_key = time_description.process_key;
@@ -168,7 +164,7 @@ impl Executor {
             self.execution_line.pop();
             self.existing.remove(&process_key);
 
-            process_state = self.process_info();
+            process_state = self.current_process_info();
         }
     }
 
@@ -201,8 +197,7 @@ impl Executor {
         // pick one (for now) new process and put it into the front of the queue
         let new_process = self.new.pop();
 
-        // 1000 here is a processor time `quant`
-        let maximum_execution_time = 1000 / existing_count;
+        let maximum_execution_time = TIME_QUANT / existing_count;
 
         new_process.map(|id| {
             let new_entry = ProcessorTimeWithProcessKey {
@@ -226,6 +221,12 @@ struct ProcessorTimeWithProcessKey {
     maximum_execution_time : u64,
 
     process_key : u64
+}
+
+impl ProcessorTimeWithProcessKey {
+    pub fn process_key(&self) -> u64 {
+        self.process_key
+    }
 }
 
 impl cmp::PartialOrd for ProcessorTimeWithProcessKey {
@@ -267,9 +268,7 @@ pub struct ProcessDescriptor {
 
     state: ProcessState,
 
-    registers: ProcessRegisters,
-
-    execution_start_time : u64
+    registers: ProcessRegisters
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -307,13 +306,8 @@ impl ProcessDescriptor {
             mailbox,
             children,
             state,
-            registers,
-            execution_start_time
+            registers
         }
-    }
-
-    pub fn set_execution_start_time(&mut self, time : u64) {
-        self.execution_start_time = time;
     }
 
     pub fn create_guard(&mut self) {
@@ -343,7 +337,7 @@ impl ProcessDescriptor {
         (&self.stack as *const _ as u64)
     }
 
-    pub fn run_process(&mut self) -> () {
+    pub(crate) fn run_process(&mut self) -> () {
         self.state = ProcessState::WaitingForMessage;
 
         if let Some(message) = self.mailbox.pop_front() {

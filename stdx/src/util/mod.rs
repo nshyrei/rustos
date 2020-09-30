@@ -11,7 +11,3 @@ impl<T> fmt::Display for Option<T> where T : fmt::Display {
         }        
     }
 }
-
-pub fn split_u64(value : u64) -> (u32, u32) {
-    ((value >> 32) as u32, (value & 0x00000000FFFFFFFF) as u32)    
-}

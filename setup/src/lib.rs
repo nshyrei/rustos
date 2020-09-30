@@ -5,6 +5,9 @@
 extern crate hardware;
 extern crate multiprocess;
 extern crate multiboot;
+extern crate alloc;
+#[macro_use]
+extern crate stdx;
 
 pub mod interrupts;
 pub mod globals;

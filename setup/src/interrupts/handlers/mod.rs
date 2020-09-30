@@ -13,26 +13,21 @@ use hardware::x86_64::interrupts::handler::{
 };
 use hardware::x86_64::interrupts::pic;
 use multiprocess::executor;
+use multiprocess::process::Terminate;
 use crate::globals::{
    CHAINED_PICS,
-    PROCESS_EXECUTOR
+    PROCESS_EXECUTOR,
+   VGA_WRITER
 };
+use alloc::boxed::Box;
 
-use crate::globals::VGA_WRITER;
+// todo: use proper hardware clock
+static mut clock : u64 = 0;
 
 pub extern "x86-interrupt" fn divide_by_zero_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe {
-        let currently_executing_id =  PROCESS_EXECUTOR.currently_executing_id().unwrap();
-        let process_description = PROCESS_EXECUTOR.currently_executing().unwrap().description();
+    unsafe { send_crash_message_to_current_process();
 
-        PROCESS_EXECUTOR.remove_currently_executing();
-
-        if let Some(next) = PROCESS_EXECUTOR.schedule_next(0) {
-            switch_to_process(next, stack_frame);
-        }
-
-        writeln!(VGA_WRITER, "Divide by zero occurred in process with id = {} and description = {}", currently_executing_id, process_description);
-    }
+    writeln!(VGA_WRITER, "Divide by zero occurred in process"); }
 }
 
 pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrameValue) {
@@ -40,22 +35,21 @@ pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStac
 }
 
 pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe { writeln!(VGA_WRITER, "INVALID OPCODE OCCURED"); }
+    unsafe {send_crash_message_to_current_process();
+
+     writeln!(VGA_WRITER, "Invalid opcode occured in process"); }
 }
 
-pub extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrameValue, code : u64) {
-    unsafe {
-        let currently_executing_id =  PROCESS_EXECUTOR.currently_executing_id().unwrap();
-        let process_description = PROCESS_EXECUTOR.currently_executing().unwrap().description();
+pub extern "x86-interrupt" fn page_fault_handler(stack_frame: &mut InterruptStackFrameValue, code: u64) {
+    unsafe {send_crash_message_to_current_process();
 
-        PROCESS_EXECUTOR.remove_currently_executing();
+     writeln!(VGA_WRITER, "Page fault occurred in process"); }
+}
 
-        if let Some(next) = PROCESS_EXECUTOR.schedule_next(0) {
-            switch_to_process(next, stack_frame);
-        }
+pub extern "x86-interrupt" fn index_out_of_bounds_handler(stack_frame: &mut InterruptStackFrameValue) {
+    unsafe {send_crash_message_to_current_process();
 
-        writeln!(VGA_WRITER, "PAGE FAULT occurred in process with id = {} and description = {}", currently_executing_id, process_description);
-    }
+     writeln!(VGA_WRITER, "Index out of bounds occurred in process"); }
 }
 
 pub extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptStackFrameValue, error_code : u64) {
@@ -63,8 +57,6 @@ pub extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptSt
 }
 
 static mut timer_ctr : usize = 0;
-
-static mut clock : u64 = 0;
 
 pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptStackFrameValue) {
     unsafe {
@@ -85,6 +77,7 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
                 cpu_flags: stack_frame.cpu_flags,
             };
 
+            // update interrupt point for currently running process
             PROCESS_EXECUTOR.save_interrupted_process_return_point(interrupted_process_registers);
 
             if let Some(next) = PROCESS_EXECUTOR.schedule_next(clock) {
@@ -98,6 +91,12 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
     }
 }
 
+/// Switches execution to new process. Process can be an existing one or a completely new one.
+/// # Arguments
+///  `new_process` - descriptor of the process that will be executed next
+///  `stack_frame` - stack frame of the interrupted process
+/// # Safety
+///// Unsafe because starting new process involves unsafe function `multiprocess::start_new_process`
 unsafe fn switch_to_process(new_process : &mut executor::ProcessDescriptor, stack_frame: &mut InterruptStackFrameValue) {
     match new_process.state() {
         executor::ProcessState::Running => {
@@ -106,6 +105,7 @@ unsafe fn switch_to_process(new_process : &mut executor::ProcessDescriptor, stac
             CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
         },
         executor::ProcessState::New => {
+            // todo find out why this disable/enable is needed or otherwise the interrupt wont fire again
             hardware::x86_64::interrupts::disable_interrupts();
 
             hardware::x86_64::interrupts::enable_interrupts();
@@ -116,4 +116,11 @@ unsafe fn switch_to_process(new_process : &mut executor::ProcessDescriptor, stac
         },
         _ => ()
     }
+}
+
+unsafe fn send_crash_message_to_current_process() {
+    let currently_executing_id = PROCESS_EXECUTOR.currently_executing_id().unwrap();
+    let process_description     = PROCESS_EXECUTOR.currently_executing().unwrap().description();
+
+    PROCESS_EXECUTOR.post_message(currently_executing_id, Box::new(Terminate {}));
 }

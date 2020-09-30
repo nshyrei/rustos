@@ -28,45 +28,8 @@ use memory::frame::{
 use memory::paging;
 use memory::paging::page_table;
 use multiboot::multiboot_header::MultibootHeader;
+use stdx::macros;
 use crate::interrupts::handlers;
-
-#[macro_use]
-macro_rules! global_fields {
-    ($(#[$attribute : meta])* $id : ident : $varType:ty = $varInitCode : expr ; $($tail : tt)*) => {
-
-        $(#[$attribute])*
-        pub static mut $id : Accessor<$varType> = Accessor::new();
-
-        impl Accessor<$varType> {
-            fn get(&self) -> &mut $varType {
-                unsafe {
-                    if ((*self.value.as_ptr()).is_none()) {
-                        self.value.replace(Some($varInitCode));
-                    }
-
-                    ((*self.value.as_ptr()).as_mut().unwrap())
-                }
-            }
-        }
-
-        impl ops::Deref for Accessor<$varType> {
-            type Target = $varType;
-
-            fn deref(&self) -> & $varType {
-                unsafe { self.get() }
-            }
-        }
-
-        impl ops::DerefMut for Accessor<$varType> {
-            fn deref_mut(&mut self) -> &mut $varType {
-                unsafe { self.get() }
-            }
-        }
-
-        global_fields!($($tail)*);
-    };
-    () => ()
-}
 
 global_fields! {
     VGA_WRITER: Writer = Writer::new();
@@ -99,6 +62,7 @@ pub unsafe fn initialize_interrupt_table() {
     INTERRUPT_TABLE.double_fault = InterruptTableEntry::<InterruptHandlerWithErrorCode>::create_present_entry(handlers::double_fault_handler);
     INTERRUPT_TABLE.page_fault = InterruptTableEntry::<InterruptHandlerWithErrorCode>::create_present_entry(handlers::page_fault_handler);
     INTERRUPT_TABLE.divide_by_zero = InterruptTableEntry::<InterruptHandler>::create_present_entry(handlers::divide_by_zero_handler);
+    INTERRUPT_TABLE.bound_range_exceed = InterruptTableEntry::<InterruptHandler>::create_present_entry(handlers::index_out_of_bounds_handler);
 
     INTERRUPT_TABLE.set_interrupt_handler(HardwareInterrupts::Timer as usize, handlers::timer_interrupt_handler);
 
@@ -120,18 +84,23 @@ fn preallocate_memory_for_allocator_aux_data_structures(memory_start : usize, me
     let aux_data_structures_size = SlabAllocator::total_aux_data_structures_size(memory_start, memory_end);
 
     let premade_bump_end_address  = Frame::address_align_up(memory_start + aux_data_structures_size);
-    let mut premade_bump                = ConstSizeBumpAllocator::from_address(memory_start, premade_bump_end_address, FRAME_SIZE);
+    let mut premade_bump= ConstSizeBumpAllocator::from_address(memory_start, premade_bump_end_address, FRAME_SIZE);
 
-    // |aux structures page tables|aux structures working memory|allocator working memory|
+    // memory layout for allocator
+    // |***********************|****************************|****************|
+    // |aux structures page tables|aux structures working memory|user memory pool|
+
     // premap memory for memory allocator inner data structures
     let aux_structures_start_address = premade_bump_end_address + FRAME_SIZE; // next frame
     let aux_structures_end_address = Frame::address_align_up(aux_structures_start_address + aux_data_structures_size);
 
+    // map all pages in range 1 to 1
     for frame in Frame::range_inclusive(aux_structures_start_address, aux_structures_end_address) {
         let p4_table = paging::p4_table();
         p4_table.map_page_1_to_1(frame, page_table::PRESENT | page_table::WRITABLE, &mut premade_bump);
     }
 
+    // perform simple presence test
     test_allocator_aux_data_structures_memory(aux_structures_start_address, aux_structures_end_address);
 
     aux_structures_start_address

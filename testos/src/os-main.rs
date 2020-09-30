@@ -73,7 +73,7 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let multiboot_header = MultibootHeader::load(multiboot_header_address);
 
-        //print_multiboot_data(multiboot_header, VGA_WRITERG.as_mut().unwrap());
+        //print_multiboot_data(multiboot_header, VGA_WRITER.as_mut().unwrap());
 
         let mut frame_allocator = FrameAllocator::new(multiboot_header);
 
@@ -91,13 +91,6 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         let mut root_process = process::RootProcess::new(&mut PROCESS_EXECUTOR);
 
-        let dummy_process = DummyProcess { value : 1000 };
-        let dummy_process_state_box = Box::new(dummy_process);
-
-        let mut dummy_process_ref = root_process.fork(dummy_process_state_box);
-
-        dummy_process_ref.post_message(Box::new(IncreaseCtr { some : 299}));
-
         hardware::x86_64::interrupts::enable_interrupts();
 
         // run pre-init tests
@@ -109,68 +102,6 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
         paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
         loop {
             unsafe { writeln!(VGA_WRITER, "rust_main() end loop!"); };
-        }
-    }
-}
-
-#[repr(C)]
-pub struct DummyProcess {
-
-    value : usize
-}
-
-impl DummyProcess {
-    fn process_message1(&mut self, message : Message) -> () {
-
-        let x = 10;
-
-        if message.is::<IncreaseCtr>() {
-
-            let msg= message.downcast::<IncreaseCtr>().unwrap();
-            let vl = msg.some;
-            let x = vl;
-
-           unsafe { writeln!(VGA_WRITER, "I am dummy! inside process 1 {}", x); }
-        }
-    }
-}
-
-impl Process for DummyProcess {
-    fn description(&self) -> &'static str {
-        unimplemented!()
-    }
-
-    fn process_message(&mut self, message: Message) -> () {
-        unsafe {
-            self.process_message1(message);
-            loop {
-                // unsafe { writeln!(VGA_WRITER.as_mut().unwrap(), "Inside dummy end"); }
-            }
-        }
-    }
-}
-
-pub struct IncreaseCtr {
-    pub some : usize
-}
-
-pub struct SenderProcess {
-
-    pub root : process::ProcessRef,
-
-    pub child : process::ProcessRef,
-}
-
-impl Process for SenderProcess {
-    fn description(&self) -> &'static str {
-        unimplemented!()
-    }
-
-    fn process_message(&mut self, message: Message) -> () {
-        unsafe {
-            writeln!(VGA_WRITER, "Sending inc to Id = {}!", self.child.id());
-
-            self.child.post_message(Box::new(IncreaseCtr { some : 1488 }));
         }
     }
 }
@@ -190,38 +121,6 @@ fn memory_allocator_should_properly_allocate_and_free_memory() {
     let result = unsafe { HEAP_ALLOCATOR.is_fully_free() };
 
     assert_eq!(result, true, "Allocator wasn't fully free after allocating memory in isolated block");
-}
-
-fn preallocate_memory_for_allocator_aux_data_structures(memory_start : usize, memory_end : usize) -> usize {
-    let aux_data_structures_size = SlabAllocator::total_aux_data_structures_size(memory_start, memory_end);
-
-    let premade_bump_end_address  = Frame::address_align_up(memory_start + aux_data_structures_size);
-    let mut premade_bump                = ConstSizeBumpAllocator::from_address(memory_start, premade_bump_end_address, FRAME_SIZE);
-
-    // |aux structures page tables|aux structures working memory|allocator working memory|
-    // premap memory for memory allocator inner data structures
-    let aux_structures_start_address = premade_bump_end_address + FRAME_SIZE; // next frame
-    let aux_structures_end_address = Frame::address_align_up(aux_structures_start_address + aux_data_structures_size);
-
-    for frame in Frame::range_inclusive(aux_structures_start_address, aux_structures_end_address) {
-        let p4_table = paging::p4_table();
-        p4_table.map_page_1_to_1(frame, page_table::PRESENT | page_table::WRITABLE, &mut premade_bump);
-    }
-
-    test_allocator_aux_data_structures_memory(aux_structures_start_address, aux_structures_end_address);
-
-    aux_structures_start_address
-}
-
-fn test_allocator_aux_data_structures_memory(aux_structures_start_address : usize, aux_structures_end_address : usize) {
-    for frame in Frame::range_inclusive(aux_structures_start_address, aux_structures_end_address) {
-        let p4_table = paging::p4_table();
-        let present = p4_table.is_present(frame);
-
-        unsafe { writeln!(VGA_WRITER, "Is present {}, val {}", frame, present); }
-
-        Frame::zero_frame(&frame);
-    }
 }
 
 use core::panic::PanicInfo;

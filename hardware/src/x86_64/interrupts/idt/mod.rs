@@ -52,8 +52,6 @@ impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
         }
     }
 
-
-
     /// Creates empty table entry.
     /// This entry is not visible to controller and doesnt point to valid handler function, it is used only for initial table initialization.
     const fn empty() -> Self {
