@@ -1,7 +1,9 @@
 use core::ptr;
+use core::ops::DerefMut;
 use core::fmt::Write;
 use core::ops;
 use core::cell;
+use alloc::boxed::Box;
 use pic8259_simple::ChainedPics;
 
 use display::vga::writer::Writer;
@@ -16,6 +18,7 @@ use hardware::x86_64::interrupts::handler::{
     InterruptHandlerWithErrorCode
 };
 use hardware::x86_64::interrupts::pic;
+use hardware::x86_64::keyboard;
 use memory::allocator::slab::{
     SlabAllocatorGlobalAlloc,
     SlabAllocator
@@ -25,6 +28,14 @@ use memory::frame::{
     Frame,
     FRAME_SIZE
 };
+use multiprocess::process::{
+   RootProcess,
+    HardwareListener,
+    SubscribeMe,
+    KickStart
+};
+use crate::process::KeyboardPrinter;
+
 use memory::paging;
 use memory::paging::page_table;
 use multiboot::multiboot_header::MultibootHeader;
@@ -57,14 +68,39 @@ impl<T> Accessor<T> {
 #[global_allocator]
 pub static mut HEAP_ALLOCATOR: SlabAllocatorGlobalAlloc = SlabAllocatorGlobalAlloc { value : ptr::NonNull::dangling() };
 
+pub unsafe fn initialize_keyboard() {
+
+    let result = keyboard::initialize();
+
+    if !result {
+        writeln!(VGA_WRITER, "Cannot initialize keyboard, system cannot proceed!");
+        panic!();
+    }
+}
+
+pub unsafe fn create_core_processes() {
+    //let root_process = RootProcess::new(&mut PROCESS_EXECUTOR);
+    let listener = HardwareListener::new(&mut PROCESS_EXECUTOR);
+    let printer = KeyboardPrinter::new(&listener, &mut PROCESS_EXECUTOR);
+
+    //PROCESS_EXECUTOR.create_process(Box::new(root_process));
+    PROCESS_EXECUTOR.create_process(Box::new(listener));
+    PROCESS_EXECUTOR.create_process(Box::new(printer));
+
+    PROCESS_EXECUTOR.post_message(1, Box::new(KickStart {}));
+}
+
 pub unsafe fn initialize_interrupt_table() {
 
+    // CPU exceptions
     INTERRUPT_TABLE.double_fault = InterruptTableEntry::<InterruptHandlerWithErrorCode>::create_present_entry(handlers::double_fault_handler);
     INTERRUPT_TABLE.page_fault = InterruptTableEntry::<InterruptHandlerWithErrorCode>::create_present_entry(handlers::page_fault_handler);
     INTERRUPT_TABLE.divide_by_zero = InterruptTableEntry::<InterruptHandler>::create_present_entry(handlers::divide_by_zero_handler);
     INTERRUPT_TABLE.bound_range_exceed = InterruptTableEntry::<InterruptHandler>::create_present_entry(handlers::index_out_of_bounds_handler);
 
+    // Hardware interrupts
     INTERRUPT_TABLE.set_interrupt_handler(HardwareInterrupts::Timer as usize, handlers::timer_interrupt_handler);
+    INTERRUPT_TABLE.set_interrupt_handler(HardwareInterrupts::Keyboard as usize, handlers::keyboard_handler);
 
     CHAINED_PICS.initialize();
 }

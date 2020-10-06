@@ -21,6 +21,7 @@ use crate::process::{
 
 pub const TIME_QUANT : u64  = 1000;
 
+
 pub struct Executor {
     id_counter: u64,
 
@@ -87,12 +88,13 @@ impl Executor {
         self.existing.remove(&id);
     }
 
-    pub(crate) fn create_process(&mut self, process_message: ProcessBox) -> u64 {
+    pub fn create_process(&mut self, process_message: ProcessBox) -> u64 {
 
         let mut node = ProcessDescriptor::new(process_message);
 
         let id = self.id_counter;
 
+        node.process.set_id(id);
         self.existing.insert(id, node);
         self.new.push(id);
 
@@ -101,7 +103,7 @@ impl Executor {
         id
     }
 
-    pub (crate) fn fork(&mut self, parent_id : u64, process_message : ProcessBox) -> u64 {
+    pub fn fork(&mut self, parent_id : u64, process_message : ProcessBox) -> u64 {
         if self.existing.contains_key(&parent_id) {
             let child_id = self.create_process(process_message);
 
@@ -197,9 +199,13 @@ impl Executor {
         // pick one (for now) new process and put it into the front of the queue
         let new_process = self.new.pop();
 
-        let maximum_execution_time = TIME_QUANT / existing_count;
-
         new_process.map(|id| {
+            let maximum_execution_time = if existing_count == 0 {
+                TIME_QUANT
+            } else {
+                TIME_QUANT / existing_count
+            };
+
             let new_entry = ProcessorTimeWithProcessKey {
                 processor_time : 0,
                 interrupt_time : current_time,
@@ -337,7 +343,7 @@ impl ProcessDescriptor {
         (&self.stack as *const _ as u64)
     }
 
-    pub(crate) fn run_process(&mut self) -> () {
+    pub fn run_process(&mut self) -> () {
         self.state = ProcessState::WaitingForMessage;
 
         if let Some(message) = self.mailbox.pop_front() {

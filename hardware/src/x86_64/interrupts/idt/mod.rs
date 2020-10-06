@@ -7,6 +7,7 @@ use core::ops::{Index, IndexMut};
 #[repr(u8)]
 pub enum HardwareInterrupts {
     Timer = PIC_1_OFFSET,
+    Keyboard
 }
 
 /// Describes entry of interrupt descriptor table (IDT).

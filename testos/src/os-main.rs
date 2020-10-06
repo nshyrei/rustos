@@ -89,19 +89,21 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         interrupts::load_interrupt_table(&INTERRUPT_TABLE);
 
-        let mut root_process = process::RootProcess::new(&mut PROCESS_EXECUTOR);
+        globals::create_core_processes();
+
+        globals::initialize_keyboard();
 
         hardware::x86_64::interrupts::enable_interrupts();
 
         // run pre-init tests
         let p4_table = paging::p4_table();
-
+        
         /*paging_map_should_properly_map_pages(p4_table, slab_allocator.frame_allocator(), &mut vga_writer);
         paging_translate_page_should_properly_translate_pages(p4_table, slab_allocator.frame_allocator());
         paging_unmap_should_properly_unmap_elements(p4_table, slab_allocator.frame_allocator());
         paging_translate_address_should_properly_translate_virtual_address(p4_table, slab_allocator.frame_allocator());*/
         loop {
-            unsafe { writeln!(VGA_WRITER, "rust_main() end loop!"); };
+            //unsafe { writeln!(VGA_WRITER, "rust_main() end loop!"); };
         }
     }
 }

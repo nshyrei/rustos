@@ -11,9 +11,15 @@ use hardware::x86_64::interrupts::handler::{
     InterruptHandlerWithErrorCode,
     InterruptStackFrameValue
 };
+use hardware::x86_64::port::Port;
+use hardware::x86_64::port::PortReadWrite;
+use hardware::x86_64::keyboard::PS2IOPort;
 use hardware::x86_64::interrupts::pic;
 use multiprocess::executor;
-use multiprocess::process::Terminate;
+use multiprocess::process::{
+    Terminate,
+    KeyboardPress,
+};
 use crate::globals::{
    CHAINED_PICS,
     PROCESS_EXECUTOR,
@@ -56,6 +62,16 @@ pub extern "x86-interrupt" fn double_fault_handler(stack_frame: &mut InterruptSt
     unsafe { writeln!(VGA_WRITER, "DOUBLE FAULT OCCURED"); }
 }
 
+pub extern "x86-interrupt" fn keyboard_handler(stack_frame: &mut InterruptStackFrameValue) {
+    unsafe {
+        let button_code = PS2IOPort::read_port();
+
+        PROCESS_EXECUTOR.post_message(0, Box::new(KeyboardPress { code : button_code }));
+
+        CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Keyboard as u8);
+    }
+}
+
 static mut timer_ctr : usize = 0;
 
 pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut InterruptStackFrameValue) {
@@ -83,6 +99,9 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
             if let Some(next) = PROCESS_EXECUTOR.schedule_next(clock) {
                 switch_to_process(next, stack_frame);
             }
+            else {
+                CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
+            }
         } else {
             timer_ctr += 1;
 
@@ -103,6 +122,15 @@ unsafe fn switch_to_process(new_process : &mut executor::ProcessDescriptor, stac
             multiprocess::switch_to_running_process(new_process, stack_frame);
 
             CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
+        },
+        executor::ProcessState::WaitingForMessage => {
+            hardware::x86_64::interrupts::disable_interrupts();
+
+            hardware::x86_64::interrupts::enable_interrupts();
+
+            CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
+
+            new_process.run_process();
         },
         executor::ProcessState::New => {
             // todo find out why this disable/enable is needed or otherwise the interrupt wont fire again
