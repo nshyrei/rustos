@@ -123,7 +123,7 @@ unsafe fn switch_to_process(new_process : &mut executor::ProcessDescriptor, stac
 
             CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
         },
-        executor::ProcessState::WaitingForMessage => {
+        executor::ProcessState::Finished | executor::ProcessState::WaitingForMessage => {
             hardware::x86_64::interrupts::disable_interrupts();
 
             hardware::x86_64::interrupts::enable_interrupts();
@@ -140,9 +140,38 @@ unsafe fn switch_to_process(new_process : &mut executor::ProcessDescriptor, stac
 
             CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
 
+            /*use multiprocess::executor::run_process_static;
+            use core::mem;
+
+            let adr = run_process_static as *const () as u64;
+            stack_frame.instruction_pointer = adr;
+
+            let stack_address           = new_process.stack_address() as u32;
+            let descriptor_address   = new_process as *const _ as u64;
+
+            // push process descriptor pointer into new process stack
+            core::ptr::write_unaligned((stack_address - (mem::size_of::<u64>() as u32)) as *mut u64, descriptor_address);
+
+            let next_process_registers = new_process.registers();
+            stack_frame.stack_pointer           = new_process.stack_address();
+            stack_frame.cpu_flags                 = next_process_registers.cpu_flags;*/
+
             multiprocess::start_new_process(new_process);
         },
-        _ => ()
+
+        executor::ProcessState::Crashed => {
+            let s = 10;
+            let ss = s;
+        },
+
+        executor::ProcessState::AskedToTerminate => {
+            let s = 10;
+            let ss = s;
+        },
+        executor::ProcessState::WaitingForResource => {
+            let s = 10;
+            let ss = s;
+        }
     }
 }
 

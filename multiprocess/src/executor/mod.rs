@@ -27,7 +27,7 @@ pub struct Executor {
 
     execution_line: BinaryHeap<ProcessorTimeWithProcessKey>,
 
-    new : Vec<u64>,
+    new : VecDeque<u64>,
 
     existing: BTreeMap<u64, ProcessDescriptor>,
 }
@@ -37,7 +37,7 @@ impl Executor {
         let id_counter = 0;
         let execution_line: BinaryHeap<ProcessorTimeWithProcessKey> = BinaryHeap::new();
         let existing: BTreeMap<u64, ProcessDescriptor> = BTreeMap::new();
-        let new : Vec<u64> = Vec::new();
+        let new : VecDeque<u64> = VecDeque::new();
 
         Executor {
             id_counter,
@@ -84,19 +84,16 @@ impl Executor {
         }
     }
 
-    fn remove_process(&mut self, id: u64) {
-        self.existing.remove(&id);
-    }
-
     pub fn create_process(&mut self, process_message: ProcessBox) -> u64 {
 
         let mut node = ProcessDescriptor::new(process_message);
+        //node.create_guard();
 
         let id = self.id_counter;
 
         node.process.set_id(id);
         self.existing.insert(id, node);
-        self.new.push(id);
+        self.new.push_back(id);
 
         self.id_counter += 1;
 
@@ -128,13 +125,33 @@ impl Executor {
     }
 
     pub fn schedule_next(&mut self, current_time : u64) -> Option<&mut ProcessDescriptor> {
+        for k in self.existing.keys() {
+            if current_time == 12000 {
+            let x = k;
+            let a  = x;
+            /*let sck = self.currently_executing().unwrap().stack_address();
+            let xt = sck;*/
+        }
+         
+        }
+        use hardware::x86_64::registers;
+        let sp =  unsafe { registers::sp_read() };
         // remove any process that is terminated of crashed
         self.remove_terminated();
+
+for k in self.existing.keys() {
+            let x = k;
+            let a  = x;
+        }
 
         let total_processes = self.execution_line.len() as u64;
 
         // set new processor time for currently executing process
         self.update_current_process_time(current_time, total_processes);
+for k in self.existing.keys() {
+            let x = k;
+            let a  = x;
+        }
 
         // put new process (if we have any) into the execution queue
         self.put_new_process_to_execute(current_time, total_processes);
@@ -158,6 +175,16 @@ impl Executor {
     }
 
     fn remove_terminated(&mut self) {
+        use hardware::x86_64::registers;
+        let sp =  unsafe { registers::sp_read() };
+
+        for k in self.existing.keys() {
+            let x = k;
+            use hardware::x86_64::registers;
+        let sp =  unsafe { registers::sp_read() };
+            let a  = x;
+        }
+
         let mut process_state = self.current_process_info();
 
         while let Some((time_description, ProcessDescriptor { state : ProcessState::AskedToTerminate, .. })) = process_state {
@@ -167,6 +194,25 @@ impl Executor {
             self.existing.remove(&process_key);
 
             process_state = self.current_process_info();
+        }
+
+        for k in self.existing.keys() {
+            let x = k;
+            let a  = x;
+        }
+
+        while let Some((time_description, ProcessDescriptor { state : ProcessState::Finished, .. })) = process_state {
+            let process_key = time_description.process_key;
+
+            self.execution_line.pop();
+            self.new.push_back(process_key);
+
+            process_state = self.current_process_info();
+        }
+
+        for k in self.existing.keys() {
+            let x = k;
+            let a  = x;
         }
     }
 
@@ -195,26 +241,33 @@ impl Executor {
         }
     }
 
-    fn put_new_process_to_execute(&mut self, current_time : u64, existing_count : u64) {
-        // pick one (for now) new process and put it into the front of the queue
-        let new_process = self.new.pop();
+    fn put_new_process_to_execute(&mut self, current_time : u64, total_processes : u64) {
+        let has_message = self.new.front()
+            .and_then(|id| self.existing.get(&id))
+            .map(|e| e.mailbox.len() > 0)
+            .unwrap_or(false);
 
-        new_process.map(|id| {
-            let maximum_execution_time = if existing_count == 0 {
-                TIME_QUANT
-            } else {
-                TIME_QUANT / existing_count
-            };
+        if has_message {
+            // pick one (for now) new process and put it into the front of the queue
+            let new_process = self.new.pop_front();
 
-            let new_entry = ProcessorTimeWithProcessKey {
-                processor_time : 0,
-                interrupt_time : current_time,
-                maximum_execution_time,
-                process_key: id
-            };
+            new_process.map(|id| {
+                let maximum_execution_time = if total_processes == 0 {
+                    TIME_QUANT
+                } else {
+                    TIME_QUANT / total_processes
+                };
 
-            self.execution_line.push(new_entry);
-        });
+                let new_entry = ProcessorTimeWithProcessKey {
+                    processor_time: 0,
+                    interrupt_time: current_time,
+                    maximum_execution_time,
+                    process_key: id,
+                };
+
+                self.execution_line.push(new_entry);
+            });
+        }
     }
 }
 
@@ -254,17 +307,19 @@ pub enum ProcessState {
     WaitingForMessage,
     WaitingForResource,
     AskedToTerminate,
+    Finished,
     Crashed
 }
-
+use core::pin::Pin;
+use core::ops::Deref;
 #[repr(C)]
 pub struct ProcessDescriptor {
     process: ProcessBox,
 
-    stack_overflow_guard : [u8; 4096],
+   // stack_overflow_guard : [u8; 4096],
 
     // 1 page frame
-    stack : [u8; 4096],
+    stack : Pin<Box<[u8; 4096]>>,
 
     guard : [u8; 100],
 
@@ -291,8 +346,8 @@ impl ProcessDescriptor {
         let mailbox: VecDeque<Message> = VecDeque::new();
         let children: Vec<u64> = Vec::new();
         let state = ProcessState::New;
-        let stack_overflow_guard = [0 as u8; 4096];
-        let stack = [0 as u8; 4096];
+        //let stack_overflow_guard = [0 as u8; 4096];
+        let stack = Box::pin([0 as u8; 4096]);
         let guard = [0 as u8; 100];
 
         // process function will be called directly and those values will be populated after interrupt
@@ -306,7 +361,7 @@ impl ProcessDescriptor {
 
         ProcessDescriptor {
             process,
-            stack_overflow_guard,
+            //stack_overflow_guard,
             stack,
             guard,
             mailbox,
@@ -320,7 +375,7 @@ impl ProcessDescriptor {
         use memory::paging;
         use memory::frame::Frame;
         let table = paging::p4_table();
-        unsafe { table.unmap_page(Frame::from_address(&self.stack_overflow_guard as *const _ as usize)) };
+        //unsafe { table.unmap_page(Frame::from_address(&self.stack_overflow_guard as *const _ as usize)) };
     }
 
     pub fn description(&self) -> &'static str {
@@ -340,7 +395,7 @@ impl ProcessDescriptor {
     }
 
     pub fn stack_address(&self) -> u64 {
-        (&self.stack as *const _ as u64)
+        (self.stack.deref() as *const _ as u64 + 3000)
     }
 
     pub fn run_process(&mut self) -> () {
@@ -354,7 +409,7 @@ impl ProcessDescriptor {
             else {
                 self.state = ProcessState::Running;
                 self.process.process_message(message);
-                self.state = ProcessState::WaitingForMessage;
+                self.state = ProcessState::Finished;
             }
         }
 
@@ -362,4 +417,8 @@ impl ProcessDescriptor {
         // and will be examined by executor on next scheduling iteration.
         loop { }
     }
+}
+
+pub fn run_process_static(process_descriptor : &mut ProcessDescriptor) -> () {
+    process_descriptor.run_process();
 }
