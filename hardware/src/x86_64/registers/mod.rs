@@ -47,3 +47,26 @@ pub fn sp_read() -> u32 {
 
     result
 }
+
+bitflags! {
+    pub struct EFLAGS : u32 {
+        const carry = 1 << 0;
+        const parity =      1 << 2;
+        const auxiliary =    1 << 4;
+        const zero =    1 << 6;
+        const sign =                 1 << 7;
+        const trap = 1 << 8;
+        const interrupt =      1 << 9;
+        const direction =    1 << 10;
+        const overflow =    1 << 11;
+        const io_privilige =                 1 << 12;
+        const io_privilige2 =                 1 << 13;
+        const nested_task = 1 << 14;
+        const resume =      1 << 16;
+        const virtual_flag =    1 << 17;
+        const aligment_check =    1 << 18;
+        const virtual_interrupt =                 1 << 19;
+        const virtual_interrupt_pending =                 1 << 20;
+        const id =                 1 << 21;
+    }
+}

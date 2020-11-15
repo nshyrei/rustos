@@ -11,6 +11,7 @@ use core::ptr;
 use core::ops;
 use core::cmp;
 use core::any::Any;
+use core::fmt::Display;
 
 use crate::process::{
     Message,
@@ -129,8 +130,6 @@ impl Executor {
             if current_time == 12000 {
             let x = k;
             let a  = x;
-            /*let sck = self.currently_executing().unwrap().stack_address();
-            let xt = sck;*/
         }
          
         }
@@ -139,7 +138,7 @@ impl Executor {
         // remove any process that is terminated of crashed
         self.remove_terminated();
 
-for k in self.existing.keys() {
+    for k in self.existing.keys() {
             let x = k;
             let a  = x;
         }
@@ -148,10 +147,6 @@ for k in self.existing.keys() {
 
         // set new processor time for currently executing process
         self.update_current_process_time(current_time, total_processes);
-for k in self.existing.keys() {
-            let x = k;
-            let a  = x;
-        }
 
         // put new process (if we have any) into the execution queue
         self.put_new_process_to_execute(current_time, total_processes);
@@ -175,16 +170,6 @@ for k in self.existing.keys() {
     }
 
     fn remove_terminated(&mut self) {
-        use hardware::x86_64::registers;
-        let sp =  unsafe { registers::sp_read() };
-
-        for k in self.existing.keys() {
-            let x = k;
-            use hardware::x86_64::registers;
-        let sp =  unsafe { registers::sp_read() };
-            let a  = x;
-        }
-
         let mut process_state = self.current_process_info();
 
         while let Some((time_description, ProcessDescriptor { state : ProcessState::AskedToTerminate, .. })) = process_state {
@@ -196,11 +181,6 @@ for k in self.existing.keys() {
             process_state = self.current_process_info();
         }
 
-        for k in self.existing.keys() {
-            let x = k;
-            let a  = x;
-        }
-
         while let Some((time_description, ProcessDescriptor { state : ProcessState::Finished, .. })) = process_state {
             let process_key = time_description.process_key;
 
@@ -208,11 +188,6 @@ for k in self.existing.keys() {
             self.new.push_back(process_key);
 
             process_state = self.current_process_info();
-        }
-
-        for k in self.existing.keys() {
-            let x = k;
-            let a  = x;
         }
     }
 
@@ -310,18 +285,13 @@ pub enum ProcessState {
     Finished,
     Crashed
 }
-use core::pin::Pin;
-use core::ops::Deref;
+
 #[repr(C)]
 pub struct ProcessDescriptor {
-    process: ProcessBox,
-
-   // stack_overflow_guard : [u8; 4096],
-
     // 1 page frame
-    stack : Pin<Box<[u8; 4096]>>,
+    stack : [u8; 4096],
 
-    guard : [u8; 100],
+    process: ProcessBox,
 
     mailbox: VecDeque<Message>,
 
@@ -346,9 +316,7 @@ impl ProcessDescriptor {
         let mailbox: VecDeque<Message> = VecDeque::new();
         let children: Vec<u64> = Vec::new();
         let state = ProcessState::New;
-        //let stack_overflow_guard = [0 as u8; 4096];
-        let stack = Box::pin([0 as u8; 4096]);
-        let guard = [0 as u8; 100];
+        let stack = [0 as u8; 4096];
 
         // process function will be called directly and those values will be populated after interrupt
         let registers = ProcessRegisters {
@@ -361,9 +329,7 @@ impl ProcessDescriptor {
 
         ProcessDescriptor {
             process,
-            //stack_overflow_guard,
             stack,
-            guard,
             mailbox,
             children,
             state,
@@ -394,11 +360,16 @@ impl ProcessDescriptor {
         &mut self.state
     }
 
-    pub fn stack_address(&self) -> u64 {
-        (self.stack.deref() as *const _ as u64 + 3000)
+    pub fn stack_head_address(&self) -> u64 {
+        let chk = self.mailbox.len();
+
+        // because stack grows into lesser address space we return last entry address
+        // as a stack head
+        &self.stack[4095] as *const _ as u64
     }
 
     pub fn run_process(&mut self) -> () {
+        let chk = self.mailbox.len();
         self.state = ProcessState::WaitingForMessage;
 
         if let Some(message) = self.mailbox.pop_front() {
@@ -417,8 +388,4 @@ impl ProcessDescriptor {
         // and will be examined by executor on next scheduling iteration.
         loop { }
     }
-}
-
-pub fn run_process_static(process_descriptor : &mut ProcessDescriptor) -> () {
-    process_descriptor.run_process();
 }

@@ -99,14 +99,10 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
             if let Some(next) = PROCESS_EXECUTOR.schedule_next(clock) {
                 switch_to_process(next, stack_frame);
             }
-            else {
-                CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
-            }
         } else {
             timer_ctr += 1;
-
-            CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
         }
+        CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
     }
 }
 
@@ -119,60 +115,55 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
 unsafe fn switch_to_process(new_process : &mut executor::ProcessDescriptor, stack_frame: &mut InterruptStackFrameValue) {
     match new_process.state() {
         executor::ProcessState::Running => {
-            multiprocess::switch_to_running_process(new_process, stack_frame);
-
-            CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
+            switch_registers(new_process.registers(), stack_frame);
         },
-        executor::ProcessState::Finished | executor::ProcessState::WaitingForMessage => {
-            hardware::x86_64::interrupts::disable_interrupts();
-
-            hardware::x86_64::interrupts::enable_interrupts();
-
-            CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
-
-            new_process.run_process();
+        executor::ProcessState::Finished | executor::ProcessState::WaitingForMessage | executor::ProcessState::New => {
+            start_new_process(new_process, stack_frame);
         },
-        executor::ProcessState::New => {
-            // todo find out why this disable/enable is needed or otherwise the interrupt wont fire again
-            hardware::x86_64::interrupts::disable_interrupts();
-
-            hardware::x86_64::interrupts::enable_interrupts();
-
-            CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Timer as u8);
-
-            /*use multiprocess::executor::run_process_static;
-            use core::mem;
-
-            let adr = run_process_static as *const () as u64;
-            stack_frame.instruction_pointer = adr;
-
-            let stack_address           = new_process.stack_address() as u32;
-            let descriptor_address   = new_process as *const _ as u64;
-
-            // push process descriptor pointer into new process stack
-            core::ptr::write_unaligned((stack_address - (mem::size_of::<u64>() as u32)) as *mut u64, descriptor_address);
-
-            let next_process_registers = new_process.registers();
-            stack_frame.stack_pointer           = new_process.stack_address();
-            stack_frame.cpu_flags                 = next_process_registers.cpu_flags;*/
-
-            multiprocess::start_new_process(new_process);
-        },
-
-        executor::ProcessState::Crashed => {
-            let s = 10;
-            let ss = s;
-        },
-
-        executor::ProcessState::AskedToTerminate => {
-            let s = 10;
-            let ss = s;
-        },
-        executor::ProcessState::WaitingForResource => {
-            let s = 10;
-            let ss = s;
+        x => {
+            panic!("Cannot run a process in state {:?}", x)
         }
     }
+}
+
+/// Switches execution to previously stopped process.
+/// # Arguments
+///  `next_process` - descriptor of the process to switch to
+///  `interrupted` - meta data of the stopped process
+fn switch_registers(next_process_registers : &executor::ProcessRegisters, interrupted: &mut InterruptStackFrameValue) {
+    // New values for CS, SP and FLAGS registers will be picked automatically from `InterruptStackFrameValue` by the processor after exiting the interrupt handler
+    // The only thing we need to do here is to populate `interrupted` with the info of process to switch to.
+    interrupted.instruction_pointer = next_process_registers.instruction_pointer;
+    interrupted.stack_pointer           = next_process_registers.stack_pointer;
+    interrupted.cpu_flags                 = next_process_registers.cpu_flags;
+}
+
+/// Starts new process.
+/// # Arguments
+///  `next_process` - descriptor of the process to start
+///  # Safety
+/// Unsafe because starting new process involves unsafe memory operations
+fn start_new_process(new_process : &mut executor::ProcessDescriptor, interrupted: &mut InterruptStackFrameValue) {
+    let instruction_pointer  = run_process_static as *const () as u64;
+    let stack_pointer           = new_process.stack_head_address();
+
+    use hardware::x86_64::registers;
+    // the only flag needed, so that interrupts will continue to fire
+    // everything else is cleared, because its a new process
+    let cpu_flags = registers::interrupt.bits() as u64;
+
+    let new_process_registers = executor::ProcessRegisters {
+        instruction_pointer,
+        stack_pointer,
+        cpu_flags
+    };
+
+    // put pointer of the new process descriptor into pocket so `run_process_static` can use it
+    // during timer interrupt all other timer interrupts are blocked, so accessing this static var is safe
+    unsafe { pocket = new_process as *const _ as u64 };
+
+    // switch registers to point to new process, just like in case of  `executor::ProcessState::Running `
+    switch_registers(&new_process_registers, interrupted)
 }
 
 unsafe fn send_crash_message_to_current_process() {
@@ -180,4 +171,14 @@ unsafe fn send_crash_message_to_current_process() {
     let process_description     = PROCESS_EXECUTOR.currently_executing().unwrap().description();
 
     PROCESS_EXECUTOR.post_message(currently_executing_id, Box::new(Terminate {}));
+}
+
+// contains pointer to ProcessDescriptor that is set to execute
+static mut pocket : u64 = 0;
+
+fn run_process_static() -> () {
+    use core::mem;
+    // during timer interrupt all other timer interrupts are blocked, so accessing this static var is safe
+    let process_descriptor = unsafe { mem::transmute::<u64, &mut executor::ProcessDescriptor>(pocket) };
+    process_descriptor.run_process();
 }
