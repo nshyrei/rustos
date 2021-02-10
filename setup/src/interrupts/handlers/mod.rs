@@ -23,6 +23,7 @@ use multiprocess::process::{
 use crate::globals::{
    CHAINED_PICS,
     PROCESS_EXECUTOR,
+   CORE_PROCESSES,
    VGA_WRITER
 };
 use alloc::boxed::Box;
@@ -41,7 +42,8 @@ pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStac
 }
 
 pub extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: &mut InterruptStackFrameValue) {
-    unsafe {send_crash_message_to_current_process();
+    unsafe {
+        send_crash_message_to_current_process();
 
      writeln!(VGA_WRITER, "Invalid opcode occured in process"); }
 }
@@ -66,7 +68,9 @@ pub extern "x86-interrupt" fn keyboard_handler(stack_frame: &mut InterruptStackF
     unsafe {
         let button_code = PS2IOPort::read_port();
 
-        PROCESS_EXECUTOR.post_message(0, Box::new(KeyboardPress { code : button_code }));
+        PROCESS_EXECUTOR.post_message(CORE_PROCESSES.hardware_listener, Box::new(KeyboardPress { code : button_code }));
+
+        //PROCESS_EXECUTOR.try_action_spinlock(|e|  e.post_message(0, Box::new(KeyboardPress { code : button_code })));
 
         CHAINED_PICS.notify_end_of_interrupt(HardwareInterrupts::Keyboard as u8);
     }
@@ -91,14 +95,25 @@ pub extern "x86-interrupt" fn timer_interrupt_handler(stack_frame: &mut Interrup
                 instruction_pointer: stack_frame.instruction_pointer,
                 stack_pointer: stack_frame.stack_pointer,
                 cpu_flags: stack_frame.cpu_flags,
-            };
+            }; 
+
+            PROCESS_EXECUTOR.save_interrupted_process_return_point(interrupted_process_registers);
 
             // update interrupt point for currently running process
-            PROCESS_EXECUTOR.save_interrupted_process_return_point(interrupted_process_registers);
+            //PROCESS_EXECUTOR.try_action_spinlock(|e| e.save_interrupted_process_return_point(interrupted_process_registers));
+
+            //let mut acquire_result = PROCESS_EXECUTOR.try_acquire();
+
+            /*while acquire_result.is_none() {
+                acquire_result = PROCESS_EXECUTOR.try_acquire();
+            }*/
 
             if let Some(next) = PROCESS_EXECUTOR.schedule_next(clock) {
                 switch_to_process(next, stack_frame);
             }
+
+            //PROCESS_EXECUTOR.release();
+
         } else {
             timer_ctr += 1;
         }
@@ -158,7 +173,7 @@ fn start_new_process(new_process : &mut executor::ProcessDescriptor, interrupted
         cpu_flags
     };
 
-    // put pointer of the new process descriptor into pocket so `run_process_static` can use it
+    // put pointer of the new process descriptor into pocket so `run_process_static` can use it,
     // during timer interrupt all other timer interrupts are blocked, so accessing this static var is safe
     unsafe { pocket = new_process as *const _ as u64 };
 
@@ -167,10 +182,15 @@ fn start_new_process(new_process : &mut executor::ProcessDescriptor, interrupted
 }
 
 unsafe fn send_crash_message_to_current_process() {
-    let currently_executing_id = PROCESS_EXECUTOR.currently_executing_id().unwrap();
-    let process_description     = PROCESS_EXECUTOR.currently_executing().unwrap().description();
+    if PROCESS_EXECUTOR.currently_executing_id().is_some() {
+        let currently_executing_id = PROCESS_EXECUTOR.currently_executing_id().unwrap();
+        let process_description     = PROCESS_EXECUTOR.currently_executing().unwrap().description();
 
-    PROCESS_EXECUTOR.post_message(currently_executing_id, Box::new(Terminate {}));
+        PROCESS_EXECUTOR.post_message(currently_executing_id, Box::new(Terminate {}));
+    }
+    else {
+        panic!("Exception occured before process system started!");
+    }
 }
 
 // contains pointer to ProcessDescriptor that is set to execute

@@ -3,6 +3,7 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
 #![feature(core_intrinsics)]
+#![feature(panic_info_message)]
 extern crate rlibc;
 extern crate multiboot;
 extern crate display;
@@ -11,7 +12,6 @@ extern crate hardware;
 extern crate alloc;
 extern crate stdx_memory;
 extern crate stdx;
-extern crate pic8259_simple;
 extern crate multiprocess;
 extern crate setup;
 
@@ -54,7 +54,6 @@ use stdx_memory::heap;
 use multiprocess::process::{Process, Message};
 use multiprocess::executor;
 use multiprocess::process;
-use pic8259_simple::ChainedPics;
 
 use setup::interrupts::handlers;
 use setup::globals;
@@ -63,7 +62,8 @@ use setup::globals::{
     PROCESS_EXECUTOR,
     INTERRUPT_TABLE,
     CHAINED_PICS,
-    HEAP_ALLOCATOR
+    HEAP_ALLOCATOR,
+    GLOBAL_DESCRIPTOR_TABLE
 };
 
 #[no_mangle]
@@ -85,6 +85,12 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         memory_allocator_should_properly_allocate_and_free_memory();
 
+        globals::initialize_task_state_segment();
+        let (code_selector, tss_selector) = globals::initialize_global_descriptor_table();
+
+        globals::load_global_descriptor_table(&GLOBAL_DESCRIPTOR_TABLE);
+        globals::load_task_stack_segment(code_selector, tss_selector);
+
         globals::initialize_interrupt_table();
 
         interrupts::load_interrupt_table(&INTERRUPT_TABLE);
@@ -93,7 +99,10 @@ pub extern "C" fn rust_main(multiboot_header_address: usize) {
 
         globals::initialize_keyboard();
 
-        hardware::x86_64::interrupts::enable_interrupts();
+        interrupts::enable_interrupts();
+
+        //ptr::write(0 as *mut u8, 0);
+
 
         // run pre-init tests
         let p4_table = paging::p4_table();
@@ -135,17 +144,26 @@ extern "C" fn eh_personality() {}
 // Array index out of range or calling `unwrap` on `None` are common examples.
 pub extern "C" fn panic_impl(pi: &PanicInfo) -> ! {
 
-    let message_as_string = pi.payload().downcast_ref::<&str>();
-    let location_is_present = pi.location().is_some();
+    let message = pi.message();
+    // no idea when this is populated, but its a fallback when `pi.message` is not available
+    let payload_as_string = pi.payload().downcast_ref::<&str>();
+    let location = pi.location();
 
     unsafe {
-        if message_as_string.is_some() && location_is_present {
-            writeln!(VGA_WRITER, "Rust code panicked with {}, at {}", message_as_string.unwrap(), pi.location().unwrap());
-        } else if location_is_present {
-            writeln!(VGA_WRITER, "Rust code panicked at {}", pi.location().unwrap());
-        } else {
-            writeln!(VGA_WRITER, "Rust code panicked");
-        }
+        match (location, message, payload_as_string) {
+            (Some(loc), Some(msg), _) => {
+                writeln!(VGA_WRITER, "Rust code panicked with {} at {}", msg, loc);
+            },
+            (Some(loc), _, Some(msg)) => {
+                writeln!(VGA_WRITER, "Rust code panicked with {} at {}", msg, loc);
+            },
+            (Some(loc), _, _) => {
+                writeln!(VGA_WRITER, "Rust code panicked at {}", loc);
+            },
+            _ => {
+                writeln!(VGA_WRITER, "Rust code panicked");
+            }
+        };
     }
 
     loop {}

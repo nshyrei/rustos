@@ -11,16 +11,6 @@ use core::marker::Copy;
 use core::default::Default;
 use alloc::boxed::Box;
 
-trait MsgClone {}
-
-trait IntoType {
-    //fn into_type(self) -> Self;
-}
-
-trait Msg : MsgClone + IntoType {
-
-}
-
 pub type Message = Box<Any>;
 
 pub type ProcessBox = Box<Process>;
@@ -79,7 +69,7 @@ impl Clone for ProcessRef {
 }
 
 pub struct RootProcess {
-    executor : ptr::NonNull<Executor>
+    executor : ptr::NonNull<Executor>,
 }
 
 impl RootProcess {
@@ -95,16 +85,13 @@ impl RootProcess {
 impl Process for RootProcess {
 
     fn description(&self) -> &'static str {
-        "Root process."
+        "Root process of the system."
     }
 
     fn process_message(&mut self, message: Message) -> () {
 
     }
 }
-
-use alloc::collections::binary_heap::BinaryHeap;
-
 
 #[derive(Copy, Clone)]
 pub struct KeyboardPress {

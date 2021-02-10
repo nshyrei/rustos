@@ -40,7 +40,8 @@ use alloc::boxed::Box;
 
 */
 
-pub const KEY_PRESS_TABLE1: [char; 51] = [
+pub const KEY_PRESS_TABLE1: [char; 52] = [
+    ' ',
     ' ',
     '1',
     '2',
@@ -104,11 +105,11 @@ pub struct KeyboardPrinter {
 }
 
 impl KeyboardPrinter {
-    pub fn new(listener : &HardwareListener, executor : &mut Executor) -> Self {
+    pub fn new(listener : u64, executor : &mut Executor) -> Self {
         unsafe {
             KeyboardPrinter {
                 id: 0,
-                hardware_listener : 0,
+                hardware_listener : listener,
                 executor: ptr::NonNull::new_unchecked(executor)
             }
         }
@@ -135,7 +136,7 @@ impl Process for KeyboardPrinter {
             let unwr = message.downcast::<KeyboardPress>().unwrap();
             let button_code = unwr.code;
 
-            if button_code < 55 {
+            if button_code < 52 {
                 unsafe { writeln!(VGA_WRITER, "Key pressed {}", KEY_PRESS_TABLE1[button_code as usize]); }
             }
         }

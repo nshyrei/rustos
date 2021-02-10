@@ -1,5 +1,6 @@
 use ::x86_64::interrupts::handler::{InterruptHandler, InterruptHandlerWithErrorCode};
 use ::x86_64::interrupts::pic::PIC_1_OFFSET;
+use ::x86_64::interrupts::InterruptTablePointer;
 use core::marker::PhantomData;
 use core::ops::{Index, IndexMut};
 
@@ -51,6 +52,10 @@ impl<HandlerFunc> InterruptTableEntry<HandlerFunc> {
             reserved : 0,
             ph : PhantomData
         }
+    }
+
+    pub fn options_mut(&mut self) -> &mut InterruptOptions {
+        &mut self.options
     }
 
     /// Creates empty table entry.
@@ -278,6 +283,11 @@ impl InterruptOptions {
 
         self.value = flags.bits();
     }
+
+    pub fn set_stack(&mut self, stack_index : u16) {
+        use bit_field::BitField;
+        self.value.set_bits(0..3, stack_index + 1);
+    }
 }
 
 bitflags! {
@@ -288,14 +298,6 @@ bitflags! {
         const ALWAYS_PRESENT2 =    1 << 11;
         const IS_PRESENT =                 1 << 15;
     }
-}
-
-/// Describes a pointer to descriptor table.
-/// Used only for `load_interrupt_table` function
-#[repr(C, packed)]
-pub(crate) struct InterruptTablePointer {
-    limit : u16,
-    base : u64
 }
 
 /// Describes segment selector for descriptor table.

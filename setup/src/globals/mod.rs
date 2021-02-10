@@ -17,7 +17,11 @@ use hardware::x86_64::interrupts::handler::{
     InterruptHandler,
     InterruptHandlerWithErrorCode
 };
-use hardware::x86_64::interrupts::pic;
+use hardware::x86_64::interrupts::{
+    pic
+};
+use x86_64::structures::tss;
+use x86_64::structures::gdt;
 use hardware::x86_64::keyboard;
 use memory::allocator::slab::{
     SlabAllocatorGlobalAlloc,
@@ -41,12 +45,15 @@ use memory::paging::page_table;
 use multiboot::multiboot_header::MultibootHeader;
 use stdx::macros;
 use crate::interrupts::handlers;
+use multiprocess::sync::Mutex;
 
 global_fields! {
     VGA_WRITER: Writer = Writer::new();
     PROCESS_EXECUTOR: executor::Executor = executor::Executor::new();
     INTERRUPT_TABLE: InterruptTable = InterruptTable::new();
     CHAINED_PICS: ChainedPics = unsafe { pic::new() } ;
+    TASK_STATE_SEGMENT: tss::TaskStateSegment = tss::TaskStateSegment::new();
+    GLOBAL_DESCRIPTOR_TABLE : gdt::GlobalDescriptorTable = gdt::GlobalDescriptorTable::new();
 }
 
 pub struct Accessor<T> {
@@ -65,8 +72,25 @@ impl<T> Accessor<T> {
     }
 }
 
+pub struct CoreProcessesList {
+    pub root : u64,
+
+    pub hardware_listener : u64
+}
+
+impl CoreProcessesList {
+    pub const fn new() -> Self {
+        CoreProcessesList {
+            root : 0,
+            hardware_listener : 0
+        }
+    }
+}
+
 #[global_allocator]
 pub static mut HEAP_ALLOCATOR: SlabAllocatorGlobalAlloc = SlabAllocatorGlobalAlloc { value : ptr::NonNull::dangling() };
+
+pub static mut CORE_PROCESSES : CoreProcessesList = CoreProcessesList::new();
 
 pub unsafe fn initialize_keyboard() {
 
@@ -79,24 +103,67 @@ pub unsafe fn initialize_keyboard() {
 }
 
 pub unsafe fn create_core_processes() {
-    //let root_process = RootProcess::new(&mut PROCESS_EXECUTOR);
+    let root_process = RootProcess::new(&mut PROCESS_EXECUTOR);
     let listener = HardwareListener::new(&mut PROCESS_EXECUTOR);
-    let printer = KeyboardPrinter::new(&listener, &mut PROCESS_EXECUTOR);
 
-    //PROCESS_EXECUTOR.create_process(Box::new(root_process));
-    PROCESS_EXECUTOR.create_process(Box::new(listener));
-    PROCESS_EXECUTOR.create_process(Box::new(printer));
+    let root = PROCESS_EXECUTOR.create_process(Box::new(root_process));
 
-    PROCESS_EXECUTOR.post_message(1, Box::new(KickStart {}));
+    let listener_id = PROCESS_EXECUTOR.fork(root, Box::new(listener));
+
+    let printer = KeyboardPrinter::new(listener_id, &mut PROCESS_EXECUTOR);
+
+    let printer_id = PROCESS_EXECUTOR.fork(root, Box::new(printer));
+
+    CORE_PROCESSES = CoreProcessesList {
+        root,
+        hardware_listener : listener_id
+    };
+
+    PROCESS_EXECUTOR.post_message(printer_id, Box::new(KickStart {}));
 }
+
+pub unsafe fn initialize_global_descriptor_table() -> (gdt::SegmentSelector,  gdt::SegmentSelector){
+    let code_segment = gdt::Descriptor::kernel_code_segment();
+    let tss = gdt::Descriptor::tss_segment(&TASK_STATE_SEGMENT);
+
+    let code_selector = GLOBAL_DESCRIPTOR_TABLE.add_entry(code_segment);
+    let tss_selector = GLOBAL_DESCRIPTOR_TABLE.add_entry(tss);
+
+    (code_selector, tss_selector)
+}
+
+pub unsafe fn initialize_task_state_segment() {
+    use x86_64::VirtAddr;
+    let double_fault_stack_address = &double_fault_stack[FRAME_SIZE - 1] as *const _ as u64;
+    TASK_STATE_SEGMENT.interrupt_stack_table[0] = VirtAddr::new(double_fault_stack_address);
+}
+
+static double_fault_stack : [u8;FRAME_SIZE] = [0 as u8; FRAME_SIZE];
+
+pub unsafe fn load_global_descriptor_table(table : &gdt::GlobalDescriptorTable){
+    GLOBAL_DESCRIPTOR_TABLE.load();
+}
+
+pub unsafe fn load_task_stack_segment(cs_selector : gdt::SegmentSelector, tss_selector : gdt::SegmentSelector) {
+    use x86_64::instructions::segmentation::set_cs;
+    use x86_64::instructions::tables::load_tss;
+
+    set_cs(cs_selector);
+    load_tss(tss_selector);
+}
+
 
 pub unsafe fn initialize_interrupt_table() {
 
     // CPU exceptions
     INTERRUPT_TABLE.double_fault = InterruptTableEntry::<InterruptHandlerWithErrorCode>::create_present_entry(handlers::double_fault_handler);
     INTERRUPT_TABLE.page_fault = InterruptTableEntry::<InterruptHandlerWithErrorCode>::create_present_entry(handlers::page_fault_handler);
+    let page_fault_options = INTERRUPT_TABLE.page_fault.options_mut();
+    page_fault_options.set_stack(0);
+
     INTERRUPT_TABLE.divide_by_zero = InterruptTableEntry::<InterruptHandler>::create_present_entry(handlers::divide_by_zero_handler);
     INTERRUPT_TABLE.bound_range_exceed = InterruptTableEntry::<InterruptHandler>::create_present_entry(handlers::index_out_of_bounds_handler);
+    INTERRUPT_TABLE.invalid_opcode = InterruptTableEntry::<InterruptHandler>::create_present_entry(handlers::invalid_opcode_handler);
 
     // Hardware interrupts
     INTERRUPT_TABLE.set_interrupt_handler(HardwareInterrupts::Timer as usize, handlers::timer_interrupt_handler);

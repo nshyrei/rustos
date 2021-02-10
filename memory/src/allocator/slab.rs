@@ -13,10 +13,8 @@ use stdx::math;
 use stdx_memory::heap;
 use core::cmp;
 use core::mem;
-use core::alloc::Alloc;
 use core::alloc::GlobalAlloc;
 use core::alloc::Layout;
-use core::alloc::AllocErr;
 use core::ptr;
 use display::vga::writer::Writer;
 use frame::FRAME_SIZE;
@@ -577,9 +575,11 @@ unsafe impl GlobalAlloc for SlabAllocatorGlobalAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let mut  v = &mut *(self.value.as_ptr());
 
-        v.allocate(layout.size())
+        let r = v.allocate(layout.size())
             .map(|a| a as * mut u8)
-            .unwrap_or(0 as * mut u8)
+            .unwrap_or(0 as * mut u8);
+
+        r
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

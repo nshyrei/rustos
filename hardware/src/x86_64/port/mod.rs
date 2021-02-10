@@ -12,14 +12,14 @@ pub trait PortReadWrite : PortRead + PortWrite { }
 
 impl PortWrite for u8 {
     unsafe fn write(port_number: u16, value: u8) {
-        asm!("outb $1, $0" :: "N{dx}"(port_number), "{al}"(value) :: "volatile");
+        llvm_asm!("outb $1, $0" :: "N{dx}"(port_number), "{al}"(value) :: "volatile");
     }
 }
 
 impl PortRead for u8 {
     unsafe fn read(port_number: u16) -> u8 {
         let value : u8;
-        asm!("inb $1, $0" : "={al}"(value) : "N{dx}"(port_number) :: "volatile");
+        llvm_asm!("inb $1, $0" : "={al}"(value) : "N{dx}"(port_number) :: "volatile");
         value
     }
 }

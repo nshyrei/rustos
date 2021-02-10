@@ -2,6 +2,7 @@ use alloc::collections::btree_map::BTreeMap;
 use alloc::collections::vec_deque::VecDeque;
 use alloc::collections::binary_heap::BinaryHeap;
 use alloc::collections::binary_heap::PeekMut;
+
 use alloc::vec::Vec;
 use alloc::boxed::Box;
 use alloc::rc::Rc;
@@ -10,6 +11,7 @@ use core::cell;
 use core::ptr;
 use core::ops;
 use core::cmp;
+use core::pin::Pin;
 use core::any::Any;
 use core::fmt::Display;
 
@@ -20,8 +22,9 @@ use crate::process::{
     Process
 };
 
-pub const TIME_QUANT : u64  = 1000;
+use memory::frame::FRAME_SIZE;
 
+pub const TIME_QUANT : u64  = 1000;
 
 pub struct Executor {
     id_counter: u64,
@@ -53,8 +56,12 @@ impl Executor {
     ///  `id` - process id
     ///  `message` - the message
     pub fn post_message(&mut self, id: u64, message: Message) {
+        let new_queue = &mut self.new;
         if let Some(process) = self.existing.get_mut(&id) {
-            process.mailbox.push_back(message)
+            process.mailbox.push_back(message);
+            // after process receives a message it is put into 'new' queue,
+            // which has all the new processes that are ready to execute
+            new_queue.push_back(id);
         }
     }
 
@@ -88,15 +95,15 @@ impl Executor {
     pub fn create_process(&mut self, process_message: ProcessBox) -> u64 {
 
         let mut node = ProcessDescriptor::new(process_message);
-        //node.create_guard();
+        node.create_guard();
 
         let id = self.id_counter;
 
         node.process.set_id(id);
-        self.existing.insert(id, node);
-        self.new.push_back(id);
 
+        self.existing.insert(id, node);
         self.id_counter += 1;
+
 
         id
     }
@@ -152,7 +159,9 @@ impl Executor {
         self.put_new_process_to_execute(current_time, total_processes);
 
         // pick the top of the queue
-        self.currently_executing_mut()
+        let r = self.currently_executing_mut();
+
+        r
     }
 
     fn current_process_info(& self) -> Option<(&ProcessorTimeWithProcessKey, &ProcessDescriptor)> {
@@ -185,7 +194,6 @@ impl Executor {
             let process_key = time_description.process_key;
 
             self.execution_line.pop();
-            self.new.push_back(process_key);
 
             process_state = self.current_process_info();
         }
@@ -286,10 +294,19 @@ pub enum ProcessState {
     Crashed
 }
 
+#[repr(C, align(2048))]
+struct ProcessStack {
+    guard1 : [u8; FRAME_SIZE / 2],
+
+    guard : [u8; FRAME_SIZE],
+
+    stack : [u8; FRAME_SIZE],
+}
+
 #[repr(C)]
 pub struct ProcessDescriptor {
-    // 1 page frame
-    stack : [u8; 4096],
+
+    stack_pin : Pin<Box<ProcessStack>>,
 
     process: ProcessBox,
 
@@ -316,8 +333,13 @@ impl ProcessDescriptor {
         let mailbox: VecDeque<Message> = VecDeque::new();
         let children: Vec<u64> = Vec::new();
         let state = ProcessState::New;
-        let stack = [0 as u8; 4096];
+        let process_stack = ProcessStack {
+            guard1: [0 as u8; FRAME_SIZE / 2],
+            guard: [0 as u8; FRAME_SIZE],
+            stack: [0 as u8; FRAME_SIZE],
+        };
 
+        let stack_pin = Box::pin(process_stack);
         // process function will be called directly and those values will be populated after interrupt
         let registers = ProcessRegisters {
             instruction_pointer: 0,
@@ -325,11 +347,9 @@ impl ProcessDescriptor {
             cpu_flags: 0,
         };
 
-        let execution_start_time = 0;
-
         ProcessDescriptor {
+            stack_pin,
             process,
-            stack,
             mailbox,
             children,
             state,
@@ -341,7 +361,9 @@ impl ProcessDescriptor {
         use memory::paging;
         use memory::frame::Frame;
         let table = paging::p4_table();
-        //unsafe { table.unmap_page(Frame::from_address(&self.stack_overflow_guard as *const _ as usize)) };
+        let mut start_addr = &self.stack_pin.guard as *const _ as usize;
+
+        unsafe { table.unmap(start_addr) };
     }
 
     pub fn description(&self) -> &'static str {
@@ -361,11 +383,9 @@ impl ProcessDescriptor {
     }
 
     pub fn stack_head_address(&self) -> u64 {
-        let chk = self.mailbox.len();
-
         // because stack grows into lesser address space we return last entry address
         // as a stack head
-        &self.stack[4095] as *const _ as u64
+        &self.stack_pin.stack[0] as *const _ as u64
     }
 
     pub fn run_process(&mut self) -> () {
@@ -373,7 +393,6 @@ impl ProcessDescriptor {
         self.state = ProcessState::WaitingForMessage;
 
         if let Some(message) = self.mailbox.pop_front() {
-
             if message.is::<Terminate>() {
                 self.state = ProcessState::AskedToTerminate;
             }

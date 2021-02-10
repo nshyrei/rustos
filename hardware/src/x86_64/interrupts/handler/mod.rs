@@ -4,7 +4,7 @@ pub type InterruptHandler                               = extern "x86-interrupt"
 /// Interrupt handler prototype that also contains error code.
 pub type InterruptHandlerWithErrorCode  = extern "x86-interrupt" fn (&mut InterruptStackFrameValue, u64);
 
-/// Interrupt meta info that is placed on stack by processor.
+/// Interrupt meta info that is placed on stack by a processor.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct InterruptStackFrameValue {

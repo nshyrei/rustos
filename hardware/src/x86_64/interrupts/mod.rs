@@ -4,11 +4,18 @@ pub mod pic;
 
 use ::x86_64::interrupts::idt::InterruptTable;
 
+/// Describes a pointer to a descriptor table.
+#[repr(C, packed)]
+pub(crate) struct InterruptTablePointer {
+    limit : u16,
+    base : u64
+}
+
 /// Tells the processor to stop handling interrupts
 #[inline(always)]
 pub fn disable_interrupts() {
     unsafe {
-        asm!("cli" :::: "volatile");
+        llvm_asm!("cli" :::: "volatile");
     }
 }
 
@@ -16,7 +23,7 @@ pub fn disable_interrupts() {
 #[inline(always)]
 pub fn enable_interrupts() {
     unsafe {
-        asm!("sti" :::: "volatile");
+        llvm_asm!("sti" :::: "volatile");
     }
 }
 
@@ -26,6 +33,6 @@ pub fn enable_interrupts() {
 pub fn load_interrupt_table(table : &InterruptTable){
     let ptr = &table.pointer();
 
-    unsafe { asm!("lidt ($0)" :: "r" (ptr) : "memory") };
+    unsafe { llvm_asm!("lidt ($0)" :: "r" (ptr) : "memory") };
 }
 
